@@ -8,8 +8,10 @@
     width: auto;
     max-width: 100%;
     object-fit: contain;
+    object-position: left center;
     display: block;
     filter: none;
+    vertical-align: middle;
 }
 
 .auth-logo-wrap .brand-logo {
@@ -19,10 +21,11 @@
 
 .brand-logo-slot {
     flex-shrink: 0;
-    line-height: 0;
+    line-height: normal;
     display: inline-flex;
     align-items: center;
-    max-width: min(100%, 280px);
+    overflow: visible;
+    max-width: min(100%, 320px);
 }
 
 /* Horizontal logos: preserve wide aspect in nav bars */

@@ -20,14 +20,14 @@ class ContactConfirmationMail extends Mailable
     public function __construct(ContactMessage $contactMessage)
     {
         $this->contactMessage = $contactMessage;
-        $this->supportEmail = config('contact.email', config('mail.support_email', 'support@falconeyegps.com'));
+        $this->supportEmail = config('contact.email', config('mail.support_email', 'support@billxiotgps.com'));
     }
 
     public function envelope(): Envelope
     {
         return new Envelope(
-            subject: 'Thank You for Contacting FalconEyeGPS',
-            replyTo: [config('contact.email', 'support@falconeyegps.com')]
+            subject: 'Thank You for Contacting BillXiot GPS',
+            replyTo: [config('contact.email', 'support@billxiotgps.com')]
         );
     }
 

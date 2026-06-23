@@ -34,7 +34,7 @@ class EnsureTrackerAccess
                 return response()->json([
                     'error' => 'tracker_account_missing',
                     'title' => 'Tracking not available',
-                    'message' => 'Your account is not linked to FalconEyeGPS fleet tracking. Contact support if you need fleet access.',
+                    'message' => 'Your account is not linked to BillXiot GPS fleet tracking. Contact support if you need fleet access.',
                     'redirect' => route('user.dashboard'),
                 ], 403);
             }

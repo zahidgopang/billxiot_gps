@@ -2,7 +2,7 @@
 @extends('frontend.layout')
 
 @section('title', __('frontend.pages.careers.title'))
-@section('description', 'Explore career opportunities at FalconEyeGPS. Join our team of innovators in GPS tracking technology.')
+@section('description', 'Explore career opportunities at BillXiot GPS. Join our team of innovators in GPS tracking technology.')
 
 @section('content')
 
@@ -31,7 +31,7 @@
     <section class="py-20">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="text-center mb-16">
-                <h2 class="text-3xl font-bold mb-4">Why Join FalconEyeGPS?</h2>
+                <h2 class="text-3xl font-bold mb-4">Why Join BillXiot GPS?</h2>
                 <p class="text-slate-600 dark:text-slate-400">We offer more than just a job</p>
             </div>
 

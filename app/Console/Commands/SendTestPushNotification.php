@@ -12,7 +12,7 @@ class SendTestPushNotification extends Command
     protected $signature = 'push:test
         {user? : User ID (defaults to first user with a registered FCM token)}
         {--token= : Send to a specific FCM token instead of all user tokens}
-        {--title=FalconEyeGPS test : Notification title}
+        {--title=BillXiot GPS test : Notification title}
         {--body=Push notifications are working. : Notification body}';
 
     protected $description = 'Send a test FCM push notification (HTTP v1) to verify Firebase setup';

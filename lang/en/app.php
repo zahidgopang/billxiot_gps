@@ -1,7 +1,7 @@
 <?php
 
 return [
-    'brand' => 'FalconEyeGPS',
+    'brand' => 'BillXiot GPS',
 
     'language' => [
         'label' => 'Language',
@@ -394,7 +394,7 @@ return [
             'no_devices_yet' => 'No devices assigned to your account yet.',
             'no_activity_hint' => 'No fleet activity yet. Activity will appear when your assigned devices send GPS updates.',
             'tracker_unavailable_title' => 'GPS tracking not linked',
-            'tracker_unavailable_msg' => 'You can sign in here, but your account is not linked to FalconEyeGPS fleet tracking yet. Maps, devices, and fleet data stay hidden until an administrator enables access or runs sync.',
+            'tracker_unavailable_msg' => 'You can sign in here, but your account is not linked to BillXiot GPS fleet tracking yet. Maps, devices, and fleet data stay hidden until an administrator enables access or runs sync.',
             'tracker_route_blocked' => 'That page requires an active tracker account (tc_users).',
         ],
         'devices' => [

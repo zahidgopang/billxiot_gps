@@ -21,7 +21,7 @@
                         How can we <span class="bg-gradient-to-r from-sky-500 to-blue-600 bg-clip-text text-transparent">help?</span>
                     </h1>
                     <p class="text-xl text-slate-600 dark:text-slate-300 mb-8">
-                        Find answers to common questions, tutorials, and support resources for FalconEyeGPS.
+                        Find answers to common questions, tutorials, and support resources for BillXiot GPS.
                     </p>
 
                     <!-- Search -->
@@ -86,7 +86,7 @@
                 @php
                     $articles = [
                         [
-                            'title' => 'Getting Started with FalconEyeGPS',
+                            'title' => 'Getting Started with BillXiot GPS',
                             'excerpt' => 'Complete setup guide for new users',
                             'category' => 'Setup',
                             'views' => '12,548',
@@ -127,7 +127,7 @@
                         ],
                         [
                             'title' => 'Mobile App Guide',
-                            'excerpt' => 'Using FalconEyeGPS on iOS and Android',
+                            'excerpt' => 'Using BillXiot GPS on iOS and Android',
                             'category' => 'Mobile',
                             'views' => '4,986',
                             'icon' => 'fa-solid fa-mobile-screen',
@@ -183,7 +183,7 @@
                 @php
                     $faqs = [
                         [
-                            'q' => 'What GPS devices are compatible with FalconEyeGPS?',
+                            'q' => 'What GPS devices are compatible with BillXiot GPS?',
                             'a' => 'We support common protocols such as GT06 and many LTE trackers. Our team helps configure your device model during onboarding.'
                         ],
                         [
@@ -196,7 +196,7 @@
                         ],
                         [
                             'q' => 'Is there a mobile app available?',
-                            'a' => 'Yes. The FalconEyeGPS Android app is available for download from our website and uses the same login as the web panel.'
+                            'a' => 'Yes. The BillXiot GPS Android app is available for download from our website and uses the same login as the web panel.'
                         ],
                         [
                             'q' => 'How secure is my data?',
@@ -243,7 +243,7 @@
                     <div class="p-6 rounded-xl bg-slate-50 dark:bg-slate-800/50">
                         <i class="fa-solid fa-envelope text-sky-500 text-2xl mb-4"></i>
                         <div class="font-bold mb-2">Email Support</div>
-                        <div class="text-slate-600 dark:text-slate-400">support@falconeyegps.com</div>
+                        <div class="text-slate-600 dark:text-slate-400">support@billxiotgps.com</div>
                     </div>
 
                     <div onclick="openWhatsAppSupport()"
@@ -312,7 +312,7 @@
         // WhatsApp Configuration
         const whatsappConfig = {
             phoneNumber: '+923003026824', // Your WhatsApp number
-            defaultMessage: 'Hello! I need help with FalconEyeGPS. I was on your help center page.',
+            defaultMessage: 'Hello! I need help with BillXiot GPS. I was on your help center page.',
             businessHours: {
                 start: 9, // 9 AM
                 end: 18,  // 6 PM

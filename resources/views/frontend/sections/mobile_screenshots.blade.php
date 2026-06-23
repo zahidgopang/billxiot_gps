@@ -162,7 +162,7 @@
                                 @foreach($screens as $index => $screen)
                                     <img
                                         src="{{ $screen['src'] }}"
-                                        alt="{{ $screen['title'] }} — FalconEyeGPS mobile app screenshot"
+                                        alt="{{ $screen['title'] }} — BillXiot GPS mobile app screenshot"
                                         class="mobile-screenshot-slide bg-slate-950 transition-opacity duration-500 {{ $index === 0 ? 'opacity-100 z-10' : 'opacity-0 z-0 pointer-events-none' }}"
                                         data-slide-index="{{ $index }}"
                                         loading="{{ $index === 0 ? 'eager' : 'lazy' }}"

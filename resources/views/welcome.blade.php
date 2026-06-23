@@ -8,7 +8,7 @@
     {{-- PREMIUM HERO WITH ANIMATIONS --}}
     @include('frontend.sections.hero')
 
-    {{-- WHY FalconEyeGPS - PREMIUM VERSION --}}
+    {{-- WHY BillXiot GPS - PREMIUM VERSION --}}
     <section class="py-32 relative overflow-hidden">
         <!-- Background Elements -->
         <div class="absolute inset-0 bg-gradient-to-b from-slate-50 to-white dark:from-slate-950 dark:to-slate-900"></div>

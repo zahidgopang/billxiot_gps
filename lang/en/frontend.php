@@ -2,13 +2,13 @@
 
 return [
     'meta' => [
-        'title' => 'FalconEyeGPS — Live GPS, Vehicle & Fleet Tracking',
-        'description' => 'FalconEyeGPS offers real-time GPS tracking, fleet management, geofencing, route history, and mobile apps for businesses in Saudi Arabia, Pakistan, and worldwide.',
+        'title' => 'BillXiot GPS — Live GPS, Vehicle & Fleet Tracking',
+        'description' => 'BillXiot GPS offers real-time GPS tracking, fleet management, geofencing, route history, and mobile apps for businesses in Saudi Arabia, Pakistan, and worldwide.',
         'tagline' => 'Live GPS & Fleet Tracking',
-        'platform' => 'FalconEyeGPS Platform',
-        'footer_blurb' => 'FalconEyeGPS — real-time GPS tracking and fleet management for businesses worldwide.',
-        'copyright' => '© :year FalconEyeGPS. All rights reserved.',
-        'trademark' => 'FalconEyeGPS',
+        'platform' => 'BillXiot GPS Platform',
+        'footer_blurb' => 'BillXiot GPS — real-time GPS tracking and fleet management for businesses worldwide.',
+        'copyright' => '© :year BillXiot GPS. All rights reserved.',
+        'trademark' => 'BillXiot GPS',
     ],
 
     'nav' => [
@@ -50,7 +50,7 @@ return [
         'title_line1' => 'Real-Time',
         'title_line2' => 'Fleet Visibility',
         'subtitle' => 'Monitor vehicles on a live map, review route history, receive geofence and speed alerts, and keep dispatch teams aligned from web and mobile.',
-        'seo_intro' => 'FalconEyeGPS is a fleet tracking solution and GPS vehicle tracking platform built for logistics companies, transport operators, and corporate fleets in Saudi Arabia, Pakistan, and worldwide. Our fleet management software combines a live fleet map, real-time vehicle monitoring, route playback, geofencing, and a GPS tracking mobile app.',
+        'seo_intro' => 'BillXiot GPS is a fleet tracking solution and GPS vehicle tracking platform built for logistics companies, transport operators, and corporate fleets in Saudi Arabia, Pakistan, and worldwide. Our fleet management software combines a live fleet map, real-time vehicle monitoring, route playback, geofencing, and a GPS tracking mobile app.',
         'uptime' => 'Platform uptime',
         'support' => 'Support',
         'live_map' => 'Live map',
@@ -70,7 +70,7 @@ return [
         'benefit_setup' => 'Guided onboarding for your fleet',
         'benefit_support' => 'Dedicated support team',
         'benefit_devices' => 'Compatible GPS hardware',
-        'video_title' => 'FalconEyeGPS Platform Overview',
+        'video_title' => 'BillXiot GPS Platform Overview',
         'video_subtitle' => 'Live tracking, history, and fleet alerts',
         'video_demo_link' => 'Book a live session →',
     ],
@@ -87,7 +87,7 @@ return [
     'home' => [
         'why_badge' => 'BUILT FOR FLEET OPERATIONS',
         'why_title' => 'Why Operations Teams',
-        'why_title_highlight' => 'Choose FalconEyeGPS',
+        'why_title_highlight' => 'Choose BillXiot GPS',
         'why_subtitle' => 'Practical GPS tracking tools for dispatch, compliance, and day-to-day fleet control',
         'precision_title' => 'Live Vehicle Visibility',
         'precision_desc' => 'See where every authorized vehicle is on one map with status, speed, and last update time.',
@@ -119,7 +119,7 @@ return [
         'badge' => 'MOBILE APP',
         'title' => 'Track Your Fleet on',
         'title_highlight' => 'Android',
-        'subtitle' => 'Download the official FalconEyeGPS app for live vehicle tracking, alerts, geofences, and profile sync with your web dashboard.',
+        'subtitle' => 'Download the official BillXiot GPS app for live vehicle tracking, alerts, geofences, and profile sync with your web dashboard.',
         'features' => [
             'Live fleet map and vehicle status',
             'Push alerts for geofence and speed events',
@@ -140,7 +140,7 @@ return [
 
     'mobile_screens' => [
         'badge' => 'MOBILE APP PREVIEW',
-        'title' => 'Explore FalconEyeGPS',
+        'title' => 'Explore BillXiot GPS',
         'title_highlight' => 'On Your Phone',
         'subtitle' => 'Browse real app screens in dark mode — live tracking, fleet dashboard, alerts, geofences, and profile sync before you sign up.',
         'prev' => 'Previous screenshot',
@@ -190,7 +190,7 @@ return [
         'subtitle' => 'Comprehensive suite of features designed for modern fleet management',
         'learn_more' => 'Learn more',
         'demo_title' => 'Experience Real-Time Tracking',
-        'demo_desc' => 'See how FalconEyeGPS transforms fleet management with interactive dashboards, live maps, and predictive analytics.',
+        'demo_desc' => 'See how BillXiot GPS transforms fleet management with interactive dashboards, live maps, and predictive analytics.',
         'demo_btn' => 'Launch Interactive Demo',
         'active_vehicles' => 'Active Vehicles',
         'uptime_month' => 'Uptime This Month',
@@ -247,7 +247,7 @@ return [
         'badge' => 'CUSTOMER FEEDBACK',
         'title' => 'What Our',
         'title_highlight' => 'Customers Say',
-        'subtitle' => 'Transport and logistics operators using FalconEyeGPS for daily fleet visibility',
+        'subtitle' => 'Transport and logistics operators using BillXiot GPS for daily fleet visibility',
         'stat_fleets' => 'Active fleets',
         'stat_satisfaction' => 'Would recommend',
         'stat_rating' => 'Average rating',
@@ -258,7 +258,7 @@ return [
                 'role' => 'Operations Manager',
                 'company' => 'Al Rahman Transport Services',
                 'logo' => '🚛',
-                'content' => 'We use FalconEyeGPS to monitor long-haul trucks between Riyadh and Dammam. Dispatch can see delays immediately and call drivers with accurate location context.',
+                'content' => 'We use BillXiot GPS to monitor long-haul trucks between Riyadh and Dammam. Dispatch can see delays immediately and call drivers with accurate location context.',
                 'metrics' => ['Fleet size: 48 trucks', 'Use case: Long-haul monitoring', 'Region: Saudi Arabia'],
             ],
             [
@@ -403,8 +403,8 @@ return [
     ],
 
     'pricing' => [
-        'title' => 'Pricing — FalconEyeGPS GPS & Fleet Tracking Plans',
-        'description' => 'Compare FalconEyeGPS fleet tracking plans: live GPS maps, alerts, geofencing, route history, and Android app. Transparent pricing for businesses in Saudi Arabia and Pakistan.',
+        'title' => 'Pricing — BillXiot GPS GPS & Fleet Tracking Plans',
+        'description' => 'Compare BillXiot GPS fleet tracking plans: live GPS maps, alerts, geofencing, route history, and Android app. Transparent pricing for businesses in Saudi Arabia and Pakistan.',
         'badge' => 'SIMPLE, TRANSPARENT PRICING',
         'heading' => 'Plans for',
         'heading_highlight' => 'Every Fleet Size',
@@ -432,7 +432,7 @@ return [
         'regular_updates' => 'Regular Updates',
         'regular_updates_desc' => 'New features & improvements',
         'faq_title' => 'Frequently Asked Questions',
-        'faq_subtitle' => 'Everything you need to know about FalconEyeGPS',
+        'faq_subtitle' => 'Everything you need to know about BillXiot GPS',
         'still_have_questions' => 'Still have questions?',
         'contact_support' => 'Contact Support',
         'cta_title' => 'Ready to Improve Fleet Visibility?',
@@ -443,12 +443,12 @@ return [
         'cta_footer' => 'Guided onboarding • Compatible GPS hardware • Dedicated support',
         'faqs' => [
             [
-                'q' => 'How do I get started with FalconEyeGPS?',
+                'q' => 'How do I get started with BillXiot GPS?',
                 'a' => 'Contact our team to request a demo or consultation. We will review your fleet size, compatible devices, and user roles before activation.',
             ],
             [
                 'q' => 'What GPS devices are supported?',
-                'a' => 'FalconEyeGPS supports common GPS tracker protocols such as GT06 and many LTE devices. Our team provides configuration guidance for your hardware model.',
+                'a' => 'BillXiot GPS supports common GPS tracker protocols such as GT06 and many LTE devices. Our team provides configuration guidance for your hardware model.',
             ],
             [
                 'q' => 'Can I use the mobile app with my account?',
@@ -470,7 +470,7 @@ return [
     ],
 
     'contact' => [
-        'title' => 'Contact Us – FalconEyeGPS Tracking',
+        'title' => 'Contact Us – BillXiot GPS Tracking',
         'description' => 'Get in touch with our GPS tracking experts. 24/7 support for fleet management solutions.',
         'badge' => 'GET IN TOUCH',
         'heading' => "Let's",
@@ -482,25 +482,25 @@ return [
 
     'pages' => [
         'about' => [
-            'title' => 'About Us – FalconEyeGPS Tracking',
-            'description' => 'Learn about FalconEyeGPS history, leadership team, and our journey in revolutionizing fleet management.',
+            'title' => 'About Us – BillXiot GPS Tracking',
+            'description' => 'Learn about BillXiot GPS history, leadership team, and our journey in revolutionizing fleet management.',
             'badge' => 'OUR STORY',
             'heading' => 'Pioneering',
             'heading_highlight' => 'GPS Innovation',
-            'intro' => 'Founded in 2015, FalconEyeGPS began with a simple mission: to make fleet management smarter, safer, and more efficient.',
+            'intro' => 'Founded in 2015, BillXiot GPS began with a simple mission: to make fleet management smarter, safer, and more efficient.',
             'years' => 'Years of Innovation',
         ],
-        'company' => ['title' => 'Company – FalconEyeGPS', 'description' => 'FalconEyeGPS company information'],
-        'careers' => ['title' => 'Careers – FalconEyeGPS', 'description' => 'Join the FalconEyeGPS team'],
-        'press' => ['title' => 'Press – FalconEyeGPS', 'description' => 'FalconEyeGPS press and media'],
-        'blog' => ['title' => 'Blog – FalconEyeGPS', 'description' => 'Fleet management insights and news'],
-        'help' => ['title' => 'Help Center – FalconEyeGPS', 'description' => 'Get help with FalconEyeGPS tracking'],
-        'docs' => ['title' => 'Documentation – FalconEyeGPS', 'description' => 'FalconEyeGPS developer and user documentation'],
-        'api' => ['title' => 'API Reference – FalconEyeGPS', 'description' => 'FalconEyeGPS REST API documentation'],
-        'status' => ['title' => 'System Status – FalconEyeGPS', 'description' => 'FalconEyeGPS platform status and uptime'],
-        'terms' => ['title' => 'Terms of Service – FalconEyeGPS', 'description' => 'FalconEyeGPS terms of service'],
-        'privacy' => ['title' => 'Privacy Policy – FalconEyeGPS', 'description' => 'FalconEyeGPS privacy policy'],
-        'security' => ['title' => 'Security – FalconEyeGPS', 'description' => 'FalconEyeGPS security practices'],
-        'cookies' => ['title' => 'Cookie Policy – FalconEyeGPS', 'description' => 'FalconEyeGPS cookie policy'],
+        'company' => ['title' => 'Company – BillXiot GPS', 'description' => 'BillXiot GPS company information'],
+        'careers' => ['title' => 'Careers – BillXiot GPS', 'description' => 'Join the BillXiot GPS team'],
+        'press' => ['title' => 'Press – BillXiot GPS', 'description' => 'BillXiot GPS press and media'],
+        'blog' => ['title' => 'Blog – BillXiot GPS', 'description' => 'Fleet management insights and news'],
+        'help' => ['title' => 'Help Center – BillXiot GPS', 'description' => 'Get help with BillXiot GPS tracking'],
+        'docs' => ['title' => 'Documentation – BillXiot GPS', 'description' => 'BillXiot GPS developer and user documentation'],
+        'api' => ['title' => 'API Reference – BillXiot GPS', 'description' => 'BillXiot GPS REST API documentation'],
+        'status' => ['title' => 'System Status – BillXiot GPS', 'description' => 'BillXiot GPS platform status and uptime'],
+        'terms' => ['title' => 'Terms of Service – BillXiot GPS', 'description' => 'BillXiot GPS terms of service'],
+        'privacy' => ['title' => 'Privacy Policy – BillXiot GPS', 'description' => 'BillXiot GPS privacy policy'],
+        'security' => ['title' => 'Security – BillXiot GPS', 'description' => 'BillXiot GPS security practices'],
+        'cookies' => ['title' => 'Cookie Policy – BillXiot GPS', 'description' => 'BillXiot GPS cookie policy'],
     ],
 ];

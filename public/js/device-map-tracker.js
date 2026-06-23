@@ -1476,7 +1476,7 @@
             return `      <trkpt lat="${p.lat}" lon="${p.lng}"><time>${t}</time><speed>${p.speed || 0}</speed></trkpt>`;
         }).join('\n');
         const gpx = `<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="FalconEyeGPS">
+<gpx version="1.1" creator="BillXiot GPS">
   <trk><name>${cfg.deviceName || 'Route'}</name><trkseg>
 ${pts}
   </trkseg></trk>

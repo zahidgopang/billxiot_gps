@@ -1,7 +1,7 @@
 <?php
 
 return [
-    'brand' => 'FalconEyeGPS',
+    'brand' => 'BillXiot GPS',
 
     'language' => [
         'label' => 'اللغة',

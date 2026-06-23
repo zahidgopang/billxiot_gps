@@ -1,5 +1,5 @@
 /**
- * FalconEyeGPS — Pakistan (Asia/Karachi) date/time formatting for web UI.
+ * BillXiot GPS — Pakistan (Asia/Karachi) date/time formatting for web UI.
  */
 (function (global) {
     'use strict';

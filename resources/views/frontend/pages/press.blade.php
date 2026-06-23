@@ -2,7 +2,7 @@
 @extends('frontend.layout')
 
 @section('title', __('frontend.pages.press.title'))
-@section('description', 'Latest news, press releases, and media resources about FalconEyeGPS.')
+@section('description', 'Latest news, press releases, and media resources about BillXiot GPS.')
 
 @section('content')
 
@@ -18,7 +18,7 @@
                 Press & <span class="bg-gradient-to-r from-purple-500 to-pink-600 bg-clip-text text-transparent">Media</span>
             </h1>
             <p class="text-xl text-slate-600 dark:text-slate-300 max-w-3xl mx-auto">
-                Latest news, press releases, and media resources about FalconEyeGPS.
+                Latest news, press releases, and media resources about BillXiot GPS.
             </p>
         </div>
     </section>
@@ -36,20 +36,20 @@
                     $releases = [
                         [
                             'date' => 'Dec 15, 2024',
-                            'title' => 'FalconEyeGPS Releases Updated Android Fleet App',
+                            'title' => 'BillXiot GPS Releases Updated Android Fleet App',
                             'excerpt' => 'New feature predicts vehicle maintenance needs up to 30 days in advance, reducing downtime by 40%.',
                             'category' => 'Product Launch'
                         ],
                         [
                             'date' => 'Nov 22, 2024',
-                            'title' => 'FalconEyeGPS Partners with Major Logistics Company',
+                            'title' => 'BillXiot GPS Partners with Major Logistics Company',
                             'excerpt' => 'Strategic partnership to deploy GPS tracking across 5,000-vehicle fleet.',
                             'category' => 'Partnership'
                         ],
                         [
                             'date' => 'Oct 10, 2024',
                             'title' => 'Company Reaches 10,000 Client Milestone',
-                            'excerpt' => 'FalconEyeGPS now serves over 10,000 businesses worldwide across 150+ countries.',
+                            'excerpt' => 'BillXiot GPS now serves over 10,000 businesses worldwide across 150+ countries.',
                             'category' => 'Milestone'
                         ],
                         [
@@ -112,14 +112,14 @@
                         [
                             'publication' => 'TechCrunch',
                             'title' => 'How AI is Revolutionizing Fleet Management',
-                            'excerpt' => 'FalconEyeGPS leads the way with predictive analytics.',
+                            'excerpt' => 'BillXiot GPS leads the way with predictive analytics.',
                             'logo' => 'fa-solid fa-newspaper',
                             'color' => 'from-orange-500 to-amber-600'
                         ],
                         [
                             'publication' => 'Forbes',
                             'title' => 'The Future of Logistics Technology',
-                            'excerpt' => 'Interview with FalconEyeGPS CEO on industry trends.',
+                            'excerpt' => 'Interview with BillXiot GPS CEO on industry trends.',
                             'logo' => 'fa-solid fa-chart-line',
                             'color' => 'from-blue-500 to-indigo-600'
                         ],
@@ -208,7 +208,7 @@
                     <div class="text-slate-300 mb-3">Head of Communications</div>
                     <div class="text-white">
                         <i class="fa-solid fa-envelope mr-2"></i>
-                        press@falconeyegps.com
+                        press@billxiotgps.com
                     </div>
                 </div>
 

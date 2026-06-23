@@ -1,26 +1,26 @@
-# FalconEyeGPS branding assets
+# BillXiot GPS branding assets
 
-Generated from `scripts/extract-brand-assets.py` (source mockup in `source-mockup.png`).
+Web logos live in `web/`:
 
-## Folders
+| File | Use |
+|------|-----|
+| `logo_en.png` | Light backgrounds — BILLX wordmark + blue **GPS** suffix |
+| `logo.png` | Dark backgrounds — white wordmark + blue **GPS** suffix |
+| `logo_billx_only.png` | Original BILLX wordmark (source for regeneration) |
 
-| Folder | Contents |
-|--------|----------|
-| `web/` | Horizontal logo (light + dark), falcon pin icon |
-| `mobile/` | Splash logos, app icon copy, mobile-oriented exports |
-| `favicon/` | `favicon.ico`, PNG sizes 16–256, `apple-touch-icon.png` |
-| `app-icon/` | Square launcher masters `icon-1024.png`, `icon-512.png` |
+Favicons are generated from `logo_en.png` into `favicon/`.
 
-## Regenerate
+## Regenerate logos (add / refresh GPS suffix)
 
 ```bash
-python scripts/extract-brand-assets.py
+python scripts/compose-billxiot-gps-logo.py
 ```
 
-Place an updated combined mockup at the path in the script (`SRC`) or update `SRC` in the script.
+This updates web favicons and syncs copies to `gps_tracker_pro_mobile_billxiot/assets/branding/`.
+Then in the mobile project: `dart run flutter_launcher_icons`.
 
 ## Laravel config
 
 Paths are set in `config/branding.php` and used by `partials/brand-logo.blade.php` and `partials/seo-meta.blade.php`.
 
-Legacy copies are also written to `public/images/` for backward compatibility.
+Brand display name comes from `APP_BRAND_NAME` (falls back to `APP_NAME`).

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Production deploy for FalconEyeGPS — run from project root after git pull.
+# Production deploy for BillXiot GPS — run from project root after git pull.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."

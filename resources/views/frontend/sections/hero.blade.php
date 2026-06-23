@@ -382,8 +382,8 @@
     }
 
     function shareVideo() {
-        const title = 'FalconEyeGPS Product Tour';
-        const text = 'Check out the FalconEyeGPS Fleet Management product tour!';
+        const title = 'BillXiot GPS Product Tour';
+        const text = 'Check out the BillXiot GPS Fleet Management product tour!';
 
         if (navigator.share) {
             navigator.share({ title, text, url: videoUrl });

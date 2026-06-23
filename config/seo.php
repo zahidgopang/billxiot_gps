@@ -16,7 +16,7 @@ return [
     'meta_pixel_id' => env('META_PIXEL_ID'),
 
     /** Default Open Graph / Twitter share image (absolute path under public/). */
-    'og_image' => env('SEO_OG_IMAGE', 'branding/app-icon/icon-1024.png'),
+    'og_image' => env('SEO_OG_IMAGE', 'branding/web/logo_en.png'),
 
     'twitter_handle' => env('SEO_TWITTER_HANDLE'),
 

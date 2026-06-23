@@ -6,7 +6,7 @@ use Carbon\Carbon;
 use Carbon\CarbonInterface;
 
 /**
- * FalconEyeGPS display/API timestamps — always Asia/Karachi (UTC+05:00).
+ * BillXiot GPS display/API timestamps — always Asia/Karachi (UTC+05:00).
  */
 final class AppDateTime
 {

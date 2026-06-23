@@ -35,7 +35,7 @@ class PushTestController extends Controller
         ]);
 
         $user = $request->user();
-        $title = $validated['title'] ?? 'FalconEyeGPS test';
+        $title = $validated['title'] ?? 'BillXiot GPS test';
         $body = $validated['body'] ?? 'Push notifications are working.';
         $data = [
             'type' => 'test',

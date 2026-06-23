@@ -1,7 +1,7 @@
-# FalconEyeGPS SEO Audit & Optimization Report
+# BillXiot GPS SEO Audit & Optimization Report
 
 **Date:** May 2026  
-**Site:** FalconEyeGPS public marketing website  
+**Site:** BillXiot GPS public marketing website  
 **Goal:** Premium GPS tracking & fleet management visibility in Google, Bing, and other search engines.
 
 ---
@@ -69,23 +69,23 @@
 
 | Page | URL | Meta Title |
 |------|-----|------------|
-| Home | `/` | FalconEyeGPS — GPS Tracking & Fleet Management Software |
-| Pricing | `/pricing` | Pricing — GPS Fleet Tracking Plans \| FalconEyeGPS |
-| Contact | `/contact` | Contact FalconEyeGPS — GPS Tracking Sales & Support |
-| Android App | `/android-app` | Download FalconEyeGPS Android App — Mobile Fleet Tracking |
-| About | `/about` | About FalconEyeGPS — GPS & Fleet Tracking Company |
-| Company | `/company` | Company — FalconEyeGPS Fleet Tracking Platform |
-| Help | `/help` | Help Center — FalconEyeGPS GPS Tracking Support |
-| Documentation | `/docs` | Documentation — FalconEyeGPS Fleet Platform Guides |
+| Home | `/` | BillXiot GPS — GPS Tracking & Fleet Management Software |
+| Pricing | `/pricing` | Pricing — GPS Fleet Tracking Plans \| BillXiot GPS |
+| Contact | `/contact` | Contact BillXiot GPS — GPS Tracking Sales & Support |
+| Android App | `/android-app` | Download BillXiot GPS Android App — Mobile Fleet Tracking |
+| About | `/about` | About BillXiot GPS — GPS & Fleet Tracking Company |
+| Company | `/company` | Company — BillXiot GPS Fleet Tracking Platform |
+| Help | `/help` | Help Center — BillXiot GPS GPS Tracking Support |
+| Documentation | `/docs` | Documentation — BillXiot GPS Fleet Platform Guides |
 | Blog | `/blog` | Blog — GPS Tracking & Fleet Management Insights |
-| Careers | `/careers` | Careers — Join FalconEyeGPS |
-| Press | `/press` | Press — FalconEyeGPS News & Media |
-| API | `/api` | API Reference — FalconEyeGPS Fleet Tracking API |
-| Status | `/status` | System Status — FalconEyeGPS Platform Uptime |
-| Privacy | `/privacy` | Privacy Policy — FalconEyeGPS |
-| Terms | `/terms` | Terms of Service — FalconEyeGPS |
-| Security | `/security` | Security — FalconEyeGPS Fleet Platform |
-| Cookies | `/cookies` | Cookie Policy — FalconEyeGPS |
+| Careers | `/careers` | Careers — Join BillXiot GPS |
+| Press | `/press` | Press — BillXiot GPS News & Media |
+| API | `/api` | API Reference — BillXiot GPS Fleet Tracking API |
+| Status | `/status` | System Status — BillXiot GPS Platform Uptime |
+| Privacy | `/privacy` | Privacy Policy — BillXiot GPS |
+| Terms | `/terms` | Terms of Service — BillXiot GPS |
+| Security | `/security` | Security — BillXiot GPS Fleet Platform |
+| Cookies | `/cookies` | Cookie Policy — BillXiot GPS |
 
 Arabic equivalents live in `lang/ar/seo.php`.
 
@@ -95,32 +95,32 @@ Arabic equivalents live in `lang/ar/seo.php`.
 
 | Page | Meta Description |
 |------|------------------|
-| Home | FalconEyeGPS is a real-time GPS tracking and fleet management platform for Saudi Arabia, Pakistan, and worldwide. Live maps, route history, geofencing, alerts, and Android mobile app. |
-| Pricing | Compare FalconEyeGPS fleet tracking plans with live GPS maps, geofencing, route playback, alerts, and mobile apps. Transparent pricing for logistics and transport fleets. |
-| Contact | Contact FalconEyeGPS for GPS tracking demos, fleet onboarding, and technical support. Serving fleet operators in Saudi Arabia, Pakistan, and internationally. |
-| Android App | Official FalconEyeGPS Android app for real-time vehicle tracking, fleet alerts, geofences, and dashboard sync. Install the APK with our step-by-step guide. |
-| About | Learn about FalconEyeGPS, our mission to deliver reliable vehicle tracking and fleet management software for transport, logistics, and corporate fleets. |
-| Company | FalconEyeGPS company overview: GPS tracking technology, fleet operations focus, and commitment to real-time vehicle monitoring solutions. |
-| Help | FalconEyeGPS help center: answers about live tracking, devices, geofences, alerts, mobile app setup, and fleet dashboard usage. |
-| Documentation | FalconEyeGPS documentation for fleet admins and integrators: setup guides, tracking features, and platform best practices. |
-| Blog | FalconEyeGPS blog: articles on GPS vehicle tracking, fleet monitoring, logistics technology, and fleet safety in Saudi Arabia and Pakistan. |
-| Careers | Explore careers at FalconEyeGPS and help build next-generation GPS tracking and fleet management software. |
-| Press | FalconEyeGPS press room: news, media resources, and announcements about our GPS fleet tracking platform. |
-| API | FalconEyeGPS API reference for developers integrating GPS tracking, device data, and fleet management into your systems. |
-| Status | Check FalconEyeGPS platform status, tracking service availability, and system component health. |
-| Privacy | FalconEyeGPS privacy policy: how we handle account data, fleet tracking information, and platform usage. |
-| Terms | FalconEyeGPS terms of service for GPS tracking platform access, fleet accounts, and software usage. |
-| Security | Learn how FalconEyeGPS protects fleet data, GPS tracking sessions, and customer accounts with secure infrastructure. |
-| Cookies | FalconEyeGPS cookie policy explaining how cookies are used on our GPS tracking website and platform. |
+| Home | BillXiot GPS is a real-time GPS tracking and fleet management platform for Saudi Arabia, Pakistan, and worldwide. Live maps, route history, geofencing, alerts, and Android mobile app. |
+| Pricing | Compare BillXiot GPS fleet tracking plans with live GPS maps, geofencing, route playback, alerts, and mobile apps. Transparent pricing for logistics and transport fleets. |
+| Contact | Contact BillXiot GPS for GPS tracking demos, fleet onboarding, and technical support. Serving fleet operators in Saudi Arabia, Pakistan, and internationally. |
+| Android App | Official BillXiot GPS Android app for real-time vehicle tracking, fleet alerts, geofences, and dashboard sync. Install the APK with our step-by-step guide. |
+| About | Learn about BillXiot GPS, our mission to deliver reliable vehicle tracking and fleet management software for transport, logistics, and corporate fleets. |
+| Company | BillXiot GPS company overview: GPS tracking technology, fleet operations focus, and commitment to real-time vehicle monitoring solutions. |
+| Help | BillXiot GPS help center: answers about live tracking, devices, geofences, alerts, mobile app setup, and fleet dashboard usage. |
+| Documentation | BillXiot GPS documentation for fleet admins and integrators: setup guides, tracking features, and platform best practices. |
+| Blog | BillXiot GPS blog: articles on GPS vehicle tracking, fleet monitoring, logistics technology, and fleet safety in Saudi Arabia and Pakistan. |
+| Careers | Explore careers at BillXiot GPS and help build next-generation GPS tracking and fleet management software. |
+| Press | BillXiot GPS press room: news, media resources, and announcements about our GPS fleet tracking platform. |
+| API | BillXiot GPS API reference for developers integrating GPS tracking, device data, and fleet management into your systems. |
+| Status | Check BillXiot GPS platform status, tracking service availability, and system component health. |
+| Privacy | BillXiot GPS privacy policy: how we handle account data, fleet tracking information, and platform usage. |
+| Terms | BillXiot GPS terms of service for GPS tracking platform access, fleet accounts, and software usage. |
+| Security | Learn how BillXiot GPS protects fleet data, GPS tracking sessions, and customer accounts with secure infrastructure. |
+| Cookies | BillXiot GPS cookie policy explaining how cookies are used on our GPS tracking website and platform. |
 
 ---
 
 ## 4. Sitemap Location
 
-- **URL:** `https://falconeyegps.com/sitemap.xml`
-- **Robots reference:** `https://falconeyegps.com/robots.txt`
+- **URL:** `https://billxiotgps.com/sitemap.xml`
+- **Robots reference:** `https://billxiotgps.com/robots.txt`
 - **Entries:** 17 public URLs, each with `hreflang` alternates for `en` and `ar`
-- **Locale URLs:** `?lang=en` and `?lang=ar` (e.g. `https://falconeyegps.com/pricing?lang=ar`)
+- **Locale URLs:** `?lang=en` and `?lang=ar` (e.g. `https://billxiotgps.com/pricing?lang=ar`)
 
 ---
 
@@ -143,7 +143,7 @@ Arabic equivalents live in `lang/ar/seo.php`.
 ## 6. Remaining Recommendations
 
 ### High priority (manual / off-site)
-1. **Set production `APP_URL=https://falconeyegps.com`** in `.env`.
+1. **Set production `APP_URL=https://billxiotgps.com`** in `.env`.
 2. **Google Search Console** — verify site, submit sitemap, monitor indexing.
 3. **Bing Webmaster Tools** — verify and submit sitemap.
 4. **Add verification & analytics IDs** to `.env` (see `.env.example`).
@@ -182,7 +182,7 @@ Arabic equivalents live in `lang/ar/seo.php`.
 ## Production Checklist
 
 ```env
-APP_URL=https://falconeyegps.com
+APP_URL=https://billxiotgps.com
 GOOGLE_SITE_VERIFICATION=your-code
 GOOGLE_ANALYTICS_ID=G-XXXXXXXXXX
 BING_SITE_VERIFICATION=your-code
@@ -194,12 +194,12 @@ php artisan config:clear
 ```
 
 Verify:
-- [ ] https://falconeyegps.com/robots.txt
-- [ ] https://falconeyegps.com/sitemap.xml
+- [ ] https://billxiotgps.com/robots.txt
+- [ ] https://billxiotgps.com/sitemap.xml
 - [ ] View source: meta description + JSON-LD on homepage
 - [ ] Google Rich Results Test on `/` and `/pricing`
 - [ ] Mobile-Friendly Test
 
 ---
 
-*FalconEyeGPS is now configured with enterprise-grade SEO foundations. Search ranking improvements depend on indexing time, content authority, and ongoing optimization.*
+*BillXiot GPS is now configured with enterprise-grade SEO foundations. Search ranking improvements depend on indexing time, content authority, and ongoing optimization.*

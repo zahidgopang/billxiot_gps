@@ -8,14 +8,14 @@
     $steps = [
         [
             'number' => 1,
-            'title' => 'Download the FalconEyeGPS APK',
-            'body' => 'Tap the download button below. Your browser will save FalconEyeGPS.apk to your Downloads folder.',
+            'title' => 'Download the BillXiot GPS APK',
+            'body' => 'Tap the download button below. Your browser will save BillXiotGPS.apk to your Downloads folder.',
             'icon' => 'fa-download',
         ],
         [
             'number' => 2,
             'title' => 'Open the downloaded file',
-            'body' => 'Open your Downloads folder or notification shade and tap FalconEyeGPS.apk to start installation.',
+            'body' => 'Open your Downloads folder or notification shade and tap BillXiotGPS.apk to start installation.',
             'icon' => 'fa-folder-open',
         ],
         [
@@ -33,7 +33,7 @@
         [
             'number' => 5,
             'title' => 'Complete installation and open the app',
-            'body' => 'Follow the on-screen prompts, then tap Open or find FalconEyeGPS on your home screen and sign in.',
+            'body' => 'Follow the on-screen prompts, then tap Open or find BillXiot GPS on your home screen and sign in.',
             'icon' => 'fa-circle-check',
         ],
     ];
@@ -44,8 +44,8 @@
             'a' => 'Because the application is distributed directly from our website and has not yet built reputation through Google Play Store.',
         ],
         [
-            'q' => 'Is FalconEyeGPS malware?',
-            'a' => 'No. FalconEyeGPS is our official GPS tracking application distributed through our official website.',
+            'q' => 'Is BillXiot GPS malware?',
+            'a' => 'No. BillXiot GPS is our official GPS tracking application distributed through our official website.',
         ],
         [
             'q' => 'Why is the app not on Google Play yet?',
@@ -72,7 +72,7 @@
                 Official Android App
             </span>
             <h1 class="text-4xl sm:text-5xl font-bold mb-4">
-                Download <span class="bg-gradient-to-r from-sky-500 to-blue-600 bg-clip-text text-transparent">FalconEyeGPS</span>
+                Download <span class="bg-gradient-to-r from-sky-500 to-blue-600 bg-clip-text text-transparent">BillXiot GPS</span>
             </h1>
             <p class="text-lg text-slate-600 dark:text-slate-300 max-w-2xl mx-auto">
                 Fleet tracking on your phone — live map, alerts, geofences, and profile sync with the web dashboard.
@@ -102,7 +102,7 @@
                     <div>
                         <h2 class="text-xl font-bold mb-3">Why Android may show security warnings</h2>
                         <p class="text-slate-600 dark:text-slate-400 leading-relaxed">
-                            FalconEyeGPS is currently distributed directly from our official website and is not yet published on Google Play Store. Because of this, Android may display a Play Protect or Unknown App warning. This is expected for direct APK installations.
+                            BillXiot GPS is currently distributed directly from our official website and is not yet published on Google Play Store. Because of this, Android may display a Play Protect or Unknown App warning. This is expected for direct APK installations.
                         </p>
                     </div>
                 </div>
@@ -154,7 +154,7 @@
                     <div>
                         <h2 class="text-xl font-bold text-emerald-900 dark:text-emerald-300 mb-2">Security notice</h2>
                         <p class="text-emerald-900/80 dark:text-emerald-200/90 leading-relaxed">
-                            Please download FalconEyeGPS only from the official website:
+                            Please download BillXiot GPS only from the official website:
                             <a href="{{ $officialSite }}" class="font-semibold underline hover:no-underline break-all">{{ $officialSite }}</a>
                         </p>
                         <p class="mt-2 text-emerald-800 dark:text-emerald-300/90 font-medium">
@@ -169,7 +169,7 @@
                 <div class="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-green-500 to-lime-600 flex items-center justify-center">
                     <i class="fa-brands fa-android text-white text-3xl"></i>
                 </div>
-                <h2 class="text-2xl font-bold mb-2">Download FalconEyeGPS APK</h2>
+                <h2 class="text-2xl font-bold mb-2">Download BillXiot GPS APK</h2>
                 <p class="text-slate-600 dark:text-slate-400 mb-6 max-w-lg mx-auto">
                     Official release for Android. Requires Android 7.0 or newer.
                     @if($apkSizeMb)
@@ -182,7 +182,7 @@
 
                 @if($apkAvailable)
                     <a href="{{ $apkUrl }}"
-                       download="FalconEyeGPS.apk"
+                       download="BillXiotGPS.apk"
                        class="inline-flex items-center justify-center gap-3 px-8 py-4 bg-gradient-to-r from-green-600 to-emerald-700 text-white font-semibold rounded-xl shadow-lg hover:shadow-xl hover:scale-[1.02] transition-all duration-300 w-full sm:w-auto">
                         <i class="fa-solid fa-download text-lg"></i>
                         Download APK

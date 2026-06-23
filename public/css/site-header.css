@@ -3,22 +3,25 @@
     --site-header-height: 4.5rem;
 }
 
-/* Horizontal mark from brand kit — keep logo compact so nav fits beside it */
+/* Horizontal mark — wider now that GPS suffix is included */
 .site-header .brand-logo {
-    height: 44px !important;
+    height: 48px !important;
     width: auto !important;
-    max-width: 100%;
+    max-width: none;
+    object-fit: contain;
+    object-position: left center;
+    display: block;
 }
 
 @media (min-width: 640px) {
     .site-header .brand-logo {
-        height: 48px !important;
+        height: 52px !important;
     }
 }
 
 @media (min-width: 1280px) {
     .site-header .brand-logo {
-        height: 52px !important;
+        height: 56px !important;
     }
 }
 
@@ -34,20 +37,23 @@
 .site-header__logo {
     grid-column: 1;
     flex-shrink: 0;
-    line-height: 0;
-    max-width: min(38vw, 168px);
+    display: flex;
+    align-items: center;
+    line-height: normal;
+    overflow: visible;
+    max-width: min(42vw, 220px);
     z-index: 2;
 }
 
 @media (min-width: 640px) {
     .site-header__logo {
-        max-width: min(32vw, 200px);
+        max-width: min(36vw, 260px);
     }
 }
 
 @media (min-width: 1280px) {
     .site-header__logo {
-        max-width: 220px;
+        max-width: 280px;
     }
 }
 
@@ -280,7 +286,8 @@
 /* Footer logo — large but not full 180 in tight columns */
 .site-footer-brand .brand-logo {
     height: 88px !important;
-    max-width: min(100%, 320px);
+    max-width: min(100%, 360px);
+    object-position: left center;
 }
 
 @media (min-width: 1024px) {

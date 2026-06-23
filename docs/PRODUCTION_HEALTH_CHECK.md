@@ -9,7 +9,7 @@
 | **500** | Laravel failed to boot — see logs below |
 
 ```bash
-curl -sS https://falconeyegps.com/up
+curl -sS https://billxiotgps.com/up
 # {"status":"ok","checks":{"app":true,"database":true}}
 ```
 

@@ -24,7 +24,7 @@ function Start-App {
     Start-Sleep -Seconds 1
     & $Adb shell am start -n "$Package/$MainActivity" | Out-Null
     Start-Sleep -Seconds 12
-    if (-not (App-Focused)) { throw "FalconEyeGPS is not in the foreground after launch." }
+    if (-not (App-Focused)) { throw "BillXiot GPS is not in the foreground after launch." }
 }
 
 function Tap([int]$x, [int]$y) {
@@ -75,7 +75,7 @@ Key "KEYCODE_DEL"
 Type-Ascii "12345678"
 Tap 540 1240
 Start-Sleep -Seconds 20
-if (-not (App-Focused)) { throw "Login did not reach FalconEyeGPS home screen." }
+if (-not (App-Focused)) { throw "Login did not reach BillXiot GPS home screen." }
 
 $navY = 2280
 $navHome = 108

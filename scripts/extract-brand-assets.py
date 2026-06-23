@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Extract FalconEyeGPS branding assets from the combined mockup sheet."""
+"""Extract BillXiot GPS branding assets from the combined mockup sheet."""
 from __future__ import annotations
 
 import shutil

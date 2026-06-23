@@ -50,7 +50,7 @@ class ExportController extends Controller
 
         return response()->streamDownload(function () use ($points, $name) {
             echo '<?xml version="1.0" encoding="UTF-8"?>' . "\n";
-            echo '<gpx version="1.1" creator="FalconEyeGPS">' . "\n";
+            echo '<gpx version="1.1" creator="BillXiot GPS">' . "\n";
             echo '  <trk><name>' . htmlspecialchars($name, ENT_XML1) . '</name><trkseg>' . "\n";
             foreach ($points as $p) {
                 $t = $p['recorded_at']

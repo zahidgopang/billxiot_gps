@@ -2,7 +2,7 @@
 @extends('frontend.layout')
 
 @section('title', __('frontend.pages.api.title'))
-@section('description', 'Complete API documentation for FalconEyeGPS integration and development.')
+@section('description', 'Complete API documentation for BillXiot GPS integration and development.')
 
 @section('content')
 
@@ -20,7 +20,7 @@
                         API <span class="bg-gradient-to-r from-indigo-500 to-violet-600 bg-clip-text text-transparent">Reference</span>
                     </h1>
                     <p class="text-xl text-slate-600 dark:text-slate-300">
-                        Complete documentation for FalconEyeGPS REST API. Integrate fleet data into your applications.
+                        Complete documentation for BillXiot GPS REST API. Integrate fleet data into your applications.
                     </p>
                 </div>
 
@@ -53,7 +53,7 @@
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="text-center mb-16">
                 <h2 class="text-3xl font-bold mb-4">Quick Start</h2>
-                <p class="text-slate-600 dark:text-slate-400">Get started with FalconEyeGPS API in minutes</p>
+                <p class="text-slate-600 dark:text-slate-400">Get started with BillXiot GPS API in minutes</p>
             </div>
 
             <div class="space-y-8 max-w-4xl mx-auto">
@@ -65,11 +65,11 @@
                     <div class="flex-grow">
                         <h3 class="font-bold text-xl mb-4">Get Your API Key</h3>
                         <p class="text-slate-600 dark:text-slate-400 mb-4">
-                            Generate an API key from your FalconEyeGPS dashboard under Settings → API.
+                            Generate an API key from your BillXiot GPS dashboard under Settings → API.
                         </p>
                         <div class="bg-slate-900 rounded-xl p-6">
                             <div class="text-white font-mono text-sm">
-                                <span class="text-emerald-400">curl</span> <span class="text-slate-300">-X POST https://api.falconeyegps.com/v1/auth/api-key \</span><br>
+                                <span class="text-emerald-400">curl</span> <span class="text-slate-300">-X POST https://api.billxiotgps.com/v1/auth/api-key \</span><br>
                                 <span class="text-slate-300">  -H "Authorization: Bearer YOUR_TOKEN" \</span><br>
                                 <span class="text-slate-300">  -H "Content-Type: application/json"</span>
                             </div>
@@ -89,7 +89,7 @@
                         </p>
                         <div class="bg-slate-900 rounded-xl p-6">
                             <div class="text-white font-mono text-sm">
-                                <span class="text-emerald-400">curl</span> <span class="text-slate-300">-X GET https://api.falconeyegps.com/v1/vehicles \</span><br>
+                                <span class="text-emerald-400">curl</span> <span class="text-slate-300">-X GET https://api.billxiotgps.com/v1/vehicles \</span><br>
                                 <span class="text-slate-300">  -H "X-API-Key: YOUR_API_KEY" \</span><br>
                                 <span class="text-slate-300">  -H "Content-Type: application/json"</span>
                             </div>
@@ -109,7 +109,7 @@
                         </p>
                         <div class="bg-slate-900 rounded-xl p-6">
                             <div class="text-white font-mono text-sm">
-                                <span class="text-emerald-400">curl</span> <span class="text-slate-300">-X POST https://api.falconeyegps.com/v1/webhooks \</span><br>
+                                <span class="text-emerald-400">curl</span> <span class="text-slate-300">-X POST https://api.billxiotgps.com/v1/webhooks \</span><br>
                                 <span class="text-slate-300">  -H "X-API-Key: YOUR_API_KEY" \</span><br>
                                 <span class="text-slate-300">  -d '{"url": "https://your-app.com/webhooks", "events": ["vehicle.location.update"]}'</span>
                             </div>

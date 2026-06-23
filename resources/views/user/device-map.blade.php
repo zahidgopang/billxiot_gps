@@ -1743,7 +1743,7 @@
             </div>
             <div class="notification-container" id="notificationContainer"></div>
 
-            <!-- FalconEyeGPS branding -->
+            <!-- BillXiot GPS branding -->
             <div class="map-brand-watermark" aria-hidden="true">
                 <img src="{{ asset(config('branding.logo')) }}" alt="{{ config('branding.name') }}">
             </div>

@@ -13,7 +13,7 @@
                     <i class="fa-solid fa-download text-sm"></i>
                 </div>
                 <div>
-                    <p class="text-white text-sm font-bold">FalconEyeGPS.apk</p>
+                    <p class="text-white text-sm font-bold">BillXiotGPS.apk</p>
                     <p class="text-slate-400 text-xs">Download complete</p>
                 </div>
             </div>
@@ -27,7 +27,7 @@
                     <i class="fa-brands fa-android"></i>
                 </div>
                 <div>
-                    <p class="text-slate-900 text-sm font-bold">FalconEyeGPS.apk</p>
+                    <p class="text-slate-900 text-sm font-bold">BillXiotGPS.apk</p>
                     <p class="text-slate-500 text-xs">Tap to open installer</p>
                 </div>
             </div>
@@ -63,7 +63,7 @@
                 <i class="fa-solid fa-check"></i>
             </div>
             <p class="text-white font-bold mb-1">App installed</p>
-            <p class="text-slate-400 text-xs mb-6">FalconEyeGPS is ready to use</p>
+            <p class="text-slate-400 text-xs mb-6">BillXiot GPS is ready to use</p>
             <div class="rounded-xl bg-sky-500 text-white py-3 text-sm font-bold mb-4">Open</div>
             <div class="w-14 h-14 mx-auto rounded-2xl bg-slate-800 border border-slate-700 flex items-center justify-center text-sky-400">
                 <i class="fa-solid fa-location-dot text-xl"></i>
