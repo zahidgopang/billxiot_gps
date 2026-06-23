@@ -130,7 +130,7 @@
                                 </a>
                             @endif
 
-                            @if($panel === 'admin')
+                            @if($panel === 'admin' && ! $u->isSuperAdmin())
                             <form method="POST" action="{{ route('admin.users.destroy', $u) }}" class="d-inline delete-form">
                                 @csrf @method('DELETE')
                                 <button type="button" class="btn btn-sm btn-danger btn-delete">{{ __('app.common.delete') }}</button>

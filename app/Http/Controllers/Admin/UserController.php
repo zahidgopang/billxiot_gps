@@ -192,6 +192,10 @@ class UserController extends Controller
             return back()->with('error', 'Default admin cannot be deleted.');
         }
 
+        if ($user->isSuperAdmin()) {
+            return back()->with('error', 'Super admin accounts cannot be deleted.');
+        }
+
         $email = $user->email;
         $clientId = $this->tenantScope()->primaryClientIdForUser($user);
 
