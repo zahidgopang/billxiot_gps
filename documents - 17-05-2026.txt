@@ -1,0 +1,27 @@
+| Key          | Purpose                   | Example Meaning                        |
+| ------------ | ------------------------- | -------------------------------------- |
+| `imei`       | Unique ID of GPS device   | Identifies which tracker sent data     |
+| `timestamp`  | Date & time of GPS record | When this location/status was recorded |
+| `lat`        | Latitude                  | Vehicle north/south position           |
+| `lng`        | Longitude                 | Vehicle east/west position             |
+| `speed`      | Current speed             | Usually in KM/H                        |
+| `heading`    | Direction vehicle moving  | 0-360 degrees                          |
+| `battery`    | Device battery level      | Internal tracker battery percentage    |
+| `ignition`   | Vehicle engine status     | `true` = ON, `false` = OFF             |
+| `gsm_signal` | Mobile network strength   | SIM/network quality                    |
+| `satellites` | GPS satellites connected  | GPS accuracy indicator                 |
+| `odometer`   | Total traveled distance   | Usually meters or KM                   |
+| `power_cut`  | Main power disconnected?  | Theft/tampering detection              |
+
+
+User Login: 
+zhg786@gmail.com
+12345678
+
+Device IMI: 867530912345600
+
+admin: 
+admin@demo.test
+12345678
+
+http://localhost/gps-app/public/admin/device/ZXlKcGRpSTZJbWx0V0d4SU16ZEJTbFY1Y0hKamMwOXFXVEZ2TlhjOVBTSXNJblpoYkhWbElqb2lhSEJzYkZscFNuSmtWV0ZqVG1VMVJtaGxkRmRTUVQwOUlpd2liV0ZqSWpvaU1qZzBNekUyWW1NM09EVTVZamd5WXpNek56aGpNVEk0WkRCak1qSXhOMkV4TmpNMk4yTmlaVFk1T1RJMVlUSmxZelF4TUdZek4yVTJORGN6Tm1ObU1pSXNJblJoWnlJNklpSjk/map

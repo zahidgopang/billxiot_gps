@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 640" role="img" aria-label="Step 4: Install anyway through Google Play Protect">
+  <rect width="360" height="640" rx="28" fill="#f8fafc"/>
+  <rect x="120" y="12" width="120" height="6" rx="3" fill="#cbd5e1"/>
+  <rect x="24" y="150" width="312" height="340" rx="24" fill="#fff" stroke="#e2e8f0"/>
+  <circle cx="180" cy="210" r="24" fill="#dbeafe"/>
+  <text x="180" y="218" text-anchor="middle" fill="#2563eb" font-family="Arial,sans-serif" font-size="22">=á</text>
+  <text x="180" y="268" text-anchor="middle" fill="#0f172a" font-family="Inter,Arial,sans-serif" font-size="15" font-weight="700">App blocked to protect</text>
+  <text x="180" y="290" text-anchor="middle" fill="#0f172a" font-family="Inter,Arial,sans-serif" font-size="15" font-weight="700">your device</text>
+  <text x="180" y="320" text-anchor="middle" fill="#64748b" font-family="Inter,Arial,sans-serif" font-size="11">Google Play Protect</text>
+  <rect x="48" y="350" width="264" height="44" rx="12" fill="#f1f5f9"/>
+  <text x="180" y="378" text-anchor="middle" fill="#475569" font-family="Inter,Arial,sans-serif" font-size="13">More details</text>
+  <rect x="48" y="410" width="264" height="48" rx="12" fill="#16a34a"/>
+  <text x="180" y="440" text-anchor="middle" fill="#fff" font-family="Inter,Arial,sans-serif" font-size="14" font-weight="700">Install anyway</text>
+  <text x="180" y="590" text-anchor="middle" fill="#64748b" font-family="Inter,Arial,sans-serif" font-size="12">Step 4  More details ’ Install anyway</text>
+</svg>

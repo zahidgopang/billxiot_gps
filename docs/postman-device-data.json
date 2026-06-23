@@ -1,0 +1,104 @@
+{
+  "info": {
+    "name": "FalconEyeGPS Ingest - /api/device/data",
+    "description": "POST location to Laravel. With TRACCAR_MODE=dual_write also writes tc_positions.\n\nURL: {{base_url}}/api/device/data\nHeaders: Content-Type: application/json, Accept: application/json\n\nPrerequisites:\n- Device IMEI exists in admin and status=active\n- Device has owner + active subscription (or TRACCAR_ALLOW_INACTIVE_INGEST=true)\n- Use a real IMEI from your devices table"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost/gps-app/public"
+    }
+  ],
+  "item": [
+    {
+      "name": "1 - Flat tracker (recommended test)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Accept", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"imei\": \"867530912345678\",\n  \"timestamp\": \"2026-05-23T07:02:00+05:00\",\n  \"lat\": 27.726116,\n  \"lng\": 68.821839,\n  \"speed\": 42,\n  \"heading\": 187,\n  \"battery\": 86,\n  \"ignition\": true,\n  \"acc\": true,\n  \"gsm_signal\": 76,\n  \"gps_signal\": 12,\n  \"satellites\": 11,\n  \"odometer\": 152520,\n  \"power_cut\": false,\n  \"panic\": false,\n  \"gps_fix\": \"fix\"\n}"
+        },
+        "url": "{{base_url}}/api/device/data"
+      }
+    },
+    {
+      "name": "2 - Gateway nested (Concox/SinoTrack style)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Accept", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"device\": {\n    \"id\": \"867530912345678\",\n    \"timestamp\": \"2026-05-23T07:02:15+05:00\",\n    \"gps\": {\n      \"latitude\": 27.72645,\n      \"longitude\": 68.82210,\n      \"speed_kmh\": 38,\n      \"heading\": 190\n    },\n    \"status\": {\n      \"battery\": 85,\n      \"ignition\": true,\n      \"gsm_signal\": 72,\n      \"satellites\": 10,\n      \"odometer\": 152545,\n      \"power_cut\": false,\n      \"panic\": false\n    }\n  }\n}"
+        },
+        "url": "{{base_url}}/api/device/data"
+      }
+    },
+    {
+      "name": "3 - Traccar-like JSON (uniqueId + attributes)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Accept", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"uniqueId\": \"867530912345678\",\n  \"fixTime\": \"2026-05-23T07:02:30+05:00\",\n  \"valid\": true,\n  \"latitude\": 27.72689,\n  \"longitude\": 68.82255,\n  \"altitude\": 142,\n  \"speed\": 35,\n  \"course\": 195,\n  \"attributes\": {\n    \"battery\": 84,\n    \"ignition\": true,\n    \"acc\": true,\n    \"gsm\": 74,\n    \"sat\": 12,\n    \"odometer\": 152560,\n    \"powerCut\": false,\n    \"alarm\": null\n  }\n}"
+        },
+        "url": "{{base_url}}/api/device/data"
+      }
+    },
+    {
+      "name": "4 - Moving vehicle simulation",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Accept", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"imei\": \"867530912345678\",\n  \"timestamp\": \"2026-05-23T07:05:00+05:00\",\n  \"lat\": 27.72810,\n  \"lng\": 68.82420,\n  \"speed\": 58,\n  \"heading\": 210,\n  \"battery\": 85,\n  \"ignition\": true,\n  \"acc\": true,\n  \"gsm_signal\": 80,\n  \"gps_signal\": 10,\n  \"satellites\": 13,\n  \"odometer\": 152612,\n  \"power_cut\": false,\n  \"panic\": false\n}"
+        },
+        "url": "{{base_url}}/api/device/data"
+      }
+    },
+    {
+      "name": "5 - Stopped / ignition off",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Accept", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"imei\": \"867530912345678\",\n  \"timestamp\": \"2026-05-23T07:10:00+05:00\",\n  \"lat\": 27.72815,\n  \"lng\": 68.82425,\n  \"speed\": 0,\n  \"heading\": 0,\n  \"battery\": 84,\n  \"ignition\": false,\n  \"acc\": false,\n  \"gsm_signal\": 65,\n  \"satellites\": 9,\n  \"odometer\": 152612,\n  \"power_cut\": false,\n  \"panic\": false\n}"
+        },
+        "url": "{{base_url}}/api/device/data"
+      }
+    },
+    {
+      "name": "6 - SOS / panic alert",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Accept", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"imei\": \"867530912345678\",\n  \"timestamp\": \"2026-05-23T07:11:00+05:00\",\n  \"lat\": 27.72820,\n  \"lng\": 68.82430,\n  \"speed\": 0,\n  \"heading\": 0,\n  \"battery\": 83,\n  \"ignition\": true,\n  \"gsm_signal\": 70,\n  \"satellites\": 10,\n  \"panic\": true,\n  \"power_cut\": false\n}"
+        },
+        "url": "{{base_url}}/api/device/data"
+      }
+    }
+  ]
+}

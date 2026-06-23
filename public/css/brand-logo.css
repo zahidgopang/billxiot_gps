@@ -1,0 +1,174 @@
+:root {
+    --brand-logo-height: 64px;
+    --app-nav-height: 5rem;
+}
+
+.brand-logo {
+    height: var(--brand-logo-height);
+    width: auto;
+    max-width: 100%;
+    object-fit: contain;
+    display: block;
+    filter: none;
+}
+
+.auth-logo-wrap .brand-logo {
+    height: 72px !important;
+    max-width: min(100%, 340px);
+}
+
+.brand-logo-slot {
+    flex-shrink: 0;
+    line-height: 0;
+    display: inline-flex;
+    align-items: center;
+    max-width: min(100%, 280px);
+}
+
+/* Horizontal logos: preserve wide aspect in nav bars */
+body.user-panel .navbar-brand .brand-logo,
+body.user-panel .map-nav-logo .brand-logo,
+body.user-panel-rtl .navbar-brand .brand-logo,
+body.user-panel-rtl .map-nav-logo .brand-logo,
+body.admin-panel .sidebar-brand .brand-logo {
+    width: auto !important;
+    max-width: 100%;
+}
+
+/* Light plate only when no dark-logo asset is configured */
+.brand-logo-wrap--on-dark {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.35rem 0.5rem;
+    background: #ffffff;
+    border-radius: 12px;
+    box-shadow: 0 2px 14px rgba(0, 0, 0, 0.35);
+    line-height: 0;
+    max-width: 100%;
+}
+
+.brand-logo-wrap--on-dark .brand-logo {
+    filter: none !important;
+}
+
+/* ——— App top bars (admin user, map) ——— */
+body.admin-panel .admin-sidebar .sidebar-header,
+body.user-panel .navbar,
+body.user-panel-rtl .navbar {
+    flex-shrink: 0;
+}
+
+body.user-panel .navbar,
+body.user-panel-rtl .navbar {
+    min-height: var(--app-nav-height);
+    height: auto;
+    align-items: center;
+    padding-top: 0.75rem;
+    padding-bottom: 0.75rem;
+}
+
+body.user-panel .navbar .nav-start,
+body.user-panel-rtl .navbar .nav-start {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    min-width: 0;
+    flex: 1 1 auto;
+}
+
+body.user-panel .navbar .nav-end,
+body.user-panel-rtl .navbar .nav-end {
+    flex-shrink: 0;
+    align-self: center;
+}
+
+body.user-panel .navbar-brand,
+body.user-panel .map-nav-logo,
+body.user-panel-rtl .navbar-brand,
+body.user-panel-rtl .map-nav-logo {
+    flex-shrink: 0;
+    line-height: 0;
+    max-width: min(100%, 280px);
+}
+
+body.user-panel .navbar-brand .brand-logo,
+body.user-panel .map-nav-logo .brand-logo,
+body.user-panel-rtl .navbar-brand .brand-logo,
+body.user-panel-rtl .map-nav-logo .brand-logo {
+    height: 52px !important;
+}
+
+body.admin-panel .sidebar-brand .brand-logo {
+    height: 56px !important;
+    max-width: 100%;
+}
+
+@media (min-width: 1280px) {
+    body.user-panel .navbar-brand .brand-logo,
+    body.user-panel .map-nav-logo .brand-logo {
+        height: 60px !important;
+    }
+
+    body.admin-panel .sidebar-brand .brand-logo {
+        height: 64px !important;
+    }
+}
+
+body.admin-panel .sidebar-header {
+    flex-shrink: 0;
+    padding: 0.75rem;
+}
+
+body.admin-panel .sidebar-brand {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    padding: 0.25rem;
+}
+
+body.admin-panel .sidebar-brand .brand-logo-wrap--on-dark {
+    width: 100%;
+    max-width: 100%;
+}
+
+body.admin-panel .admin-sidebar .sidebar-nav {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+/* Map toolbar: logo + device info without crushing controls */
+body.user-panel .map-page-nav .map-nav-content {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    min-width: 0;
+    flex: 1 1 auto;
+}
+
+body.user-panel .map-page-nav .map-nav-device-row {
+    flex: 1 1 12rem;
+    min-width: 0;
+    align-self: center;
+}
+
+/* ——— Auth (login / register) ——— */
+.auth-logo-wrap {
+    margin-bottom: 1rem;
+    max-width: min(100%, 360px);
+    margin-left: auto;
+    margin-right: auto;
+}
+
+@media (max-width: 768px) {
+    body.user-panel .map-page-nav .map-nav-content {
+        flex-wrap: wrap;
+        align-items: flex-start;
+    }
+
+    body.user-panel .map-page-nav .map-nav-device-row {
+        flex: 1 1 100%;
+    }
+}

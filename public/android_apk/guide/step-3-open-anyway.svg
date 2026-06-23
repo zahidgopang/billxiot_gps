@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 640" role="img" aria-label="Step 3: Tap Open file on security warning">
+  <rect width="360" height="640" rx="28" fill="#eef2ff"/>
+  <rect x="120" y="12" width="120" height="6" rx="3" fill="#cbd5e1"/>
+  <rect x="24" y="180" width="312" height="280" rx="24" fill="#fff" stroke="#e2e8f0"/>
+  <circle cx="180" cy="240" r="28" fill="#fef3c7"/>
+  <text x="180" y="248" text-anchor="middle" fill="#d97706" font-family="Arial,sans-serif" font-size="28">!</text>
+  <text x="180" y="300" text-anchor="middle" fill="#0f172a" font-family="Inter,Arial,sans-serif" font-size="16" font-weight="700">This file may be harmful</text>
+  <text x="180" y="330" text-anchor="middle" fill="#64748b" font-family="Inter,Arial,sans-serif" font-size="12">Only install apps from sources you trust.</text>
+  <rect x="48" y="370" width="264" height="48" rx="12" fill="#f1f5f9"/>
+  <text x="180" y="400" text-anchor="middle" fill="#475569" font-family="Inter,Arial,sans-serif" font-size="14">Cancel</text>
+  <rect x="48" y="430" width="264" height="48" rx="12" fill="#0ea5e9"/>
+  <text x="180" y="460" text-anchor="middle" fill="#fff" font-family="Inter,Arial,sans-serif" font-size="14" font-weight="700">Open file</text>
+  <text x="180" y="590" text-anchor="middle" fill="#64748b" font-family="Inter,Arial,sans-serif" font-size="12">Step 3  Tap Open file</text>
+</svg>

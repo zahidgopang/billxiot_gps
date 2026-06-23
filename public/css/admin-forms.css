@@ -1,0 +1,311 @@
+/**
+ * Admin panel — compact SaaS-style forms (Filament / TailAdmin inspired)
+ */
+.admin-form-page {
+    max-width: 920px;
+    margin: 0 auto;
+}
+
+.admin-form-page--wide {
+    max-width: 1040px;
+}
+
+.admin-form {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+}
+
+.admin-form__body {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+/* Section card */
+.admin-form-section {
+    background: var(--admin-card, #fff);
+    border: 1px solid var(--admin-border, #e2e8f0);
+    border-radius: 12px;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+    overflow: hidden;
+}
+
+/* Country dial-code dropdown must not be clipped by section overflow */
+.admin-form-section:has([data-country-phone-row]) {
+    overflow: visible;
+}
+
+.admin-form-section:has([data-country-phone-row]) .admin-form-section__body {
+    overflow: visible;
+}
+
+.admin-form-section__header {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid var(--admin-border, #e2e8f0);
+    background: linear-gradient(180deg, #fafbfc 0%, #fff 100%);
+}
+
+.admin-form-section__icon {
+    flex-shrink: 0;
+    width: 2.25rem;
+    height: 2.25rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    background: rgba(25, 118, 210, 0.1);
+    color: var(--admin-primary, #1976d2);
+    font-size: 0.95rem;
+}
+
+.admin-form-section__title {
+    margin: 0;
+    font-size: 0.9375rem;
+    font-weight: 600;
+    color: var(--admin-text, #1e293b);
+    line-height: 1.3;
+}
+
+.admin-form-section__desc {
+    margin: 0.2rem 0 0;
+    font-size: 0.8125rem;
+    color: var(--admin-text-light, #64748b);
+    line-height: 1.4;
+}
+
+.admin-form-section__body {
+    padding: 1.25rem;
+}
+
+.admin-form-section__body > .row {
+    --bs-gutter-x: 1rem;
+    --bs-gutter-y: 1rem;
+}
+
+/* Field */
+.admin-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    min-width: 0;
+}
+
+.admin-field--full {
+    grid-column: 1 / -1;
+}
+
+.admin-label {
+    display: block;
+    margin: 0;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: #334155;
+    letter-spacing: 0.01em;
+}
+
+.admin-field .form-control,
+.admin-field .form-select {
+    font-size: 0.875rem;
+    min-height: 2.375rem;
+    border-radius: 8px;
+    border-color: #cbd5e1;
+    max-width: 100%;
+}
+
+.admin-field .form-control:focus,
+.admin-field .form-select:focus {
+    border-color: var(--admin-primary, #1976d2);
+    box-shadow: 0 0 0 3px rgba(25, 118, 210, 0.12);
+}
+
+.admin-field .form-control-sm,
+.admin-field .form-select-sm {
+    min-height: 2.25rem;
+    font-size: 0.8125rem;
+}
+
+.admin-field .admin-date-wrap__field input.flatpickr-input,
+.admin-field .admin-date-wrap__field input.js-date-picker {
+    min-height: 2.25rem;
+    font-size: 0.8125rem;
+}
+
+.admin-hint {
+    font-size: 0.75rem;
+    color: var(--admin-text-light, #64748b);
+    line-height: 1.35;
+    margin: 0;
+}
+
+/* Radio / segmented choice (subscription period, etc.) */
+.admin-radio-group {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    min-width: 0;
+}
+
+.admin-radio-group legend {
+    float: left;
+    width: 100%;
+    padding: 0;
+}
+
+.admin-radio-group__options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    width: 100%;
+}
+
+.admin-radio-option {
+    position: relative;
+    display: inline-flex;
+    align-items: stretch;
+    margin: 0;
+    cursor: pointer;
+    min-height: 2.25rem;
+}
+
+.admin-radio-option__input {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    opacity: 0;
+    cursor: pointer;
+    z-index: 2;
+}
+
+.admin-radio-option__label {
+    position: relative;
+    z-index: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 2.25rem;
+    padding: 0.35rem 0.9rem;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: #475569;
+    background: #f8fafc;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+    user-select: none;
+    pointer-events: none;
+}
+
+.admin-radio-option:hover .admin-radio-option__label {
+    border-color: #94a3b8;
+    background: #f1f5f9;
+}
+
+.admin-radio-option__input:focus-visible + .admin-radio-option__label {
+    outline: 2px solid var(--admin-primary, #1976d2);
+    outline-offset: 2px;
+}
+
+.admin-radio-option__input:checked + .admin-radio-option__label {
+    color: var(--admin-primary, #1976d2);
+    background: rgba(25, 118, 210, 0.08);
+    border-color: var(--admin-primary, #1976d2);
+    box-shadow: 0 0 0 3px rgba(25, 118, 210, 0.12);
+}
+
+.admin-field__error,
+.admin-field .text-danger.small {
+    font-size: 0.75rem;
+    margin: 0;
+}
+
+/* Phone row inside grid */
+.admin-form-section .phone-input-container {
+    max-width: 100%;
+}
+
+.admin-form-section .phone-input-container .country-code-selector {
+    width: 6.75rem;
+    min-width: 6.75rem;
+}
+
+.admin-form-section .phone-input-container .selected-country {
+    min-height: 2.375rem;
+    padding: 0.375rem 0.5rem;
+    border-radius: 8px;
+}
+
+.admin-form-section .phone-input-container .country-code-selector {
+    position: relative;
+    z-index: 2;
+}
+
+.admin-form-section .phone-input-container .country-code-selector.active {
+    z-index: 1060;
+}
+
+/* Footer actions */
+.admin-form__footer {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    padding: 1rem 1.25rem;
+    background: var(--admin-card, #fff);
+    border: 1px solid var(--admin-border, #e2e8f0);
+    border-radius: 12px;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+    position: sticky;
+    bottom: 0.75rem;
+    z-index: 10;
+}
+
+.admin-form__footer .btn {
+    font-size: 0.875rem;
+    font-weight: 500;
+    padding: 0.45rem 1.1rem;
+    border-radius: 8px;
+}
+
+.admin-form__footer .btn-primary {
+    box-shadow: 0 1px 2px rgba(25, 118, 210, 0.25);
+}
+
+/* Select2 in admin forms */
+.admin-form .select2-container--bootstrap-5 .select2-selection {
+    min-height: 2.375rem;
+    font-size: 0.875rem;
+    border-radius: 8px;
+}
+
+.admin-form .select2-container--bootstrap-5 .select2-selection--single .select2-selection__rendered {
+    line-height: 2.25rem;
+}
+
+/* Legacy card wrapper override when inside form page */
+.admin-form-page > .card {
+    border: none;
+    box-shadow: none;
+    padding: 0 !important;
+    background: transparent;
+}
+
+@media (max-width: 767.98px) {
+    .admin-form-page {
+        max-width: 100%;
+    }
+
+    .admin-form-section__body {
+        padding: 1rem;
+    }
+
+    .admin-form__footer {
+        position: static;
+    }
+}

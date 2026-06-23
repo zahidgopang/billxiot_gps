@@ -1,0 +1,65 @@
+/* Admin listing filter bars — layout + Select2 */
+
+.card.p-3,
+.card .card-body {
+    overflow: visible;
+}
+
+.admin-filter-bar {
+    position: relative;
+    z-index: 2;
+    overflow: visible;
+}
+
+.admin-filter-bar.row > [class*="col-"],
+.admin-filter-bar > .admin-filter-field {
+    min-width: 0;
+}
+
+.admin-filter-bar .form-label {
+    margin-bottom: 0.25rem;
+}
+
+.admin-filter-bar .admin-filter-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    align-items: center;
+}
+
+.admin-filter-bar .select2-container {
+    width: 100% !important;
+    max-width: 100%;
+}
+
+.admin-filter-bar .select2-container--bootstrap-5 .select2-selection {
+    min-height: 31px;
+    font-size: 0.875rem;
+    border-radius: 0.25rem;
+}
+
+.admin-filter-bar .select2-container--bootstrap-5 .select2-selection--single .select2-selection__rendered {
+    line-height: 29px;
+    padding-left: 0.5rem;
+    padding-right: 1.75rem;
+}
+
+.admin-filter-bar .select2-container--bootstrap-5 .select2-selection--single .select2-selection__arrow {
+    height: 29px;
+}
+
+.admin-filter-bar .select2-container--open {
+    z-index: 1300;
+}
+
+.select2-container--open .select2-dropdown {
+    z-index: 1301;
+}
+
+@media (max-width: 767.98px) {
+    .admin-filter-bar.row > [class*="col-md"],
+    .admin-filter-bar.row > [class*="col-lg"] {
+        flex: 0 0 100%;
+        max-width: 100%;
+    }
+}

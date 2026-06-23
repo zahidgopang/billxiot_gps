@@ -1,0 +1,57 @@
+/* Public marketing site RTL */
+html[dir="rtl"] body.font-sans {
+    font-family: "Noto Sans Arabic", "Inter", system-ui, sans-serif;
+}
+
+html[dir="rtl"] .nav-link span.absolute {
+    left: auto;
+    right: 0;
+}
+
+html[dir="rtl"] header .flex.items-center.space-x-3 > * + * {
+    margin-left: 0;
+    margin-right: 0.75rem;
+}
+
+html[dir="rtl"] header nav.hidden.lg\:flex > * + * {
+    margin-left: 0;
+    margin-right: 2rem;
+}
+
+html[dir="rtl"] header .flex.items-center.space-x-4 > * + * {
+    margin-left: 0;
+    margin-right: 1rem;
+}
+
+html[dir="rtl"] footer .flex.items-center.space-x-4 > * + * {
+    margin-left: 0;
+    margin-right: 1rem;
+}
+
+html[dir="rtl"] footer .flex.items-center.space-x-3 > * + * {
+    margin-left: 0;
+    margin-right: 0.75rem;
+}
+
+html[dir="rtl"] .group-hover\:translate-x-1:hover,
+html[dir="rtl"] .group-hover\:translate-x-2:hover {
+    transform: translateX(-0.25rem);
+}
+
+html[dir="rtl"] .frontend-lang-toggle {
+    direction: ltr;
+}
+
+html[dir="rtl"] section .text-left {
+    text-align: right;
+}
+
+html[dir="rtl"] .absolute.-top-2.-right-2 {
+    right: auto;
+    left: -0.5rem;
+}
+
+html[dir="rtl"] .absolute.-bottom-6.-left-6 {
+    left: auto;
+    right: -1.5rem;
+}

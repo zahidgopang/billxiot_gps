@@ -1,0 +1,591 @@
+/**
+ * Arabic (RTL) — loaded only when html[dir="rtl"].
+ * Keep IMEI, email, coordinates in .admin-ltr { direction: ltr; }
+ */
+
+/* ========================================================================== */
+/* Global                                                                       */
+/* ========================================================================== */
+html[dir="rtl"],
+html[dir="rtl"] body {
+    direction: rtl;
+    text-align: right;
+    font-family: 'Cairo', 'Segoe UI', Tahoma, Arial, sans-serif;
+}
+
+html[dir="rtl"] .form-control,
+html[dir="rtl"] .form-select,
+html[dir="rtl"] textarea {
+    text-align: right;
+}
+
+html[dir="rtl"] .admin-ltr,
+html[dir="rtl"] .form-control.admin-ltr,
+html[dir="rtl"] input[name="imei"],
+html[dir="rtl"] input[type="email"],
+html[dir="rtl"] input[type="date"],
+html[dir="rtl"] input[type="datetime-local"],
+html[dir="rtl"] input[type="time"],
+html[dir="rtl"] code:not(.badge),
+html[dir="rtl"] pre {
+    direction: ltr;
+    unicode-bidi: isolate;
+    text-align: left;
+}
+
+html[dir="rtl"] .lang-toggle {
+    direction: ltr;
+}
+
+/* Bootstrap spacing flip */
+html[dir="rtl"] .me-1 { margin-left: 0.25rem !important; margin-right: 0 !important; }
+html[dir="rtl"] .me-2 { margin-left: 0.5rem !important; margin-right: 0 !important; }
+html[dir="rtl"] .me-3 { margin-left: 1rem !important; margin-right: 0 !important; }
+html[dir="rtl"] .ms-1 { margin-right: 0.25rem !important; margin-left: 0 !important; }
+html[dir="rtl"] .ms-2 { margin-right: 0.5rem !important; margin-left: 0 !important; }
+html[dir="rtl"] .ms-3 { margin-right: 1rem !important; margin-left: 0 !important; }
+html[dir="rtl"] .ms-auto { margin-right: auto !important; margin-left: 0 !important; }
+html[dir="rtl"] .me-auto { margin-left: auto !important; margin-right: 0 !important; }
+
+html[dir="rtl"] .text-start { text-align: right !important; }
+html[dir="rtl"] .text-end { text-align: left !important; }
+html[dir="rtl"] .text-md-start { text-align: right !important; }
+html[dir="rtl"] .text-md-end { text-align: left !important; }
+
+html[dir="rtl"] .float-start { float: right !important; }
+html[dir="rtl"] .float-end { float: left !important; }
+
+html[dir="rtl"] .dropdown-menu { text-align: right; }
+html[dir="rtl"] .dropdown-menu-end { right: auto !important; left: 0 !important; }
+
+html[dir="rtl"] .modal-header {
+    flex-direction: row-reverse;
+}
+
+html[dir="rtl"] .modal-header .btn-close {
+    margin-left: 0;
+    margin-right: auto;
+}
+
+html[dir="rtl"] .modal-footer {
+    flex-direction: row-reverse;
+}
+
+html[dir="rtl"] .pagination {
+    flex-direction: row-reverse;
+    justify-content: flex-start;
+}
+
+html[dir="rtl"] .input-group {
+    flex-direction: row-reverse;
+}
+
+html[dir="rtl"] .input-group > :not(:first-child) {
+    border-radius: var(--bs-border-radius) 0 0 var(--bs-border-radius) !important;
+}
+
+html[dir="rtl"] .btn i.me-1,
+html[dir="rtl"] .btn i.me-2,
+html[dir="rtl"] .nav-link-premium i,
+html[dir="rtl"] .form-label i.me-2 {
+    margin-left: 0.5rem !important;
+    margin-right: 0 !important;
+}
+
+/* ========================================================================== */
+/* Drawers / sidebars — ALWAYS from the RIGHT                                   */
+/* ========================================================================== */
+/* Map / non–user-panel drawers only (user dashboard has its own rules below) */
+html[dir="rtl"] body:not(.user-panel) .filter-panel,
+html[dir="rtl"] body:not(.user-panel) #filterPanel {
+    left: auto !important;
+    right: 0 !important;
+    border-right: none !important;
+    border-left: none !important;
+    border-inline-end: none !important;
+    border-inline-start: 1px solid rgba(255, 255, 255, 0.1) !important;
+    box-shadow: -8px 0 32px rgba(0, 0, 0, 0.35) !important;
+}
+
+html[dir="rtl"] body:not(.user-panel) .filter-panel:not(.show),
+html[dir="rtl"] body:not(.user-panel) #filterPanel:not(.show) {
+    transform: translateX(100%) !important;
+}
+
+html[dir="rtl"] body:not(.user-panel) .filter-panel.show,
+html[dir="rtl"] body:not(.user-panel) #filterPanel.show {
+    transform: translateX(0) !important;
+}
+
+html[dir="rtl"] body:not(.user-panel) .filter-header,
+html[dir="rtl"] body:not(.user-panel) .sidebar-header {
+    text-align: right;
+    flex-direction: row-reverse;
+}
+
+html[dir="rtl"] .filter-panel .card h6,
+html[dir="rtl"] #filterPanel .card h6 {
+    text-align: right;
+}
+
+html[dir="rtl"] .sidebar-back-link {
+    flex-direction: row-reverse;
+}
+
+html[dir="rtl"] .sidebar-back-link i.fa-arrow-left::before {
+    content: "\f061";
+}
+
+html[dir="rtl"] .sidebar-close,
+html[dir="rtl"] .close-sidebar {
+    margin-inline-start: auto;
+    margin-inline-end: 0;
+}
+
+html[dir="rtl"] .sidebar-overlay {
+    direction: rtl;
+}
+
+/* ========================================================================== */
+/* Navbar                                                                       */
+/* ========================================================================== */
+html[dir="rtl"] .navbar,
+html[dir="rtl"] .admin-navbar {
+    direction: rtl;
+}
+
+html[dir="rtl"] body:not(.user-panel) .navbar .d-flex,
+html[dir="rtl"] .navbar .navbar-nav:not(.nav-end),
+html[dir="rtl"] .navbar-content,
+html[dir="rtl"] .navbar-left,
+html[dir="rtl"] .navbar-right,
+html[dir="rtl"] body:not(.user-panel) .nav-start,
+html[dir="rtl"] body:not(.user-panel) .nav-end {
+    flex-direction: row-reverse;
+}
+
+html[dir="rtl"] .map-page-nav > .nav-start,
+html[dir="rtl"] .map-page-nav > .nav-end,
+html[dir="rtl"] .map-page-nav .map-nav-content {
+    flex-direction: row;
+}
+
+html[dir="rtl"] body:not(.user-panel) #toggleSidebar,
+html[dir="rtl"] .map-page-nav #toggleSidebar {
+    margin-right: 0 !important;
+    margin-left: 15px !important;
+}
+
+html[dir="rtl"] .user-avatar {
+    margin-right: 0 !important;
+    margin-left: 12px !important;
+}
+
+html[dir="rtl"] .nav-alerts-dropdown {
+    right: auto !important;
+    left: 0 !important;
+}
+
+html[dir="rtl"] .nav-alert-badge {
+    right: auto !important;
+    left: 4px !important;
+}
+
+html[dir="rtl"] .fa-arrow-right::before {
+    content: "\f060";
+}
+
+/* ========================================================================== */
+/* Admin panel                                                                  */
+/* ========================================================================== */
+html[dir="rtl"] body.admin-panel {
+    direction: rtl;
+    text-align: right;
+}
+
+html[dir="rtl"] body.admin-panel .admin-sidebar {
+    direction: rtl;
+    text-align: right;
+}
+
+/* Open state — higher specificity than hidden transform rules in layout */
+html[dir="rtl"] body.admin-panel .admin-sidebar.is-open {
+    transform: translateX(0) !important;
+}
+
+/* Sidebar + main column layout — see admin/layouts/app.blade.php (.admin-main) */
+
+html[dir="rtl"] body.admin-panel:not(.admin-sidebar-open) .admin-main {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+}
+
+html[dir="rtl"] body.admin-panel .content-wrap,
+html[dir="rtl"] body.admin-panel .admin-main {
+    direction: rtl;
+    text-align: right;
+}
+
+/* Navbar: natural RTL order (avoid row-reverse on structural flex) */
+html[dir="rtl"] body.admin-panel .admin-navbar {
+    direction: rtl;
+}
+
+html[dir="rtl"] body.admin-panel .navbar-content,
+html[dir="rtl"] body.admin-panel .navbar-left,
+html[dir="rtl"] body.admin-panel .navbar-right,
+html[dir="rtl"] body.admin-panel .quick-stats,
+html[dir="rtl"] body.admin-panel .user-menu {
+    flex-direction: row;
+}
+
+html[dir="rtl"] body.admin-panel .sidebar-header {
+    flex-direction: row-reverse;
+}
+
+html[dir="rtl"] body.admin-panel .nav-link-premium {
+    text-align: right;
+}
+
+html[dir="rtl"] body.admin-panel .breadcrumb-premium {
+    flex-direction: row-reverse;
+}
+
+html[dir="rtl"] body.admin-panel .page-title h5::after {
+    left: auto;
+    right: 0;
+}
+
+html[dir="rtl"] body.admin-panel .table,
+html[dir="rtl"] body.admin-panel .table thead th {
+    text-align: right;
+}
+
+html[dir="rtl"] body.admin-panel div.dataTables_wrapper {
+    direction: rtl;
+}
+
+html[dir="rtl"] body.admin-panel div.dataTables_filter {
+    text-align: left;
+}
+
+html[dir="rtl"] body.admin-panel div.dataTables_paginate {
+    text-align: left;
+}
+
+html[dir="rtl"] body.admin-panel .activity-item {
+    flex-direction: row-reverse;
+}
+
+html[dir="rtl"] body.admin-panel .footer-premium .row {
+    direction: rtl;
+}
+
+/* ========================================================================== */
+/* User panel (dashboard, devices, profile, alerts)                             */
+/* ========================================================================== */
+html[dir="rtl"] body.user-panel {
+    direction: rtl;
+    text-align: right;
+}
+
+html[dir="rtl"] body.user-panel .content-wrap,
+html[dir="rtl"] .dashboard-container {
+    direction: rtl;
+    text-align: right;
+}
+
+/* Navbar: natural RTL flex order (do not row-reverse — breaks toggle/brand/menu) */
+html[dir="rtl"] body.user-panel .user-navbar {
+    direction: rtl;
+    flex-direction: row;
+}
+
+html[dir="rtl"] body.user-panel .user-navbar .nav-start,
+html[dir="rtl"] body.user-panel .user-navbar .nav-end {
+    flex-direction: row;
+}
+
+html[dir="rtl"] body.user-panel #toggleSidebar {
+    margin-inline-end: 15px;
+    margin-inline-start: 0;
+}
+
+html[dir="rtl"] body.user-panel .user-avatar {
+    margin-inline-end: 12px;
+    margin-inline-start: 0;
+}
+
+html[dir="rtl"] body.user-panel .navbar-brand img {
+    margin-inline-end: 0.5rem;
+    margin-inline-start: 0;
+}
+
+/* User dashboard sidebar — physical right in Arabic (do NOT use inset-inline-* here) */
+html[dir="rtl"] body.user-panel #filterPanel.user-dashboard-sidebar,
+html[dir="rtl"] body.user-panel-rtl #filterPanel.user-dashboard-sidebar,
+body.user-panel-rtl #filterPanel.user-dashboard-sidebar {
+    left: auto !important;
+    right: 0 !important;
+    border-inline-end: none !important;
+    border-inline-start: 1px solid rgba(255, 255, 255, 0.1) !important;
+    box-shadow: -10px 0 40px rgba(0, 0, 0, 0.35) !important;
+}
+
+html[dir="rtl"] body.user-panel #filterPanel.user-dashboard-sidebar:not(.show),
+html[dir="rtl"] body.user-panel-rtl #filterPanel.user-dashboard-sidebar:not(.show),
+body.user-panel-rtl #filterPanel.user-dashboard-sidebar:not(.show) {
+    transform: translateX(100%) !important;
+}
+
+html[dir="ltr"] body.user-panel #filterPanel.user-dashboard-sidebar,
+html[dir="ltr"] body.user-panel-ltr #filterPanel.user-dashboard-sidebar,
+body.user-panel-ltr #filterPanel.user-dashboard-sidebar {
+    left: 0 !important;
+    right: auto !important;
+}
+
+html[dir="ltr"] body.user-panel #filterPanel.user-dashboard-sidebar:not(.show),
+html[dir="ltr"] body.user-panel-ltr #filterPanel.user-dashboard-sidebar:not(.show),
+body.user-panel-ltr #filterPanel.user-dashboard-sidebar:not(.show) {
+    transform: translateX(-100%) !important;
+}
+
+html[dir="rtl"] body.user-panel #filterPanel.user-dashboard-sidebar.show,
+html[dir="rtl"] body.user-panel-rtl #filterPanel.user-dashboard-sidebar.show,
+body.user-panel-rtl #filterPanel.user-dashboard-sidebar.show,
+html[dir="ltr"] body.user-panel #filterPanel.user-dashboard-sidebar.show,
+html[dir="ltr"] body.user-panel-ltr #filterPanel.user-dashboard-sidebar.show,
+body.user-panel-ltr #filterPanel.user-dashboard-sidebar.show {
+    transform: translateX(0) !important;
+}
+
+html[dir="rtl"] body.user-panel .filter-header {
+    flex-direction: row !important;
+    text-align: right;
+}
+
+html[dir="rtl"] body.user-panel #filterPanel .card,
+html[dir="rtl"] body.user-panel #filterPanel .card h6,
+html[dir="rtl"] body.user-panel #filterPanel .card p,
+html[dir="rtl"] body.user-panel #filterPanel .filter-header h5 {
+    text-align: right;
+}
+
+html[dir="rtl"] body.user-panel #toggleSidebar {
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    margin-inline-end: 15px !important;
+    margin-inline-start: 0 !important;
+}
+
+html[dir="rtl"] body.user-panel .user-navbar .nav-start {
+    flex-direction: row;
+}
+
+html[dir="rtl"] body.user-panel .sidebar-overlay.show {
+    z-index: 1048;
+}
+
+html[dir="rtl"] body.user-panel #filterPanel.user-dashboard-sidebar {
+    z-index: 1055;
+}
+
+@media (max-width: 768px) {
+    html[dir="rtl"] body.user-panel #filterPanel.user-dashboard-sidebar {
+        width: min(320px, 88vw) !important;
+        max-width: 100vw;
+        border-radius: 20px 0 0 20px !important;
+    }
+
+    html[dir="ltr"] body.user-panel #filterPanel.user-dashboard-sidebar {
+        border-radius: 0 20px 20px 0 !important;
+    }
+}
+
+/* Profile */
+html[dir="rtl"] .profile-header {
+    flex-direction: row-reverse;
+}
+
+html[dir="rtl"] .profile-avatar {
+    margin-inline-end: 0;
+    margin-inline-start: 1.5rem;
+}
+
+html[dir="rtl"] .form-section h5 {
+    flex-direction: row-reverse;
+}
+
+html[dir="rtl"] .form-section h5 i {
+    margin-inline-end: 0;
+    margin-inline-start: 0.75rem;
+}
+
+/* Dashboard activity feed */
+html[dir="rtl"] .activity-item {
+    border-left: none !important;
+    border-inline-start: 3px solid transparent;
+}
+
+html[dir="rtl"] .activity-item:hover {
+    border-inline-start-color: var(--primary-blue, #1976D2);
+    transform: translateX(-5px);
+}
+
+html[dir="rtl"] .premium-card {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+html[dir="rtl"] .dashboard-container .table,
+html[dir="rtl"] .table-responsive .table {
+    direction: rtl;
+    text-align: right;
+}
+
+html[dir="rtl"] .dashboard-container .table thead th,
+html[dir="rtl"] .dashboard-container .table tbody td {
+    text-align: right;
+}
+
+html[dir="rtl"] .dashboard-container .device-row .d-flex {
+    flex-direction: row-reverse;
+}
+
+html[dir="rtl"] .dashboard-container .table td .d-flex.justify-content-end {
+    justify-content: flex-start !important;
+    flex-direction: row-reverse;
+}
+
+html[dir="rtl"] .dashboard-container .alert {
+    flex-direction: row-reverse;
+    text-align: right;
+}
+
+html[dir="rtl"] .dashboard-container .list-group-item .d-flex {
+    flex-direction: row-reverse;
+}
+
+html[dir="rtl"] .premium-card .card-header h6,
+html[dir="rtl"] .filter-panel .card-header h6 {
+    flex-direction: row-reverse;
+    text-align: right;
+}
+
+html[dir="rtl"] .filter-panel .info-row,
+html[dir="rtl"] #filterPanel .info-row {
+    flex-direction: row-reverse;
+}
+
+html[dir="rtl"] .filter-panel .info-label,
+html[dir="rtl"] #filterPanel .info-label {
+    text-align: right;
+}
+
+html[dir="rtl"] .filter-panel .info-value,
+html[dir="rtl"] #filterPanel .info-value {
+    text-align: left;
+}
+
+html[dir="rtl"] .filter-panel .info-value code,
+html[dir="rtl"] #filterPanel .info-value code {
+    direction: ltr;
+    unicode-bidi: isolate;
+}
+
+html[dir="rtl"] .form-control-premium {
+    text-align: right;
+}
+
+html[dir="rtl"] .geofence-list-item,
+html[dir="rtl"] .geofence-list-item__actions {
+    flex-direction: row-reverse;
+}
+
+html[dir="rtl"] .trip-event-item,
+html[dir="rtl"] .trip-events-list {
+    text-align: right;
+}
+
+html[dir="rtl"] .alert-log-item {
+    border-left: none !important;
+    border-right: 3px solid #4285f4 !important;
+    text-align: right;
+}
+
+/* ========================================================================== */
+/* Map layout                                                                   */
+/* ========================================================================== */
+html[dir="rtl"] .map-area {
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+}
+
+@media (min-width: 769px) {
+    html[dir="rtl"] .map-area.sidebar-open,
+    html[dir="rtl"] body.map-sidebar-open .map-area {
+        margin-inline-start: 0 !important;
+        margin-inline-end: 0 !important;
+        margin-left: 0 !important;
+        margin-right: var(--map-sidebar-width, 380px) !important;
+    }
+
+    html[dir="rtl"] .map-area:not(.sidebar-open) {
+        margin-right: 0 !important;
+    }
+}
+
+html[dir="rtl"] .smart-controls {
+    right: auto !important;
+    left: max(12px, env(safe-area-inset-left)) !important;
+}
+
+html[dir="rtl"] .map-tools-left {
+    left: auto !important;
+    right: max(12px, env(safe-area-inset-right)) !important;
+}
+
+html[dir="rtl"] .map-hud {
+    left: auto !important;
+    right: max(12px, env(safe-area-inset-right)) !important;
+}
+
+html[dir="rtl"] .map-tour-card__nav,
+html[dir="rtl"] .map-tour-card__actions {
+    flex-direction: row-reverse;
+}
+
+/* ========================================================================== */
+/* Mobile drawers                                                               */
+/* ========================================================================== */
+@media (max-width: 768px) {
+    html[dir="rtl"] body:not(.user-panel) .filter-panel,
+    html[dir="rtl"] body:not(.user-panel) #filterPanel {
+        width: min(320px, 88vw) !important;
+        max-width: 100vw;
+        border-radius: 20px 0 0 20px !important;
+    }
+
+    html[dir="ltr"] body:not(.user-panel) .filter-panel,
+    html[dir="ltr"] body:not(.user-panel) #filterPanel {
+        border-radius: 0 20px 20px 0;
+    }
+
+    html[dir="rtl"] body.admin-panel .navbar-content {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    html[dir="rtl"] .filter-panel .info-row,
+    html[dir="rtl"] #filterPanel .info-row {
+        align-items: flex-end;
+    }
+
+    html[dir="rtl"] .filter-panel .info-value,
+    html[dir="rtl"] #filterPanel .info-value {
+        text-align: right;
+    }
+}

@@ -1,0 +1,44 @@
+<svg width="220" height="220" viewBox="0 0 220 220" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Soft outer glow -->
+  <circle cx="110" cy="110" r="95" fill="url(#glowGradient)" opacity="0.55"/>
+
+  <!-- Mid glow -->
+  <circle cx="110" cy="110" r="70" fill="url(#glowGradient)" opacity="0.45"/>
+
+  <!-- Inner glow -->
+  <circle cx="110" cy="110" r="48" fill="url(#innerGradient)" opacity="0.75"/>
+
+  <!-- MAIN glossy pin shape -->
+  <path d="
+      M110 40
+      C80 40 60 60 60 90
+      C60 125 95 150 110 185
+      C125 150 160 125 160 90
+      C160 60 140 40 110 40Z
+  " fill="url(#pinGradient)"/>
+
+  <!-- Top glossy highlight -->
+  <ellipse cx="110" cy="72" rx="42" ry="22" fill="white" opacity="0.28"/>
+
+  <defs>
+    <!-- Red glow radial gradient -->
+    <radialGradient id="glowGradient">
+      <stop offset="0%" stop-color="#ff6b6b"/>
+      <stop offset="60%" stop-color="#ff3b3b" stop-opacity="0.55"/>
+      <stop offset="100%" stop-color="#ff0000" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- Inner glow -->
+    <radialGradient id="innerGradient">
+      <stop offset="0%" stop-color="#ff9292"/>
+      <stop offset="100%" stop-color="#ff3b3b" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- Pin glossy gradient -->
+    <linearGradient id="pinGradient" x1="110" y1="40" x2="110" y2="185">
+      <stop offset="0%" stop-color="#ff6666"/>
+      <stop offset="40%" stop-color="#e02020"/>
+      <stop offset="100%" stop-color="#c40000"/>
+    </linearGradient>
+  </defs>
+</svg>

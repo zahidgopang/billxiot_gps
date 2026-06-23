@@ -1,0 +1,122 @@
+/* Select2 + Flatpickr — shared form UI */
+.select2-container--bootstrap-5 .select2-selection {
+    min-height: 38px;
+    border-radius: 8px;
+    border-color: #dee2e6;
+}
+
+.select2-container--bootstrap-5 .select2-selection--single .select2-selection__rendered {
+    line-height: 36px;
+    padding-left: 12px;
+}
+
+.select2-container--bootstrap-5 .select2-selection--single .select2-selection__arrow {
+    height: 36px;
+}
+
+.theme-dark .flatpickr-calendar,
+.admin-sidebar ~ * .flatpickr-calendar {
+    z-index: 9999;
+}
+
+.select2-container {
+    z-index: 1055;
+}
+
+.select2-container--open {
+    z-index: 1300;
+}
+
+.select2-dropdown {
+    z-index: 1301;
+}
+
+/* Hide Select2 while admin Bootstrap flash toast is showing */
+body.admin-flash-visible .select2-container,
+body.admin-flash-visible .select2-dropdown {
+    visibility: hidden !important;
+    pointer-events: none !important;
+}
+
+.modal.show .select2-container {
+    z-index: 1060;
+}
+
+/* Date field with calendar trigger */
+.admin-date-wrap {
+    width: 100%;
+}
+
+.admin-date-wrap__field {
+    position: relative;
+    display: flex;
+    align-items: stretch;
+    width: 100%;
+}
+
+.admin-date-wrap__field > input.js-date-picker,
+.admin-date-wrap__field > input.flatpickr-input,
+.admin-date-wrap__field > .flatpickr-wrapper {
+    flex: 1 1 auto;
+    width: 100%;
+    min-width: 0;
+}
+
+.admin-date-wrap__field > .flatpickr-wrapper {
+    display: block;
+}
+
+.admin-date-wrap__field .flatpickr-wrapper input.flatpickr-input,
+.admin-date-wrap__field input.flatpickr-input.form-control,
+.admin-date-wrap__field input.js-date-picker.form-control {
+    width: 100% !important;
+    min-height: 2.25rem;
+    padding-inline-end: 2.5rem;
+    border-radius: 8px;
+    background-color: #fff;
+    cursor: pointer;
+}
+
+.admin-date-wrap--static .admin-date-wrap__field input.flatpickr-input,
+.admin-date-wrap--static .admin-date-wrap__field input.js-date-picker {
+    background-color: #f8fafc !important;
+    cursor: default;
+}
+
+.admin-date-wrap__field input[type="hidden"] {
+    display: none !important;
+}
+
+.admin-date-wrap__trigger {
+    position: absolute;
+    top: 0;
+    inset-inline-end: 0;
+    width: 2.5rem;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: #64748b;
+    cursor: pointer;
+    z-index: 2;
+}
+
+.admin-date-wrap__trigger:disabled {
+    cursor: default;
+    color: #94a3b8;
+}
+
+.admin-date-wrap__trigger:not(:disabled):hover {
+    color: var(--admin-primary, #1976d2);
+}
+
+.admin-form .flatpickr-calendar {
+    z-index: 1065;
+}
+
+.flatpickr-input[readonly]:not([disabled]) {
+    background-color: #fff !important;
+}

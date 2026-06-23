@@ -1,0 +1,23 @@
+{
+    "name": "FalconEyeGPS",
+    "short_name": "FalconEyeGPS",
+    "description": "Live GPS tracking, vehicle monitoring, and fleet management.",
+    "start_url": "/",
+    "display": "standalone",
+    "background_color": "#0A0F2D",
+    "theme_color": "#0A0F2D",
+    "icons": [
+        {
+            "src": "/branding/app-icon/icon-512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "any maskable"
+        },
+        {
+            "src": "/branding/app-icon/icon-1024.png",
+            "sizes": "1024x1024",
+            "type": "image/png",
+            "purpose": "any"
+        }
+    ]
+}
