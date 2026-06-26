@@ -223,7 +223,8 @@ class MapController extends Controller
             );
         }
 
-        return response()->json($this->formatLocationForDevice($latest, $device) ?? []);
+        return response()->json($this->formatLocationForDevice($latest, $device) ?? [])
+            ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
     }
 
     public function summaryJson(string $token)
@@ -239,7 +240,8 @@ class MapController extends Controller
             'name' => $device->name,
             'online' => $this->mapStatus->isRecentlyOnline($latest),
             'last_seen' => $latest?->recorded_at?->diffForHumans() ?? 'No data',
-        ], $formatted ?? []));
+        ], $formatted ?? []))
+            ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
     }
 
     public function alertsJson(string $token, Request $request)

@@ -112,7 +112,7 @@ class UserDevicesController extends Controller
         return response()->json([
             'devices' => $payload,
             'stats' => $dashboard->getDevicePageStats($devices),
-        ]);
+        ])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
     }
 
     /**
@@ -165,6 +165,6 @@ class UserDevicesController extends Controller
         return response()->json([
             'devices' => $devicesPayload,
             'stats' => $dashboard->getDevicePageStats($devices),
-        ]);
+        ])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
     }
 }

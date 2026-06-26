@@ -1886,7 +1886,15 @@ ${pts}
 
     async function pollLive() {
         try {
-            const res = await fetch(liveUrl, { headers: { Accept: 'application/json' } });
+            // Cache-bust + no-store so each poll hits the server for the latest
+            // fix; otherwise the browser may replay a cached response and the
+            // marker stays frozen until a full page reload.
+            const sep = liveUrl.includes('?') ? '&' : '?';
+            const res = await fetch(`${liveUrl}${sep}_=${Date.now()}`, {
+                cache: 'no-store',
+                credentials: 'same-origin',
+                headers: { Accept: 'application/json' },
+            });
             const data = await parseJsonResponse(res);
             if (handleMapAccessDenied(res, data)) return;
             if (!res.ok) return;

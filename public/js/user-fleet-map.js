@@ -363,7 +363,11 @@
             if (!url) return;
             this.pollInFlight = true;
             try {
-                const res = await fetch(url, {
+                // Cache-bust + no-store so each poll returns fresh positions
+                // instead of a replayed cached response (frozen markers).
+                const sep = url.includes('?') ? '&' : '?';
+                const res = await fetch(`${url}${sep}_=${Date.now()}`, {
+                    cache: 'no-store',
                     headers: {
                         Accept: 'application/json',
                         'X-Requested-With': 'XMLHttpRequest',
