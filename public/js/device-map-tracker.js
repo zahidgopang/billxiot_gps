@@ -106,6 +106,8 @@
     const MAP_READY_TIMEOUT_MS = 20000;
     const MAP_HEALTH_INTERVAL_MS = 30000;
     const MAP_HEALTH_MISS_MAX = 2;
+    const HISTORY_RENDERER_RETRY_MAX = 8;
+    let historyRendererRetries = 0;
     let mapReady = false;
     let mapBootAttempts = 0;
     let mapBootRunning = false;
@@ -3065,11 +3067,25 @@ ${pts}
             });
 
             const renderer = ensureFleetRenderer();
-            renderer?.clearRoute({ keepVehicle: true, keepRealtime: true });
+            if (!renderer) {
+                // Map/renderer still booting (notably when the device is offline and
+                // the boot path differs). Retry shortly instead of throwing
+                // "Cannot read properties of null (reading 'drawRoute')". The finally
+                // block clears the spinner; the retry reopens it.
+                if (historyRendererRetries < HISTORY_RENDERER_RETRY_MAX) {
+                    historyRendererRetries++;
+                    setTimeout(() => loadHistory(from, to), 400);
+                    return;
+                }
+                historyRendererRetries = 0;
+                throw new Error(mi('mapNotReady', 'Map is still loading, please try again'));
+            }
+            historyRendererRetries = 0;
+            renderer.clearRoute({ keepVehicle: true, keepRealtime: true });
             polylines = [];
             routeGlowPolylines = [];
             clearEventMarkers();
-            renderer?.clearExtraMarkers();
+            renderer.clearExtraMarkers();
             markers = currentPositionMarker ? [currentPositionMarker] : [];
 
             if (!data.length) {
