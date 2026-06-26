@@ -83,7 +83,8 @@ class DeviceController extends Controller
             return $this->mobileError('No live position available', 404, 'no_data');
         }
 
-        return $this->mobileSuccess($payload);
+        return $this->mobileSuccess($payload)
+            ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
     }
 
     public function history(Request $request, int $id)
