@@ -11,7 +11,7 @@
   <rect x="24" y="88" width="312" height="72" rx="14" fill="#fff" stroke="#0ea5e9" stroke-width="2"/>
   <rect x="40" y="104" width="40" height="40" rx="10" fill="#dcfce7"/>
   <text x="60" y="130" text-anchor="middle" fill="#16a34a" font-family="Arial,sans-serif" font-size="20">�</text>
-  <text x="96" y="118" fill="#0f172a" font-family="Inter,Arial,sans-serif" font-size="15" font-weight="700">BillXiotGPS.apk</text>
+  <text x="96" y="118" fill="#0f172a" font-family="Inter,Arial,sans-serif" font-size="15" font-weight="700">BillXGPS.apk</text>
   <text x="96" y="140" fill="#64748b" font-family="Inter,Arial,sans-serif" font-size="12">Tap to open installer</text>
   <path d="M280 124 L300 124" stroke="#0ea5e9" stroke-width="3" stroke-linecap="round"/>
   <circle cx="308" cy="124" r="8" fill="#0ea5e9"/>

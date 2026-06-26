@@ -174,4 +174,37 @@ body.user-panel .map-page-nav .map-nav-device-row {
     body.user-panel .map-page-nav .map-nav-device-row {
         flex: 1 1 100%;
     }
+
+    /* Shrink the wide horizontal logo so the right-side controls keep room */
+    body.user-panel .navbar-brand .brand-logo,
+    body.user-panel .map-nav-logo .brand-logo,
+    body.user-panel-rtl .navbar-brand .brand-logo,
+    body.user-panel-rtl .map-nav-logo .brand-logo {
+        height: 40px !important;
+        max-width: 128px;
+    }
+
+    body.user-panel .navbar-brand,
+    body.user-panel .map-nav-logo,
+    body.user-panel-rtl .navbar-brand,
+    body.user-panel-rtl .map-nav-logo {
+        max-width: 132px;
+    }
+}
+
+@media (max-width: 576px) {
+    body.user-panel .navbar-brand .brand-logo,
+    body.user-panel .map-nav-logo .brand-logo,
+    body.user-panel-rtl .navbar-brand .brand-logo,
+    body.user-panel-rtl .map-nav-logo .brand-logo {
+        height: 34px !important;
+        max-width: 100px;
+    }
+
+    body.user-panel .navbar-brand,
+    body.user-panel .map-nav-logo,
+    body.user-panel-rtl .navbar-brand,
+    body.user-panel-rtl .map-nav-logo {
+        max-width: 104px;
+    }
 }

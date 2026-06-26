@@ -259,6 +259,26 @@ class Device extends Model
         $this->patchTraccarAppAttributes([TraccarAppFields::KEY_VEHICLE_TYPE => $value ?: null]);
     }
 
+    public function getDriverNameAttribute(): ?string
+    {
+        return TraccarAppFields::get($this->getTraccarAttributesJson(), TraccarAppFields::KEY_DRIVER_NAME);
+    }
+
+    public function setDriverNameAttribute(?string $value): void
+    {
+        $this->patchTraccarAppAttributes([TraccarAppFields::KEY_DRIVER_NAME => $value ?: null]);
+    }
+
+    public function getDriverContactAttribute(): ?string
+    {
+        return TraccarAppFields::get($this->getTraccarAttributesJson(), TraccarAppFields::KEY_DRIVER_CONTACT);
+    }
+
+    public function setDriverContactAttribute(?string $value): void
+    {
+        $this->patchTraccarAppAttributes([TraccarAppFields::KEY_DRIVER_CONTACT => $value ?: null]);
+    }
+
     public function getSimTypeAttribute(): ?string
     {
         return TraccarAppFields::get($this->getTraccarAttributesJson(), TraccarAppFields::KEY_SIM_TYPE);
@@ -316,6 +336,8 @@ class Device extends Model
             TraccarAppFields::KEY_VEHICLE_NUMBER => $this->vehicle_number,
             TraccarAppFields::KEY_VEHICLE_MODEL => $this->vehicle_model,
             TraccarAppFields::KEY_VEHICLE_TYPE => $this->vehicle_type,
+            TraccarAppFields::KEY_DRIVER_NAME => $this->driver_name,
+            TraccarAppFields::KEY_DRIVER_CONTACT => $this->driver_contact,
             TraccarAppFields::KEY_SIM_TYPE => $this->sim_type,
             TraccarAppFields::KEY_SIM_NUMBER => $this->sim_number,
             TraccarAppFields::KEY_PLATE_TYPE => $this->plate_type,
@@ -349,6 +371,36 @@ class Device extends Model
     public function vehicleDisplayName(): string
     {
         return $this->mapMarkerTitle();
+    }
+
+    /** Driver name for map/fleet UI, or null when unset. */
+    public function driverDisplayName(): ?string
+    {
+        $name = trim((string) ($this->driver_name ?? ''));
+
+        return $name !== '' ? $name : null;
+    }
+
+    /** Driver contact number for display, or null when unset. */
+    public function driverContactNumber(): ?string
+    {
+        $contact = trim((string) ($this->driver_contact ?? ''));
+
+        return $contact !== '' ? $contact : null;
+    }
+
+    /** Sanitized phone for tel: links (keeps leading + and digits only). */
+    public function driverContactTel(): ?string
+    {
+        $contact = $this->driverContactNumber();
+        if ($contact === null) {
+            return null;
+        }
+
+        $tel = preg_replace('/[^\d+]/', '', $contact);
+        $tel = preg_replace('/(?!^)\+/', '', (string) $tel);
+
+        return $tel === '' ? null : $tel;
     }
 
     public function vehiclePlateNumber(): ?string

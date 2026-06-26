@@ -13,15 +13,20 @@ use App\Http\Controllers\Api\Mobile\ProfileController as MobileProfileController
 use App\Http\Controllers\Api\Mobile\PushTokenController as MobilePushTokenController;
 use App\Http\Controllers\Api\UserDeviceController;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Request;
 
-Route::post('/device/data', [DeviceDataController::class, 'receive']);
+Route::post('/device/data', [DeviceDataController::class, 'receive'])
+    ->middleware('throttle:device-ingest');
 
 /*
 |--------------------------------------------------------------------------
 | End-user mobile app API (Sanctum)
 |--------------------------------------------------------------------------
 */
-Route::post('/login', [MobileAuthController::class, 'login']);
+Route::post('/login', [MobileAuthController::class, 'login'])
+    ->middleware('throttle:mobile-login');
 
 Route::middleware(['auth:sanctum', 'mobile.end_user'])->group(function () {
     Route::post('/logout', [MobileAuthController::class, 'logout']);

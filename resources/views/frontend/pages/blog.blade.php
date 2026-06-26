@@ -15,7 +15,7 @@
             INSIGHTS & NEWS
         </span>
             <h1 class="text-5xl lg:text-6xl font-bold mb-6">
-                BillXiot GPS <span class="bg-gradient-to-r from-indigo-500 to-violet-600 bg-clip-text text-transparent">Blog</span>
+                BillX GPS <span class="bg-gradient-to-r from-indigo-500 to-violet-600 bg-clip-text text-transparent">Blog</span>
             </h1>
             <p class="text-xl text-slate-600 dark:text-slate-300 max-w-3xl mx-auto">
                 Expert insights, industry trends, and the latest in GPS tracking technology.

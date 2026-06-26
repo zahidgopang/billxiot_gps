@@ -43,6 +43,10 @@ final class TraccarAppFields
 
     public const KEY_VEHICLE_TYPE = 'vehicle_type';
 
+    public const KEY_DRIVER_NAME = 'driver_name';
+
+    public const KEY_DRIVER_CONTACT = 'driver_contact';
+
     public const KEY_PLATE_TYPE = 'plate_type';
 
     public const KEY_SIM_TYPE = 'sim_type';

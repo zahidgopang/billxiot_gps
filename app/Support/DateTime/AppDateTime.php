@@ -6,7 +6,7 @@ use Carbon\Carbon;
 use Carbon\CarbonInterface;
 
 /**
- * BillXiot GPS display/API timestamps — always Asia/Karachi (UTC+05:00).
+ * BillX GPS display/API timestamps — always Asia/Karachi (UTC+05:00).
  */
 final class AppDateTime
 {

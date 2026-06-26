@@ -2,7 +2,7 @@
 @extends('frontend.layout')
 
 @section('title', __('frontend.pages.status.title'))
-@section('description', 'Real-time status of BillXiot GPS services, API, and platform components.')
+@section('description', 'Real-time status of BillX GPS services, API, and platform components.')
 
 @section('content')
 
@@ -20,7 +20,7 @@
                 System <span class="bg-gradient-to-r from-emerald-500 to-teal-600 bg-clip-text text-transparent">Status</span>
             </h1>
             <p class="text-xl text-slate-600 dark:text-slate-300 max-w-3xl mx-auto">
-                Real-time status of BillXiot GPS services and platform components.
+                Real-time status of BillX GPS services and platform components.
             </p>
         </div>
     </section>

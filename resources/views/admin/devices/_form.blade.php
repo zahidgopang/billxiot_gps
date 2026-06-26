@@ -13,6 +13,8 @@
     $vehicleNumber = old('vehicle_number', optional($device)->vehicle_number ?? '');
     $vehicleModel = old('vehicle_model', optional($device)->vehicle_model ?? '');
     $vehicleType = old('vehicle_type', optional($device)->vehicle_type ?? '');
+    $driverName = old('driver_name', optional($device)->driver_name ?? '');
+    $driverContact = old('driver_contact', optional($device)->driver_contact ?? '');
     $plateType = old('plate_type', optional($device)->plate_type ?? '');
     $allowedDeviceTypes = $allowedDeviceTypes ?? array_keys(Device::DEVICE_TYPES);
     $formClientId = $formClientId ?? ($panel === 'client' ? $selectedClient : ($selectedClient ?: null));
@@ -193,5 +195,25 @@
             @endforeach
         </select>
         @error('plate_type') <p class="admin-field__error text-danger">{{ $message }}</p> @enderror
+    </x-admin.form-col>
+</x-admin.form-section>
+
+<x-admin.form-section
+    :title="__('app.forms.driver_information')"
+    icon="fas fa-id-card"
+    :description="__('app.forms.driver_information_hint')"
+>
+    <x-admin.form-col>
+        <label class="admin-label" for="driver-name">{{ __('app.forms.driver_name') }}</label>
+        <input type="text" name="driver_name" id="driver-name" value="{{ $driverName }}" class="form-control form-control-sm" maxlength="120" placeholder="{{ __('app.forms.driver_name_placeholder') }}">
+        <p class="admin-hint">{{ __('app.forms.driver_name_hint') }}</p>
+        @error('driver_name') <p class="admin-field__error text-danger">{{ $message }}</p> @enderror
+    </x-admin.form-col>
+
+    <x-admin.form-col>
+        <label class="admin-label" for="driver-contact">{{ __('app.forms.driver_contact') }}</label>
+        <input type="tel" name="driver_contact" id="driver-contact" value="{{ $driverContact }}" class="form-control form-control-sm admin-ltr" dir="ltr" maxlength="40" placeholder="{{ __('app.forms.driver_contact_placeholder') }}">
+        <p class="admin-hint">{{ __('app.forms.driver_contact_hint') }}</p>
+        @error('driver_contact') <p class="admin-field__error text-danger">{{ $message }}</p> @enderror
     </x-admin.form-col>
 </x-admin.form-section>

@@ -114,6 +114,15 @@ return [
     'allow_inactive_ingest' => env('TRACCAR_ALLOW_INACTIVE_INGEST', true),
 
     /*
+    | Auto-create Device rows when unknown IMEIs POST to /api/device/data.
+    | Disabled by default in production — register devices in admin first.
+    */
+    'ingest_auto_create_devices' => env(
+        'TRACKING_INGEST_AUTO_CREATE_DEVICES',
+        env('APP_ENV', 'production') !== 'production'
+    ),
+
+    /*
     | Laravel tables deprecated when TRACCAR_MODE=full (see docs/deprecated-tracking-tables.md).
     */
     'deprecated_tables' => [

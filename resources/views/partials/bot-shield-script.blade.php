@@ -6,7 +6,7 @@
     const RECAPTCHA_SITE_KEY = @json($recaptchaSiteKey ?? '');
     const RECAPTCHA_ACTION = @json($recaptchaAction ?? 'submit');
 
-    window.BillXiotBotShield = {
+    window.BillXBotShield = {
         initFormTiming() {
             const el = document.getElementById('form_started_at');
             if (el) {
@@ -41,14 +41,14 @@
     };
 
     document.addEventListener('DOMContentLoaded', function () {
-        window.BillXiotBotShield.initFormTiming();
+        window.BillXBotShield.initFormTiming();
     });
 })();
 </script>
 @else
 <script>
 (function () {
-    window.BillXiotBotShield = {
+    window.BillXBotShield = {
         initFormTiming() {
             const el = document.getElementById('form_started_at');
             if (el) el.value = Math.floor(Date.now() / 1000);
@@ -56,7 +56,7 @@
         async acquireToken() { return true; }
     };
     document.addEventListener('DOMContentLoaded', function () {
-        window.BillXiotBotShield.initFormTiming();
+        window.BillXBotShield.initFormTiming();
     });
 })();
 </script>

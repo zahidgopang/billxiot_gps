@@ -1,6 +1,6 @@
 @extends('user.layout_user')
 
-@section('title', 'Vehicle Alerts — BillXiot GPS')
+@section('title', 'Vehicle Alerts — BillX GPS')
 
 @push('styles')
 <style>

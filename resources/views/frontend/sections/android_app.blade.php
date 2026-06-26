@@ -59,7 +59,7 @@
                             {{ __('frontend.android_app.install_guide') }}
                         </a>
                         <a href="{{ $apkUrl }}"
-                           download="BillXiotGPS.apk"
+                           download="BillXGPS.apk"
                            class="inline-flex items-center justify-center gap-2 px-8 py-4 rounded-xl font-semibold border-2 border-green-600 text-green-700 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-950/30 transition-all">
                             <i class="fa-solid fa-download"></i>
                             {{ __('frontend.android_app.download_apk') }}
@@ -100,7 +100,7 @@
                                      height="48"
                                      loading="lazy">
                                 <div>
-                                    <p class="text-white font-bold">BillXiot GPS</p>
+                                    <p class="text-white font-bold">BillX GPS</p>
                                     <p class="text-slate-400 text-xs">{{ __('frontend.meta.tagline') }}</p>
                                 </div>
                             </div>

@@ -54,7 +54,7 @@
                         [
                             'year' => '2015',
                             'title' => 'Company Founded',
-                            'desc' => 'BillXiot GPS established with focus on real-time GPS tracking',
+                            'desc' => 'BillX GPS established with focus on real-time GPS tracking',
                             'align' => 'left'
                         ],
                         [

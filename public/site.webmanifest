@@ -1,6 +1,6 @@
 {
-    "name": "BillXiot GPS",
-    "short_name": "BillXiot GPS",
+    "name": "BillX GPS",
+    "short_name": "BillX GPS",
     "description": "Live GPS tracking, vehicle monitoring, and fleet management.",
     "start_url": "/",
     "display": "standalone",

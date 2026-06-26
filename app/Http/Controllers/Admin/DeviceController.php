@@ -261,6 +261,8 @@ class DeviceController extends Controller
             ],
             'vehicle_model' => 'nullable|string|max:80',
             'vehicle_type' => ['nullable', Rule::in(array_keys(Device::VEHICLE_TYPES))],
+            'driver_name' => 'nullable|string|max:120',
+            'driver_contact' => 'nullable|string|max:40',
             'sim_type' => ['nullable', Rule::in(array_keys(Device::SIM_TYPES))],
             'sim_number' => 'nullable|string|max:40',
             'plate_type' => ['nullable', Rule::in(array_keys(Device::PLATE_TYPES))],
@@ -281,6 +283,12 @@ class DeviceController extends Controller
             'sim_number' => $request->filled('sim_number')
                 ? trim((string) $request->input('sim_number'))
                 : null,
+            'driver_name' => $request->filled('driver_name')
+                ? trim((string) $request->input('driver_name'))
+                : null,
+            'driver_contact' => $request->filled('driver_contact')
+                ? trim((string) $request->input('driver_contact'))
+                : null,
         ]);
     }
 
@@ -300,6 +308,8 @@ class DeviceController extends Controller
             'vehicle_number' => $data['vehicle_number'] ?? null,
             'vehicle_model' => $data['vehicle_model'] ?? null,
             'vehicle_type' => $data['vehicle_type'] ?? null,
+            'driver_name' => $data['driver_name'] ?? null,
+            'driver_contact' => $data['driver_contact'] ?? null,
             'sim_type' => $data['sim_type'] ?? null,
             'sim_number' => $data['sim_number'] ?? null,
             'plate_type' => $data['plate_type'] ?? null,

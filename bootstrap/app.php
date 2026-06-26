@@ -51,6 +51,11 @@ return Application::configure(basePath: dirname(__DIR__))
             \App\Http\Middleware\DiscardBrokenAuthSession::class,
             \App\Http\Middleware\SetLocale::class,
             \App\Http\Middleware\RestrictScrapers::class,
+            \App\Http\Middleware\SecurityHeaders::class,
+        ]);
+
+        $middleware->appendToGroup('api', [
+            \App\Http\Middleware\SecurityHeaders::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

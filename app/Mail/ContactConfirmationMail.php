@@ -26,7 +26,7 @@ class ContactConfirmationMail extends Mailable
     public function envelope(): Envelope
     {
         return new Envelope(
-            subject: 'Thank You for Contacting BillXiot GPS',
+            subject: 'Thank You for Contacting BillX GPS',
             replyTo: [config('contact.email', 'support@billxiotgps.com')]
         );
     }

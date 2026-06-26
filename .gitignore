@@ -19,7 +19,9 @@
 /storage/*.key
 /storage/pail
 /storage/app/runtime-state
+/storage/app/firebase/
 /vendor
+/database/gps_tracking.sql
 Homestead.json
 Homestead.yaml
 Thumbs.db

@@ -139,6 +139,8 @@ class MapController extends Controller
             'online' => $this->mapStatus->isRecentlyOnline($location),
             'vehicle_name' => $device->vehicle_name,
             'vehicle_number' => $device->vehicle_number,
+            'driver_name' => $device->driverDisplayName(),
+            'driver_contact' => $device->driverContactNumber(),
             'map_marker_title' => $device->mapMarkerTitle(),
             'map_marker_plate' => $device->mapMarkerPlateLine(),
         ]);

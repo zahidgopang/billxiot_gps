@@ -199,6 +199,14 @@ Route::middleware(['auth', 'panel:admin', 'can:admin'])
         Route::get('activity-log', [ActivityLogController::class, 'index'])
             ->name('activity-log.index');
 
+        Route::get('usage', [\App\Http\Controllers\Admin\UsageGuideController::class, 'index'])
+            ->middleware('can:super-admin')
+            ->name('usage.index');
+
+        Route::get('usage/pdf', [\App\Http\Controllers\Admin\UsageGuideController::class, 'pdf'])
+            ->middleware('can:super-admin')
+            ->name('usage.pdf');
+
         Route::get('contact-messages', [\App\Http\Controllers\Admin\ContactMessageController::class, 'index'])
             ->name('contact-messages.index');
         Route::get('contact-messages/{contactMessage}', [\App\Http\Controllers\Admin\ContactMessageController::class, 'show'])

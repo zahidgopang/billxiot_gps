@@ -31,6 +31,7 @@
             --map-danger: #EF4444;
             --map-info: #3B82F6;
             --map-bg: #F8FAFC;
+            --app-nav-height: 4.5rem;
         }
 
         /* =============================
@@ -43,14 +44,14 @@
             margin: 0;
             padding: 0;
             height: 100vh;
-            padding-top: var(--app-nav-height, 204px);
+            padding-top: var(--app-nav-height);
         }
 
         .content-wrap {
             width: 100%;
             margin: 0;
             padding: 0;
-            height: calc(100vh - var(--app-nav-height, 204px));
+            height: calc(100vh - var(--app-nav-height));
             overflow-y: auto; /* Allow content scrolling if needed */
         }
 
@@ -74,7 +75,7 @@
             border-bottom: 1px solid rgba(255, 255, 255, 0.1);
             box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
             padding: 1rem 1.5rem;
-            min-height: var(--app-nav-height, 204px);
+            min-height: 0;
             height: auto;
             z-index: 1000;
             position: fixed; /* Keep it fixed */
@@ -522,79 +523,117 @@
            Responsive
         ============================= */
         @media (max-width: 768px) {
-            body {
-                padding-top: 70px;
-            }
-
             .map-area.sidebar-open {
                 margin-inline-start: 0;
                 margin-inline-end: 0;
             }
 
-            /* Ensure map fills screen on mobile */
-            .tracking-container {
-                height: calc(100vh - 70px);
-            }
-        }
-        /* =============================
-           Responsive
-        ============================= */
-        @media (max-width: 768px) {
-            .navbar {
+            body:not(.map-device-page) .navbar {
                 padding: 0.75rem 1rem;
             }
-
-            .navbar-brand {
+            body:not(.map-device-page) .navbar-brand {
                 font-size: 1.25rem;
             }
-
-            #toggleSidebar {
+            body:not(.map-device-page) #toggleSidebar {
                 width: 40px;
                 height: 40px;
                 margin-right: 10px;
                 font-size: 1rem;
             }
-
-            .user-name {
+            body:not(.map-device-page) .user-name {
                 display: none;
             }
-
-            .device-info {
-                display: none;
-            }
-
-            .logout-btn {
+            body:not(.map-device-page) .logout-btn {
                 width: 40px;
                 height: 40px;
             }
 
-            .map-area.sidebar-open {
-                margin-inline-start: 0;
-                margin-inline-end: 0;
+            /* Map: minimal single-row header — filters | device name | alerts | logout */
+            .map-device-page .navbar.map-page-nav {
+                padding: 0.35rem 0.5rem !important;
+                gap: 0.35rem;
+                flex-wrap: nowrap;
+                align-items: center;
+            }
+            .map-device-page .map-page-nav .nav-start {
+                flex: 1 1 auto;
+                min-width: 0;
+                gap: 8px;
+            }
+            .map-device-page .map-page-nav .nav-end {
+                flex: 0 0 auto;
+                gap: 4px;
+            }
+            .map-device-page .map-nav-logo {
+                display: none !important;
+            }
+            .map-device-page .map-nav-content {
+                flex: 1 1 auto;
+                min-width: 0;
+                flex-wrap: nowrap !important;
+                gap: 0;
+                align-items: center;
+            }
+            .map-device-page .map-nav-device-row {
+                flex: 1 1 auto;
+                min-width: 0;
+                width: auto;
+                flex-wrap: nowrap;
+            }
+            .map-device-page .map-nav-device-row .map-nav-sep,
+            .map-device-page .map-nav-imei,
+            .map-device-page .map-nav-subtitle,
+            .map-device-page .map-nav-device-row .badge,
+            .map-device-page .map-nav-device-row small.text-muted,
+            .map-device-page .map-nav-status {
+                display: none !important;
+            }
+            .map-device-page .map-nav-title {
+                margin: 0;
+                font-size: 0.8125rem;
+                font-weight: 600;
+                flex: 1 1 auto;
+                min-width: 0;
+                max-width: 100%;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+            .map-device-page .map-page-nav .lang-toggle,
+            .map-device-page .map-page-nav .user-info,
+            .map-device-page .map-page-nav .nav-map-tour-btn {
+                display: none !important;
+            }
+            .map-device-page #toggleSidebar,
+            .map-device-page .nav-alerts-btn,
+            .map-device-page .logout-btn {
+                width: 36px;
+                height: 36px;
+                min-width: 36px;
+                flex-shrink: 0;
+            }
+            .map-device-page #toggleSidebar {
+                margin-right: 0;
+                font-size: 0.95rem;
+            }
+            .map-device-page .nav-end form {
+                margin: 0;
+            }
+            .map-device-page .tracking-container {
+                height: calc(100vh - var(--app-nav-height));
             }
         }
 
         @media (max-width: 576px) {
-            .navbar {
+            body:not(.map-device-page) .navbar {
                 padding: 0.5rem;
             }
-
-            .navbar-brand span {
-                font-size: 1.1rem;
-            }
-
-            #toggleSidebar {
+            body:not(.map-device-page) #toggleSidebar {
                 width: 36px;
                 height: 36px;
             }
-
-            .map-nav-title {
-                font-size: 0.9rem;
-            }
-
-            .map-nav-imei {
-                max-width: 120px;
-                font-size: 0.65rem;
+            .map-device-page .map-nav-title {
+                font-size: 0.78rem;
             }
         }
 
@@ -626,7 +665,7 @@
     @stack('styles')
 </head>
 
-<body>
+<body @if(isset($device) && $device) class="map-device-page" @endif>
 
 <!-- Premium Navbar -->
 <nav class="navbar navbar-expand-lg d-flex align-items-center justify-content-between w-100 @if(isset($device) && $device) map-page-nav @endif">
@@ -741,6 +780,27 @@
 @include('partials.i18n-js')
 @stack('scripts')
 <script>
+    // Sync fixed navbar height → body padding (prevents map overlap on mobile)
+    function syncMapNavHeight() {
+        const nav = document.querySelector('.navbar');
+        if (!nav) return;
+        const h = Math.ceil(nav.getBoundingClientRect().height);
+        document.documentElement.style.setProperty('--app-nav-height', h + 'px');
+        document.body.style.paddingTop = h + 'px';
+        if (typeof window.deviceMapResize === 'function') {
+            window.deviceMapResize();
+        }
+    }
+    syncMapNavHeight();
+    window.syncMapNavHeight = syncMapNavHeight;
+    window.addEventListener('resize', syncMapNavHeight);
+    window.addEventListener('load', syncMapNavHeight);
+    document.querySelectorAll('.navbar img.brand-logo').forEach(function (img) {
+        if (!img.complete) {
+            img.addEventListener('load', syncMapNavHeight);
+        }
+    });
+
     // Global sidebar state (exposed for map-tour and other scripts)
     let sidebarOpen = false;
     window.isMapSidebarOpen = function () { return sidebarOpen; };

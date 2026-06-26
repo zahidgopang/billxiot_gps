@@ -1,6 +1,6 @@
 {
   "info": {
-    "name": "BillXiot GPS Ingest - /api/device/data",
+    "name": "BillX GPS Ingest - /api/device/data",
     "description": "POST location to Laravel. With TRACCAR_MODE=dual_write also writes tc_positions.\n\nURL: {{base_url}}/api/device/data\nHeaders: Content-Type: application/json, Accept: application/json\n\nPrerequisites:\n- Device IMEI exists in admin and status=active\n- Device has owner + active subscription (or TRACCAR_ALLOW_INACTIVE_INGEST=true)\n- Use a real IMEI from your devices table"
   },
   "variable": [

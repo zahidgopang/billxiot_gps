@@ -6,6 +6,9 @@ use App\Auth\TcAwareUserProvider;
 use App\Models\User;
 use Illuminate\Pagination\Paginator;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
 
@@ -29,6 +32,16 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        RateLimiter::for('device-ingest', function (Request $request) {
+            return Limit::perMinute(120)->by($request->ip());
+        });
+
+        RateLimiter::for('mobile-login', function (Request $request) {
+            $key = $request->ip().'|'.strtolower((string) $request->input('email', ''));
+
+            return Limit::perMinute(10)->by($key);
+        });
+
         Paginator::useBootstrapFive();
 
         Auth::provider('tc_aware', function ($app, array $config) {

@@ -1,6 +1,6 @@
 @extends('user.layout_user')
 
-@section('title', 'My Profile — BillXiot GPS')
+@section('title', 'My Profile — BillX GPS')
 
 @push('styles')
     <style>
@@ -571,7 +571,7 @@
                     </div>
                     <div class="alert alert-info">
                         <i class="fas fa-info-circle me-2"></i>
-                        Two-factor authentication is coming soon to BillXiot GPS.
+                        Two-factor authentication is coming soon to BillX GPS.
                     </div>
                 </div>
                 <div class="modal-footer">

@@ -1,10 +1,10 @@
 # Recapture map-related mobile app screenshots (requires emulator + production login).
 param(
     [string]$Adb = "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe",
-    [string]$Apk = "d:\laragon\www\gps_tracker_pro_mobile\build\app\outputs\flutter-apk\app-debug.apk",
+    [string]$Apk = "d:\laragon\www\gps_tracker_pro_mobile_billxiot\build\app\outputs\flutter-apk\app-debug.apk",
     [string]$OutDir = "d:\laragon\www\gps-traccar\public\images\mobile-app",
-    [string]$Package = "com.gpstrackerpro.gps_tracker_pro_mobile",
-    [string]$MainActivity = "com.gpstrackerpro.gps_tracker_pro_mobile.MainActivity"
+    [string]$Package = "com.billxiot.gps",
+    [string]$MainActivity = "com.billxiot.gps.MainActivity"
 )
 
 $ErrorActionPreference = "Stop"
@@ -24,7 +24,7 @@ function Start-App {
     Start-Sleep -Seconds 1
     & $Adb shell am start -n "$Package/$MainActivity" | Out-Null
     Start-Sleep -Seconds 12
-    if (-not (App-Focused)) { throw "BillXiot GPS is not in the foreground after launch." }
+    if (-not (App-Focused)) { throw "BillX GPS is not in the foreground after launch." }
 }
 
 function Tap([int]$x, [int]$y) {
@@ -75,7 +75,7 @@ Key "KEYCODE_DEL"
 Type-Ascii "12345678"
 Tap 540 1240
 Start-Sleep -Seconds 20
-if (-not (App-Focused)) { throw "Login did not reach BillXiot GPS home screen." }
+if (-not (App-Focused)) { throw "Login did not reach BillX GPS home screen." }
 
 $navY = 2280
 $navHome = 108

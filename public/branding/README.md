@@ -1,4 +1,4 @@
-# BillXiot GPS branding assets
+# BillX GPS branding assets
 
 Web logos live in `web/`:
 

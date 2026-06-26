@@ -4,7 +4,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BillXiot GPS - Message Received</title>
+    <title>BillX GPS - Message Received</title>
     <style>
         body { font-family: 'Inter', Arial, sans-serif; line-height: 1.6; color: #334155; }
         .container { max-width: 600px; margin: 0 auto; padding: 20px; }
@@ -19,14 +19,14 @@
 <body>
 <div class="container">
     <div class="header">
-        <h1>Thank You for Contacting BillXiot GPS</h1>
+        <h1>Thank You for Contacting BillX GPS</h1>
         <p>We've received your message and will respond shortly</p>
     </div>
 
     <div class="content">
         <p>Dear {{ $contactMessage->name }},</p>
 
-        <p>Thank you for reaching out to BillXiot GPS. We've received your inquiry and our support team is reviewing it.</p>
+        <p>Thank you for reaching out to BillX GPS. We've received your inquiry and our support team is reviewing it.</p>
 
         <div class="ticket">
             <h3>Your Ticket Details</h3>
@@ -50,11 +50,11 @@
             WhatsApp: {{ $supportPhone }} · Email: {{ $supportEmail }}</p>
 
         <p>Best regards,<br>
-            <strong>The BillXiot GPS Team</strong></p>
+            <strong>The BillX GPS Team</strong></p>
     </div>
 
     <div class="footer">
-        <p>BillXiot GPS • Enterprise Fleet Management Solutions</p>
+        <p>BillX GPS • Enterprise Fleet Management Solutions</p>
         <p>{{ config('app.url') }} • {{ $supportEmail }}</p>
         <p>This is an automated message, please do not reply to this email.</p>
     </div>

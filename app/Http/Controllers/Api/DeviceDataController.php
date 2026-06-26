@@ -63,6 +63,13 @@ class DeviceDataController extends Controller
         $device = Device::with(['subscription', 'user'])->whereImei($imei)->first();
 
         if (! $device) {
+            if (! config('traccar.ingest_auto_create_devices', false)) {
+                return response()->json([
+                    'error' => 'device_not_registered',
+                    'message' => 'IMEI is not registered. Add the device in the admin panel first.',
+                ], 404);
+            }
+
             $device = Device::create([
                 'imei' => $imei,
                 'name' => 'Unknown',

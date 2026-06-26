@@ -2,7 +2,7 @@
 @extends('frontend.layout')
 
 @section('title', __('frontend.pages.company.title'))
-@section('description', 'Learn about BillXiot GPS, our mission, values, and leadership team.')
+@section('description', 'Learn about BillX GPS, our mission, values, and leadership team.')
 
 @section('content')
 
@@ -19,7 +19,7 @@
                 Revolutionizing <span class="bg-gradient-to-r from-sky-500 to-blue-600 bg-clip-text text-transparent">Fleet Management</span>
             </h1>
             <p class="text-xl text-slate-600 dark:text-slate-300 max-w-3xl mx-auto">
-                BillXiot GPS is on a mission to transform fleet operations with intelligent tracking solutions.
+                BillX GPS is on a mission to transform fleet operations with intelligent tracking solutions.
             </p>
         </div>
     </section>
@@ -170,7 +170,7 @@
     <section class="py-20 bg-gradient-to-r from-sky-600 to-blue-700">
         <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
             <h2 class="text-3xl lg:text-4xl font-bold text-white mb-6">Join Thousands of Successful Fleets</h2>
-            <p class="text-xl text-blue-100 mb-8">Transform your fleet operations with BillXiot GPS</p>
+            <p class="text-xl text-blue-100 mb-8">Transform your fleet operations with BillX GPS</p>
             <div class="flex flex-col sm:flex-row gap-4 justify-center">
                 <a href="{{ route('contact') }}" class="px-8 py-3 bg-white text-blue-700 font-semibold rounded-xl hover:bg-blue-50 transition-colors">
                     Contact Sales

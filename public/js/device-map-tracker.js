@@ -394,6 +394,16 @@
             ? `<div class="vehicle-map-popup__row"><strong>${mi('vehicleNumber', 'Vehicle Number')}</strong><span>${escapeHtml(identity.plate)}</span></div>`
             : '';
 
+        const driverName = String(point?.driver_name || cfg.driverName || '').trim();
+        const driverContact = String(point?.driver_contact || cfg.driverContact || '').trim();
+        const driverTel = String(cfg.driverContactTel || driverContact).replace(/[^\d+]/g, '');
+        const driverNameRow = driverName
+            ? `<div class="vehicle-map-popup__row"><strong>${mi('driverName', 'Driver')}</strong><span>${escapeHtml(driverName)}</span></div>`
+            : '';
+        const driverContactRow = driverContact
+            ? `<div class="vehicle-map-popup__row"><strong>${mi('driverContact', 'Driver contact')}</strong><span><a class="vehicle-map-popup__call" href="tel:${escapeHtml(driverTel)}" dir="ltr">${escapeHtml(driverContact)}</a></span></div>`
+            : '';
+
         return `<div class="vehicle-map-popup">
             <div class="vehicle-map-popup__head">
                 <div>
@@ -403,6 +413,8 @@
             </div>
             <div class="vehicle-map-popup__body">
                 ${plateRow}
+                ${driverNameRow}
+                ${driverContactRow}
                 <div class="vehicle-map-popup__row vehicle-map-popup__row--status"><strong>${mi('currentStatus', 'Status')}</strong><span class="map-status-chip ${status.cls}">${escapeHtml(status.label)}</span></div>
                 <div class="vehicle-map-popup__row"><strong>${mi('speed', 'Speed')}</strong><span>${speed} ${mi('kmh', 'km/h')}</span></div>
                 <div class="vehicle-map-popup__row"><strong>${mi('ignition', 'Ignition')}</strong><span>${escapeHtml(formatIgnitionLabel(point))}</span></div>
@@ -1476,7 +1488,7 @@
             return `      <trkpt lat="${p.lat}" lon="${p.lng}"><time>${t}</time><speed>${p.speed || 0}</speed></trkpt>`;
         }).join('\n');
         const gpx = `<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="BillXiot GPS">
+<gpx version="1.1" creator="BillX GPS">
   <trk><name>${cfg.deviceName || 'Route'}</name><trkseg>
 ${pts}
   </trkseg></trk>

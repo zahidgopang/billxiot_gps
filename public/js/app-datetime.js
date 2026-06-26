@@ -1,5 +1,5 @@
 /**
- * BillXiot GPS — Pakistan (Asia/Karachi) date/time formatting for web UI.
+ * BillX GPS — Pakistan (Asia/Karachi) date/time formatting for web UI.
  */
 (function (global) {
     'use strict';

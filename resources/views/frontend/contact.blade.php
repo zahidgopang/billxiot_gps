@@ -107,7 +107,7 @@
                                 <div>
                                     <h3 class="font-bold text-lg mb-2">Android App</h3>
                                     <p class="text-slate-600 dark:text-slate-400 mb-3">
-                                        Download the BillXiot GPS mobile app with our step-by-step installation guide.
+                                        Download the BillX GPS mobile app with our step-by-step installation guide.
                                     </p>
                                     <div class="flex items-center gap-2 text-green-600 dark:text-green-400 font-medium">
                                         <i class="fa-brands fa-android"></i>
@@ -346,7 +346,7 @@
         <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="text-center mb-12">
                 <h2 class="text-3xl font-bold mb-4">Frequently Asked Questions</h2>
-                <p class="text-slate-600 dark:text-slate-400">Common questions about contacting BillXiot GPS</p>
+                <p class="text-slate-600 dark:text-slate-400">Common questions about contacting BillX GPS</p>
             </div>
 
             <div class="space-y-4">
@@ -472,7 +472,7 @@
                 spinner.classList.remove('hidden');
 
                 try {
-                    await BillXiotBotShield.acquireToken();
+                    await BillXBotShield.acquireToken();
                 } catch (securityError) {
                     errorMessageText.textContent = securityError.message || 'Security check failed. Please refresh and try again.';
                     errorMessage.classList.remove('hidden');
@@ -504,7 +504,7 @@
                         ticketNumber.textContent = `Ticket Number: ${data.ticket_number}`;
 
                         form.reset();
-                        BillXiotBotShield.initFormTiming();
+                        BillXBotShield.initFormTiming();
 
                         // Lock form after successful submit
                         lockFormForMinutes(60);

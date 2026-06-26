@@ -657,6 +657,14 @@
         .vehicle-map-popup__row--status span:last-child {
             text-align: end;
         }
+        .vehicle-map-popup__call {
+            color: #1976D2;
+            font-weight: 700;
+            text-decoration: none;
+        }
+        .vehicle-map-popup__call:hover {
+            text-decoration: underline;
+        }
         .gm-style-iw-chr { display: none !important; }
         .gm-style-iw-d { overflow: hidden !important; padding: 0 !important; }
         .gm-style-iw-c { padding: 0 !important; border-radius: 14px !important; box-shadow: 0 12px 40px rgba(15,23,42,0.18) !important; }
@@ -818,6 +826,20 @@
         }
         .route-summary-sheet.is-expanded .route-summary-sheet__toggle i {
             transform: rotate(180deg);
+        }
+        .route-summary-driver-call {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            color: var(--map-accent, #1976D2);
+            font-weight: 600;
+            text-decoration: none;
+        }
+        .route-summary-driver-call:hover {
+            text-decoration: underline;
+        }
+        .route-summary-driver-call i {
+            font-size: 0.78em;
         }
         .route-summary-grid {
             display: grid;
@@ -1250,11 +1272,14 @@
                 left: 12px;
                 right: 12px;
                 max-width: none;
-                top: max(76px, env(safe-area-inset-top));
+                top: calc(var(--app-nav-height, 4.5rem) + 8px);
             }
         }
 
         @media (max-width: 992px) {
+            .map-brand-watermark {
+                display: none;
+            }
             .map-hud {
                 width: min(240px, calc(100vw - 100px));
                 font-size: 0.85rem;
@@ -1743,7 +1768,7 @@
             </div>
             <div class="notification-container" id="notificationContainer"></div>
 
-            <!-- BillXiot GPS branding -->
+            <!-- BillX GPS branding -->
             <div class="map-brand-watermark" aria-hidden="true">
                 <img src="{{ asset(config('branding.logo')) }}" alt="{{ config('branding.name') }}">
             </div>
@@ -1863,6 +1888,23 @@
                             @endif
                         </div>
                         <div class="route-summary-live">
+                            @if($device->driverDisplayName())
+                                <div class="info-row">
+                                    <div class="info-label">{{ __('app.map.driver') }}</div>
+                                    <div class="info-value" id="rssDriverName">{{ $device->driverDisplayName() }}</div>
+                                </div>
+                            @endif
+                            @if($device->driverContactNumber())
+                                <div class="info-row">
+                                    <div class="info-label">{{ __('app.map.driver_contact') }}</div>
+                                    <div class="info-value" id="rssDriverContact">
+                                        <a href="tel:{{ $device->driverContactTel() }}" class="route-summary-driver-call" dir="ltr">
+                                            <i class="fas fa-phone-alt" aria-hidden="true"></i>
+                                            <x-admin.ltr>{{ $device->driverContactNumber() }}</x-admin.ltr>
+                                        </a>
+                                    </div>
+                                </div>
+                            @endif
                             <div class="info-row">
                                 <div class="info-label">{{ __('app.map.current_status') }}</div>
                                 <div class="info-value" id="rssCurrentStatus">{{ __('app.map.dash') }}</div>
@@ -2150,6 +2192,9 @@
             vehicleName: @json($device->vehicle_name),
             vehicleNumber: @json($device->vehicle_number),
             vehicleType: @json($device->vehicle_type),
+            driverName: @json($device->driverDisplayName()),
+            driverContact: @json($device->driverContactNumber()),
+            driverContactTel: @json($device->driverContactTel()),
             deviceTypeLabel: @json($device->deviceTypeLabel()),
             isAdminMap: @json($isAdminMap ?? false),
             apiRoutes: @json($mapApiRoutes ?? []),
@@ -2211,6 +2256,8 @@
                 ignition: @json(__('app.map.ignition')),
                 currentStatus: @json(__('app.map.current_status')),
                 vehicleNumber: @json(__('app.forms.vehicle_number')),
+                driverName: @json(__('app.map.driver')),
+                driverContact: @json(__('app.map.driver_contact')),
                 statusOnline: @json(__('app.map.status_online')),
                 statusPowerCut: @json(__('app.map.status_power_cut')),
                 statusSos: @json(__('app.map.status_sos')),

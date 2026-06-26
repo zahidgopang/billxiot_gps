@@ -13,7 +13,7 @@ return [
     |
     */
 
-    'name' => env('APP_NAME', 'BillXiot GPS'),
+    'name' => env('APP_NAME', 'BillX GPS'),
 
     /*
     |--------------------------------------------------------------------------
@@ -60,7 +60,7 @@ return [
     |--------------------------------------------------------------------------
     |
     | Here you may specify the default timezone for your application, which
-    | will be used by the PHP date and date-time functions. BillXiot GPS uses
+    | will be used by the PHP date and date-time functions. BillX GPS uses
     | Asia/Karachi (UTC+05:00) for all user-facing timestamps.
     |
     */

@@ -1,7 +1,7 @@
-# BillXiot GPS SEO Audit & Optimization Report
+# BillX GPS SEO Audit & Optimization Report
 
 **Date:** May 2026  
-**Site:** BillXiot GPS public marketing website  
+**Site:** BillX GPS public marketing website  
 **Goal:** Premium GPS tracking & fleet management visibility in Google, Bing, and other search engines.
 
 ---
@@ -69,23 +69,23 @@
 
 | Page | URL | Meta Title |
 |------|-----|------------|
-| Home | `/` | BillXiot GPS — GPS Tracking & Fleet Management Software |
-| Pricing | `/pricing` | Pricing — GPS Fleet Tracking Plans \| BillXiot GPS |
-| Contact | `/contact` | Contact BillXiot GPS — GPS Tracking Sales & Support |
-| Android App | `/android-app` | Download BillXiot GPS Android App — Mobile Fleet Tracking |
-| About | `/about` | About BillXiot GPS — GPS & Fleet Tracking Company |
-| Company | `/company` | Company — BillXiot GPS Fleet Tracking Platform |
-| Help | `/help` | Help Center — BillXiot GPS GPS Tracking Support |
-| Documentation | `/docs` | Documentation — BillXiot GPS Fleet Platform Guides |
+| Home | `/` | BillX GPS — GPS Tracking & Fleet Management Software |
+| Pricing | `/pricing` | Pricing — GPS Fleet Tracking Plans \| BillX GPS |
+| Contact | `/contact` | Contact BillX GPS — GPS Tracking Sales & Support |
+| Android App | `/android-app` | Download BillX GPS Android App — Mobile Fleet Tracking |
+| About | `/about` | About BillX GPS — GPS & Fleet Tracking Company |
+| Company | `/company` | Company — BillX GPS Fleet Tracking Platform |
+| Help | `/help` | Help Center — BillX GPS GPS Tracking Support |
+| Documentation | `/docs` | Documentation — BillX GPS Fleet Platform Guides |
 | Blog | `/blog` | Blog — GPS Tracking & Fleet Management Insights |
-| Careers | `/careers` | Careers — Join BillXiot GPS |
-| Press | `/press` | Press — BillXiot GPS News & Media |
-| API | `/api` | API Reference — BillXiot GPS Fleet Tracking API |
-| Status | `/status` | System Status — BillXiot GPS Platform Uptime |
-| Privacy | `/privacy` | Privacy Policy — BillXiot GPS |
-| Terms | `/terms` | Terms of Service — BillXiot GPS |
-| Security | `/security` | Security — BillXiot GPS Fleet Platform |
-| Cookies | `/cookies` | Cookie Policy — BillXiot GPS |
+| Careers | `/careers` | Careers — Join BillX GPS |
+| Press | `/press` | Press — BillX GPS News & Media |
+| API | `/api` | API Reference — BillX GPS Fleet Tracking API |
+| Status | `/status` | System Status — BillX GPS Platform Uptime |
+| Privacy | `/privacy` | Privacy Policy — BillX GPS |
+| Terms | `/terms` | Terms of Service — BillX GPS |
+| Security | `/security` | Security — BillX GPS Fleet Platform |
+| Cookies | `/cookies` | Cookie Policy — BillX GPS |
 
 Arabic equivalents live in `lang/ar/seo.php`.
 
@@ -95,23 +95,23 @@ Arabic equivalents live in `lang/ar/seo.php`.
 
 | Page | Meta Description |
 |------|------------------|
-| Home | BillXiot GPS is a real-time GPS tracking and fleet management platform for Saudi Arabia, Pakistan, and worldwide. Live maps, route history, geofencing, alerts, and Android mobile app. |
-| Pricing | Compare BillXiot GPS fleet tracking plans with live GPS maps, geofencing, route playback, alerts, and mobile apps. Transparent pricing for logistics and transport fleets. |
-| Contact | Contact BillXiot GPS for GPS tracking demos, fleet onboarding, and technical support. Serving fleet operators in Saudi Arabia, Pakistan, and internationally. |
-| Android App | Official BillXiot GPS Android app for real-time vehicle tracking, fleet alerts, geofences, and dashboard sync. Install the APK with our step-by-step guide. |
-| About | Learn about BillXiot GPS, our mission to deliver reliable vehicle tracking and fleet management software for transport, logistics, and corporate fleets. |
-| Company | BillXiot GPS company overview: GPS tracking technology, fleet operations focus, and commitment to real-time vehicle monitoring solutions. |
-| Help | BillXiot GPS help center: answers about live tracking, devices, geofences, alerts, mobile app setup, and fleet dashboard usage. |
-| Documentation | BillXiot GPS documentation for fleet admins and integrators: setup guides, tracking features, and platform best practices. |
-| Blog | BillXiot GPS blog: articles on GPS vehicle tracking, fleet monitoring, logistics technology, and fleet safety in Saudi Arabia and Pakistan. |
-| Careers | Explore careers at BillXiot GPS and help build next-generation GPS tracking and fleet management software. |
-| Press | BillXiot GPS press room: news, media resources, and announcements about our GPS fleet tracking platform. |
-| API | BillXiot GPS API reference for developers integrating GPS tracking, device data, and fleet management into your systems. |
-| Status | Check BillXiot GPS platform status, tracking service availability, and system component health. |
-| Privacy | BillXiot GPS privacy policy: how we handle account data, fleet tracking information, and platform usage. |
-| Terms | BillXiot GPS terms of service for GPS tracking platform access, fleet accounts, and software usage. |
-| Security | Learn how BillXiot GPS protects fleet data, GPS tracking sessions, and customer accounts with secure infrastructure. |
-| Cookies | BillXiot GPS cookie policy explaining how cookies are used on our GPS tracking website and platform. |
+| Home | BillX GPS is a real-time GPS tracking and fleet management platform for Saudi Arabia, Pakistan, and worldwide. Live maps, route history, geofencing, alerts, and Android mobile app. |
+| Pricing | Compare BillX GPS fleet tracking plans with live GPS maps, geofencing, route playback, alerts, and mobile apps. Transparent pricing for logistics and transport fleets. |
+| Contact | Contact BillX GPS for GPS tracking demos, fleet onboarding, and technical support. Serving fleet operators in Saudi Arabia, Pakistan, and internationally. |
+| Android App | Official BillX GPS Android app for real-time vehicle tracking, fleet alerts, geofences, and dashboard sync. Install the APK with our step-by-step guide. |
+| About | Learn about BillX GPS, our mission to deliver reliable vehicle tracking and fleet management software for transport, logistics, and corporate fleets. |
+| Company | BillX GPS company overview: GPS tracking technology, fleet operations focus, and commitment to real-time vehicle monitoring solutions. |
+| Help | BillX GPS help center: answers about live tracking, devices, geofences, alerts, mobile app setup, and fleet dashboard usage. |
+| Documentation | BillX GPS documentation for fleet admins and integrators: setup guides, tracking features, and platform best practices. |
+| Blog | BillX GPS blog: articles on GPS vehicle tracking, fleet monitoring, logistics technology, and fleet safety in Saudi Arabia and Pakistan. |
+| Careers | Explore careers at BillX GPS and help build next-generation GPS tracking and fleet management software. |
+| Press | BillX GPS press room: news, media resources, and announcements about our GPS fleet tracking platform. |
+| API | BillX GPS API reference for developers integrating GPS tracking, device data, and fleet management into your systems. |
+| Status | Check BillX GPS platform status, tracking service availability, and system component health. |
+| Privacy | BillX GPS privacy policy: how we handle account data, fleet tracking information, and platform usage. |
+| Terms | BillX GPS terms of service for GPS tracking platform access, fleet accounts, and software usage. |
+| Security | Learn how BillX GPS protects fleet data, GPS tracking sessions, and customer accounts with secure infrastructure. |
+| Cookies | BillX GPS cookie policy explaining how cookies are used on our GPS tracking website and platform. |
 
 ---
 
@@ -202,4 +202,4 @@ Verify:
 
 ---
 
-*BillXiot GPS is now configured with enterprise-grade SEO foundations. Search ranking improvements depend on indexing time, content authority, and ongoing optimization.*
+*BillX GPS is now configured with enterprise-grade SEO foundations. Search ranking improvements depend on indexing time, content authority, and ongoing optimization.*

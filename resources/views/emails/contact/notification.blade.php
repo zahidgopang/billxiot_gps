@@ -4,7 +4,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>New Contact Message - BillXiot GPS</title>
+    <title>New Contact Message - BillX GPS</title>
     <style>
         body { font-family: 'Inter', Arial, sans-serif; line-height: 1.6; color: #334155; }
         .container { max-width: 600px; margin: 0 auto; padding: 20px; }
@@ -53,7 +53,7 @@
             2. Respond within 24 hours<br>
             3. Update ticket status in CRM</p>
 
-        <p>This is an automated notification from BillXiot GPS Contact System.</p>
+        <p>This is an automated notification from BillX GPS Contact System.</p>
     </div>
 </div>
 </body>

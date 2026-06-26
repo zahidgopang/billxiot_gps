@@ -167,6 +167,15 @@
                     </a>
                 @endif
             @endcan
+            @can('super-admin')
+                @if($navPanel === 'admin' && Route::has('admin.usage.index'))
+                    <a href="{{ route('admin.usage.index') }}"
+                       class="nav-link-premium {{ request()->routeIs('admin.usage.*') ? 'active' : '' }}">
+                        <i class="fas fa-book-open"></i>
+                        <span>{{ __('app.admin.nav.usage') }}</span>
+                    </a>
+                @endif
+            @endcan
             @if($navPanel === 'admin' && Route::has('admin.contact-messages.index'))
                 @php $newContactCount = \App\Models\ContactMessage::where('status', 'new')->count(); @endphp
                 <a href="{{ route('admin.contact-messages.index') }}"

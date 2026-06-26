@@ -1,7 +1,7 @@
-BillXiot GPS — Clean ZIP v2 (Full Blade Views)
+BillX GPS — Clean ZIP v2 (Full Blade Views)
 =============================================
 
-This archive contains only the custom application files for the BillXiot GPS project.
+This archive contains only the custom application files for the BillX GPS project.
 DO NOT copy Laravel core files from this ZIP. Instead, create a fresh Laravel 12 project
 and then copy these files into it (overwriting the matching app files).
 

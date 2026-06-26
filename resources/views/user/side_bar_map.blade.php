@@ -149,15 +149,23 @@
             <div id="addressBox" class="address-result" role="status" aria-live="polite"></div>
         </div>
     </details>
+
+    <section class="sidebar-section sidebar-section--lang map-sidebar-lang">
+        <h6 class="sidebar-section__title">
+            <i class="fas fa-globe" aria-hidden="true"></i>
+            {{ __('app.language.label') }}
+        </h6>
+        @include('partials.language-toggle')
+    </section>
 </div>
 
 <style>
     .filter-panel {
         width: 340px;
         position: fixed;
-        top: 70px;
+        top: var(--app-nav-height, 4.5rem);
         left: 0;
-        height: calc(100vh - 70px);
+        height: calc(100vh - var(--app-nav-height, 4.5rem));
         background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%);
         border-inline-end: 1px solid rgba(255, 255, 255, 0.08);
         box-shadow: 8px 0 32px rgba(0, 0, 0, 0.25);
@@ -696,6 +704,22 @@
     #filterPanel .map-status-chip--stopped { background: #dc2626; color: #fff; }
     #filterPanel .map-status-chip--offline { background: #64748b; color: #fff; }
     #filterPanel .map-status-chip--alert { background: #b91c1c; color: #fff; }
+
+    .map-sidebar-lang {
+        margin-top: 1rem;
+        padding-top: 1rem;
+        border-top: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .map-sidebar-lang .lang-toggle {
+        width: 100%;
+        justify-content: center;
+    }
+
+    @media (min-width: 769px) {
+        .map-sidebar-lang {
+            display: none;
+        }
+    }
 
     @media (max-width: 768px) {
         .filter-panel#filterPanel {

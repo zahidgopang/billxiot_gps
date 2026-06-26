@@ -2,7 +2,7 @@
 @extends('frontend.layout')
 
 @section('title', __('frontend.pages.docs.title'))
-@section('description', 'Comprehensive documentation, guides, and tutorials for BillXiot GPS platform.')
+@section('description', 'Comprehensive documentation, guides, and tutorials for BillX GPS platform.')
 
 @section('content')
 
@@ -20,7 +20,7 @@
                         Complete <span class="bg-gradient-to-r from-emerald-500 to-teal-600 bg-clip-text text-transparent">Guides</span>
                     </h1>
                     <p class="text-xl text-slate-600 dark:text-slate-300">
-                        Comprehensive documentation to help you get the most out of BillXiot GPS.
+                        Comprehensive documentation to help you get the most out of BillX GPS.
                     </p>
                 </div>
 
@@ -144,7 +144,7 @@
                     $guides = [
                         [
                             'title' => 'Initial Setup and Configuration',
-                            'desc' => 'Complete guide to setting up your BillXiot GPS account and adding devices',
+                            'desc' => 'Complete guide to setting up your BillX GPS account and adding devices',
                             'category' => 'Getting Started',
                             'updated' => 'Updated 2 days ago'
                         ],
