@@ -16,7 +16,7 @@ class MobileMapStatusResolverTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        Carbon::setTestNow(Carbon::parse('2026-05-29 12:00:00', 'Asia/Karachi'));
+        Carbon::setTestNow(Carbon::parse('2026-05-29 12:00:00', 'Asia/Riyadh'));
         $this->resolver = new MobileMapStatusResolver;
     }
 

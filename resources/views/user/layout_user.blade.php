@@ -728,6 +728,7 @@
 <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
 <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script>window.APP_TIMEZONE = @json(config('app.timezone'));</script>
 <script src="{{ protected_js('app-datetime.js') }}"></script>
 <script src="{{ protected_js('form-enhancements.js') }}"></script>
 <script src="{{ protected_js('map-session-guard.js') }}"></script>

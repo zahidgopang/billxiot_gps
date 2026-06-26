@@ -15,7 +15,17 @@ class TraccarPositionMapper
         $data = is_array($row) ? $row : (array) $row;
         $attrs = TraccarAttributes::decode($data['attributes'] ?? null);
         $fields = TraccarAttributes::toPositionFields($attrs);
-        $fixtime = $data['fixtime'] ?? $data['devicetime'] ?? $data['servertime'] ?? now();
+        // Traccar stores tc_positions timestamps in UTC. Parse them as UTC and
+        // shift to the app timezone so the DeviceLocation datetime cast (which
+        // re-parses in the app timezone) preserves the correct instant — otherwise
+        // a UTC fix is read as local time and the device looks hours stale/offline.
+        $appTz = (string) config('app.timezone', 'UTC');
+        $rawFixtime = $data['fixtime'] ?? $data['devicetime'] ?? $data['servertime'] ?? null;
+        $recordedAt = $rawFixtime !== null
+            ? ($rawFixtime instanceof \DateTimeInterface
+                ? Carbon::instance($rawFixtime)->setTimezone($appTz)
+                : Carbon::parse($rawFixtime, 'UTC')->setTimezone($appTz))
+            : now();
 
         $satellites = $fields['satellites'];
         if ($satellites === null && isset($data['satellites'])) {
@@ -40,7 +50,7 @@ class TraccarPositionMapper
             'heading' => (float) ($data['course'] ?? 0),
             'battery_level' => $fields['battery_level'],
             'gps_fix' => $fields['gps_fix'],
-            'recorded_at' => Carbon::parse($fixtime),
+            'recorded_at' => $recordedAt,
             'ignition' => $fields['ignition'],
             'acc' => $fields['acc'],
             'gsm_signal' => $gsmSignal,

@@ -1,10 +1,12 @@
 /**
- * BillX GPS — Pakistan (Asia/Karachi) date/time formatting for web UI.
+ * BillX GPS — Saudi Arabia (Asia/Riyadh) date/time formatting for web UI.
  */
 (function (global) {
     'use strict';
 
-    const TZ = 'Asia/Karachi';
+    const TZ = (typeof global !== 'undefined' && global.APP_TIMEZONE) || 'Asia/Riyadh';
+    /** Saudi Arabia (AST) is UTC+3 year-round — no DST. */
+    const TZ_OFFSET_HOURS = 3;
 
     function parseDate(value) {
         if (!value) return null;
@@ -15,7 +17,7 @@
 
     /**
      * Parse API / DB timestamps to UTC epoch ms.
-     * Y-m-d H:i:s (no offset) is treated as Asia/Karachi — matches backend AppDateTime.
+     * Y-m-d H:i:s (no offset) is treated as Asia/Riyadh — matches backend AppDateTime.
      */
     function parseTimestampMs(value) {
         if (value == null || value === '') return null;
@@ -35,8 +37,8 @@
             const h = Number(logMatch[4]);
             const mi = Number(logMatch[5]);
             const sec = Number(logMatch[6] || 0);
-            // PKT (UTC+5) → UTC
-            return Date.UTC(y, mo - 1, d, h - 5, mi, sec);
+            // AST (UTC+3) → UTC
+            return Date.UTC(y, mo - 1, d, h - TZ_OFFSET_HOURS, mi, sec);
         }
 
         const parsed = Date.parse(s);
@@ -150,7 +152,7 @@
     /** Shift a Y-m-d calendar day in app timezone. */
     function shiftYmd(ymd, deltaDays) {
         if (!ymd || !/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return ymd;
-        const anchor = new Date(`${ymd}T12:00:00+05:00`);
+        const anchor = new Date(`${ymd}T12:00:00+03:00`);
         anchor.setUTCDate(anchor.getUTCDate() + deltaDays);
         return formatDateYmd(anchor);
     }

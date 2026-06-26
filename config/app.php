@@ -61,11 +61,11 @@ return [
     |
     | Here you may specify the default timezone for your application, which
     | will be used by the PHP date and date-time functions. BillX GPS uses
-    | Asia/Karachi (UTC+05:00) for all user-facing timestamps.
+    | Asia/Riyadh (UTC+03:00) for all user-facing timestamps.
     |
     */
 
-    'timezone' => env('APP_TIMEZONE', 'Asia/Karachi'),
+    'timezone' => env('APP_TIMEZONE', 'Asia/Riyadh'),
 
     /*
     |--------------------------------------------------------------------------

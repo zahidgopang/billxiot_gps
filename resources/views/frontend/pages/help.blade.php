@@ -320,7 +320,7 @@
             businessHours: {
                 start: 9, // 9 AM
                 end: 18,  // 6 PM
-                timezone: 'GMT+5'
+                timezone: 'GMT+3'
             }
         };
 
@@ -339,7 +339,7 @@
             let message = whatsappConfig.defaultMessage;
 
             if (!isBusinessHours) {
-                message += '\n\n[Message sent outside business hours (9 AM - 6 PM GMT+5). We\'ll respond when we\'re back.]';
+                message += '\n\n[Message sent outside business hours (9 AM - 6 PM GMT+3). We\'ll respond when we\'re back.]';
             }
 
             // Encode message for URL

@@ -6,7 +6,7 @@ use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Normalizes Y-m-d history filters to full calendar days in app timezone (PKT)
+ * Normalizes Y-m-d history filters to full calendar days in app timezone (AST)
  * and builds UTC bounds for Traccar tc_positions.fixtime.
  */
 final class HistoryRangeBounds
@@ -16,7 +16,7 @@ final class HistoryRangeBounds
      */
     public static function normalize(Carbon $from, ?Carbon $to): array
     {
-        $tz = (string) config('app.timezone', 'Asia/Karachi');
+        $tz = (string) config('app.timezone', 'Asia/Riyadh');
 
         $from = $from->copy()->timezone($tz)->startOfDay();
         $toDay = ($to ?? $from)->copy()->timezone($tz)->startOfDay();
@@ -33,7 +33,7 @@ final class HistoryRangeBounds
     /** Inclusive lower bound for Traccar fixtime (UTC) — calendar-day start in app TZ. */
     public static function traccarFromUtc(Carbon $from): string
     {
-        $tz = (string) config('app.timezone', 'Asia/Karachi');
+        $tz = (string) config('app.timezone', 'Asia/Riyadh');
 
         return $from->copy()->timezone($tz)->startOfDay()->utc()->format('Y-m-d H:i:s');
     }
@@ -46,7 +46,7 @@ final class HistoryRangeBounds
 
     public static function isCalendarDayStart(Carbon $dt): bool
     {
-        $tz = (string) config('app.timezone', 'Asia/Karachi');
+        $tz = (string) config('app.timezone', 'Asia/Riyadh');
         $local = $dt->copy()->timezone($tz);
 
         return $local->format('H:i:s') === '00:00:00';
@@ -54,7 +54,7 @@ final class HistoryRangeBounds
 
     public static function isCalendarDayEnd(Carbon $dt): bool
     {
-        $tz = (string) config('app.timezone', 'Asia/Karachi');
+        $tz = (string) config('app.timezone', 'Asia/Riyadh');
         $local = $dt->copy()->timezone($tz);
 
         return $local->gte($local->copy()->startOfDay()->setTime(23, 59, 59));
@@ -62,11 +62,11 @@ final class HistoryRangeBounds
 
     /**
      * Exclusive upper bound — start of the day after $to in app timezone, as UTC.
-     * Includes every fixtime on the last calendar day (through 23:59:59 PKT).
+     * Includes every fixtime on the last calendar day (through 23:59:59 AST).
      */
     public static function traccarToExclusiveUtc(Carbon $to): string
     {
-        $tz = (string) config('app.timezone', 'Asia/Karachi');
+        $tz = (string) config('app.timezone', 'Asia/Riyadh');
 
         return $to->copy()->timezone($tz)->startOfDay()->addDay()->utc()->format('Y-m-d H:i:s');
     }

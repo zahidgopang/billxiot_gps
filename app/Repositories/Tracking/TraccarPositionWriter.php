@@ -26,8 +26,11 @@ class TraccarPositionWriter implements PositionWriterInterface
         }
 
         $traccarDeviceId = $this->sync->syncDevice($position->device);
-        $now = now();
-        $fixtime = $position->recordedAt;
+        // tc_positions timestamps are stored in UTC (Traccar convention; read back
+        // as UTC by TraccarPositionMapper). Convert before persisting so devices
+        // that ingest via the Laravel API match the native Traccar daemon data.
+        $now = now()->utc();
+        $fixtime = $position->recordedAt->copy()->utc();
 
         $attributes = TraccarAttributes::encode(
             TraccarAttributes::fromPositionPayload(array_merge(

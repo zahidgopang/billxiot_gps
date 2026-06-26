@@ -773,6 +773,7 @@
 @if(($htmlDir ?? 'ltr') === 'rtl')
     <script src="{{ asset('js/admin-rtl.js') }}"></script>
 @endif
+<script>window.APP_TIMEZONE = @json(config('app.timezone'));</script>
 <script src="{{ protected_js('app-datetime.js') }}"></script>
 <script src="{{ protected_js('form-enhancements.js') }}"></script>
 <script src="{{ protected_js('map-session-guard.js') }}"></script>

@@ -2375,6 +2375,7 @@
     </script>
     @endif
     <script src="{{ protected_js('map-session-guard.js') }}"></script>
+    <script>window.APP_TIMEZONE = @json(config('app.timezone'));</script>
     <script src="{{ protected_js('app-datetime.js') }}"></script>
     <script src="{{ protected_js('vehicle-marker.js') }}"></script>
     <script src="{{ protected_js('fleet-map-renderer.js') }}"></script>

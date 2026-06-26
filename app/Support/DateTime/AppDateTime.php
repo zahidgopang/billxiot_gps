@@ -6,11 +6,11 @@ use Carbon\Carbon;
 use Carbon\CarbonInterface;
 
 /**
- * BillX GPS display/API timestamps — always Asia/Karachi (UTC+05:00).
+ * BillX GPS display/API timestamps — always Asia/Riyadh (UTC+03:00).
  */
 final class AppDateTime
 {
-    public const TZ = 'Asia/Karachi';
+    public const TZ = 'Asia/Riyadh';
 
     public static function tz(): string
     {
@@ -40,7 +40,7 @@ final class AppDateTime
         return Carbon::parse($dt)->timezone(self::tz());
     }
 
-    /** ISO-8601 with +05:00 offset for API / mobile parsing. */
+    /** ISO-8601 with +03:00 offset for API / mobile parsing. */
     public static function toApi(?CarbonInterface $dt): ?string
     {
         return self::inAppTz($dt)?->toIso8601String();
