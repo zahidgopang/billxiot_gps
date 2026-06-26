@@ -41,6 +41,11 @@
     const staleTimeoutMs = staleMinSeconds * 1000;
     const offlineTimeoutMs = offlineSeconds * 1000;
     const onlineTimeoutMs = offlineTimeoutMs;
+    // Live poll cadence. MUST be declared: setupRealtime() reads this when
+    // creating the recurring poll interval. Under 'use strict' an undeclared
+    // reference throws and silently aborts live polling (marker freezes until
+    // a full page reload).
+    const pollIntervalMs = Number(cfg.pollIntervalMs) > 0 ? Number(cfg.pollIntervalMs) : 2000;
     const debugGps = cfg.debugGps === true
         || (typeof URLSearchParams !== 'undefined'
             && new URLSearchParams(window.location.search).get('debug_gps') === '1');
