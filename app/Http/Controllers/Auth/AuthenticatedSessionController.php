@@ -35,14 +35,32 @@ class AuthenticatedSessionController extends Controller
 
     /**
      * Destroy an authenticated session.
+     *
+     * Multi-device aware: logging out on this device must NOT sign the same
+     * account out on other laptops/phones. Laravel's guard logout rotates the
+     * shared remember_token, which would invalidate "remember me" everywhere, so
+     * we capture and restore it after invalidating only the current session.
      */
     public function destroy(Request $request): RedirectResponse
     {
-        Auth::guard('web')->logout();
+        $guard = Auth::guard('web');
+        $user = $guard->user();
+        $rememberToken = $user?->getRememberToken();
+
+        $guard->logout();
 
         $request->session()->invalidate();
 
         $request->session()->regenerateToken();
+
+        if ($user && ! empty($rememberToken)) {
+            try {
+                $user->setRememberToken($rememberToken);
+                $user->save();
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        }
 
         return redirect('/');
     }
