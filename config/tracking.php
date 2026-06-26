@@ -1,14 +1,14 @@
 <?php
 
 return [
-    'stopped_speed_kmh' => (float) env('TRACKING_STOPPED_SPEED', 5),
+    'stopped_speed_kmh' => (float) env('TRACKING_STOPPED_SPEED', 1),
     'slow_speed_max_kmh' => (float) env('TRACKING_SLOW_SPEED_MAX', 30),
     'overspeed_kmh' => (float) env('TRACKING_OVERSPEED', 80),
     'low_battery_percent' => (int) env('TRACKING_LOW_BATTERY', 20),
     'event_cooldown_seconds' => (int) env('TRACKING_EVENT_COOLDOWN', 300),
 
     /** Speed (km/h) above which a vehicle is considered moving/running. */
-    'moving_speed_kmh' => (float) env('TRACKING_MOVING_SPEED_KMH', 5),
+    'moving_speed_kmh' => (float) env('TRACKING_MOVING_SPEED_KMH', 1),
 
     /** Seconds before delayed tier (2 min). Fresh motion uses fixes newer than this. */
     'delayed_min_seconds' => (int) env('TRACKING_DELAYED_MIN_SECONDS', 120),

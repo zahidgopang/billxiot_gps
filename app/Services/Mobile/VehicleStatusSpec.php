@@ -13,7 +13,7 @@ namespace App\Services\Mobile;
  */
 class VehicleStatusSpec
 {
-    public const MOVING_SPEED_KMH = 5;
+    public const MOVING_SPEED_KMH = 1;
 
     /** Fresh motion classification requires fix newer than this. */
     public const DELAYED_MIN_SECONDS = 120;

@@ -122,12 +122,12 @@ class MobileMapStatusResolverTest extends TestCase
         $this->assertSame('running', $result['last_known_status_key']);
     }
 
-    public function test_vehicle_status_spec_motion_threshold_is_five_kmh(): void
+    public function test_vehicle_status_spec_motion_threshold_is_one_kmh(): void
     {
-        $this->assertSame('stopped', VehicleStatusSpec::motionKey(5, true));
-        $this->assertSame('running', VehicleStatusSpec::motionKey(5.1, true));
-        $this->assertSame('parked', VehicleStatusSpec::motionKey(5, false));
-        $this->assertSame('moving', VehicleStatusSpec::motionKey(6, false));
+        $this->assertSame('stopped', VehicleStatusSpec::motionKey(1, true));
+        $this->assertSame('running', VehicleStatusSpec::motionKey(1.1, true));
+        $this->assertSame('parked', VehicleStatusSpec::motionKey(1, false));
+        $this->assertSame('moving', VehicleStatusSpec::motionKey(2, false));
     }
 
     private function location(array $overrides, int $secondsAgo): DeviceLocation

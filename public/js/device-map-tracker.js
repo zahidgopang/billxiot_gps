@@ -25,7 +25,7 @@
     const overSpeedLimit = cfg.overSpeedLimit || 80;
     const lowBatteryThreshold = cfg.lowBatteryThreshold || 20;
     const movingSpeedKmh = cfg.movingSpeedKmh
-        ?? cfg.mapRendering?.connectivity?.moving_speed_kmh ?? 5;
+        ?? cfg.mapRendering?.connectivity?.moving_speed_kmh ?? 1;
     const idleSpeedKmh = cfg.idleSpeedKmh ?? 0.5;
     const parkedIconSpeedKmh = cfg.parkedIconSpeedKmh ?? 0.1;
     const motionDetectKm = cfg.motionDetectKm ?? 0.004;
