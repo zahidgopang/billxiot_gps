@@ -237,7 +237,7 @@ class MapController extends Controller
         return response()->json(array_merge([
             'imei' => $device->imei,
             'name' => $device->name,
-            'online' => $latest && $latest->recorded_at >= now()->subMinutes(5),
+            'online' => $this->mapStatus->isRecentlyOnline($latest),
             'last_seen' => $latest?->recorded_at?->diffForHumans() ?? 'No data',
         ], $formatted ?? []));
     }

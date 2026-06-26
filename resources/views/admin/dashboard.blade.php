@@ -218,7 +218,7 @@
                     <i class="fas fa-signal"></i>
                 </div>
                 <div class="stats-value">{{ number_format($onlineNow) }}</div>
-                <div class="stats-label">{{ __('app.admin.dashboard.online_now', ['minutes' => \App\Services\AdminDashboardService::ONLINE_MINUTES]) }}</div>
+                <div class="stats-label">{{ __('app.admin.dashboard.online_now') }}</div>
                 <small class="text-muted d-block">{{ __('app.admin.dashboard.moving_offline', ['moving' => $movingNow, 'offline' => $offlineDevices]) }}</small>
                 <div class="stats-change {{ $onlineChange['positive'] ? 'positive' : 'negative' }}">
                     <i class="fas fa-{{ $onlineChange['positive'] ? 'arrow-up' : 'arrow-down' }} me-1"></i>

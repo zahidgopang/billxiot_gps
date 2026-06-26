@@ -9,6 +9,7 @@ use App\Models\VehicleEvent;
 use App\Services\Traccar\TraccarIdMap;
 use App\Support\Traccar\TraccarMode;
 use App\Support\Traccar\TraccarSchema;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
@@ -98,12 +99,14 @@ class VehicleAlertController extends Controller
             }
         }
 
+        // eventtime is UTC; convert the user's calendar-day range (app timezone)
+        // into UTC datetime bounds so day filtering is accurate.
         if ($request->filled('from')) {
-            $query->whereDate('eventtime', '>=', $request->from);
+            $query->where('eventtime', '>=', Carbon::parse($request->from, config('app.timezone'))->startOfDay()->utc());
         }
 
         if ($request->filled('to')) {
-            $query->whereDate('eventtime', '<=', $request->to);
+            $query->where('eventtime', '<=', Carbon::parse($request->to, config('app.timezone'))->endOfDay()->utc());
         }
 
         $total = (clone $query)->count();

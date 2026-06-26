@@ -46,7 +46,7 @@ return [
     ],
 
     'hero' => [
-        'badge' => 'Live GPS tracking for fleets across Saudi Arabia & Pakistan',
+        'badge' => 'Live GPS tracking for fleets across the world',
         'title_line1' => 'Real-Time',
         'title_line2' => 'Fleet Visibility',
         'subtitle' => 'Monitor vehicles on a live map, review route history, receive geofence and speed alerts, and keep dispatch teams aligned from web and mobile.',

@@ -649,7 +649,7 @@ class TraccarSyncService
         DB::table($eventsTable)->insert(
             TraccarSchema::filterColumns($eventsTable, [
                 'type' => $this->mapEventType($event->type),
-                'eventtime' => $event->occurred_at,
+                'eventtime' => $event->occurred_at->copy()->utc(),
                 'deviceid' => $traccarDeviceId,
                 'positionid' => $traccarPositionId,
                 'geofenceid' => $traccarGeofenceId,

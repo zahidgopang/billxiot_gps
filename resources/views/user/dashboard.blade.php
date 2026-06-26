@@ -144,7 +144,7 @@
                         <div>
                             <h6 class="text-uppercase text-muted mb-2">Online Now</h6>
                             <h2 class="mb-0" style="color: var(--primary-blue);">{{ $onlineNow }}</h2>
-                            <p class="mb-0"><span class="text-info"><i class="fas fa-signal me-1"></i>Reporting</span> in last 5 min</p>
+                            <p class="mb-0"><span class="text-info"><i class="fas fa-signal me-1"></i>{{ __('app.user.devices.online_now') }}</span></p>
                         </div>
                         <div class="icon-box" style="background: linear-gradient(135deg, var(--primary-blue), var(--secondary-blue));">
                             <i class="fas fa-satellite-dish fa-2x text-white"></i>

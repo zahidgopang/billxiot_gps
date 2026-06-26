@@ -21,7 +21,8 @@ use Spatie\Activitylog\Models\Activity;
 
 class AdminDashboardService
 {
-    public const ONLINE_MINUTES = 5;
+    /** Historical position-window metric for trend charts (30 min, aligned with canonical offline tier). */
+    public const ONLINE_MINUTES = (int) (VehicleStatusSpec::OFFLINE_SECONDS / 60);
 
     public const RECENT_ACTIVITY_LIMIT = 5;
 
@@ -247,7 +248,7 @@ class AdminDashboardService
     {
         if (\App\Support\Traccar\TraccarMode::readsTraccar() && \App\Support\Traccar\TraccarSchema::hasEvents()) {
             return DB::table(config('traccar.tables.events', 'tc_events'))
-                ->where('eventtime', '>=', now()->subDays($days))
+                ->where('eventtime', '>=', now()->subDays($days)->utc())
                 ->get()
                 ->groupBy(fn ($row) => app(\App\Repositories\Tracking\TraccarEventMapper::class)
                     ->reverseMapType((string) $row->type))

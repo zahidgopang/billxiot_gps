@@ -46,7 +46,7 @@ class TraccarEventWriter implements EventWriterInterface
 
         $payload = TraccarSchema::filterColumns($eventsTable, [
             'type' => $this->mapper->mapType($type),
-            'eventtime' => $at,
+            'eventtime' => $at->copy()->utc(),
             'deviceid' => $traccarDeviceId,
             'positionid' => $traccarPositionId,
             'geofenceid' => $traccarGeofenceId,

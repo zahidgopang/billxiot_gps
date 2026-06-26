@@ -219,7 +219,7 @@ class MobileMapStatusResolver
                 'parked' => $counts['parked']++,
                 'moving' => $counts['running']++,
                 'delayed' => $counts['delayed']++,
-                'stale' => $counts['delayed']++,
+                'stale' => $counts['stale']++,
                 'alert' => $counts['alert']++,
                 'idle' => $counts['stopped']++,
                 default => $counts['offline']++,

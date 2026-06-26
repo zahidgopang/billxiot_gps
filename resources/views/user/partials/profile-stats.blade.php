@@ -15,7 +15,7 @@
         </div>
         <div class="stat-value">{{ $onlineNow }}</div>
         <div class="stat-label">Online Now</div>
-        <small class="text-muted d-block mt-1">Last {{ \App\Services\UserDashboardService::ONLINE_MINUTES }} min</small>
+        <small class="text-muted d-block mt-1">{{ __('app.user.devices.online_now') }}</small>
     </div>
 
     <div class="stat-card">

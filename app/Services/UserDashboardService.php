@@ -28,9 +28,10 @@ class UserDashboardService
         private MobileMapStatusResolver $mapStatus,
     ) {}
 
-    public const ONLINE_MINUTES = 10;
-
     public const MOVING_SPEED_KMH = VehicleStatusSpec::MOVING_SPEED_KMH;
+
+    /** Canonical online window — matches map/mobile connectivity tiers (≤30 min). */
+    public const ONLINE_MINUTES = (int) (VehicleStatusSpec::OFFLINE_SECONDS / 60);
 
     public function getStats(User $user): array
     {
@@ -83,48 +84,26 @@ class UserDashboardService
 
     public function countOnlineDevices(Collection $devices): int
     {
-        $cutoff = now()->subMinutes(self::ONLINE_MINUTES);
-
-        return $devices->filter(function (Device $device) use ($cutoff) {
+        return $devices->filter(function (Device $device) {
             return $device->status === 'active'
-                && $device->latestLocation
-                && $device->latestLocation->recorded_at >= $cutoff;
+                && $this->mapStatus->isRecentlyOnline($device->latestLocation);
         })->count();
     }
 
     public function getVehicleStateCounts(Collection $devices): array
     {
-        $running = 0;
-        $parked = 0;
-        $maintenance = 0;
-        $alerts = 0;
-
-        $cutoff = now()->subMinutes(self::ONLINE_MINUTES);
+        $fleetCounts = $this->mapStatus->fleetCounts($devices);
+        $maintenance = $devices->whereIn('status', ['inactive', 'blocked'])->count();
         $alertDeviceIds = $this->alertDeviceIds($devices);
+        $alerts = $devices->filter(fn (Device $d) => $alertDeviceIds->contains($d->id)
+            && $this->mapStatus->isRecentlyOnline($d->latestLocation))->count();
 
-        foreach ($devices as $device) {
-            if (in_array($device->status, ['inactive', 'blocked'], true)) {
-                $maintenance++;
-                continue;
-            }
-
-            $latest = $device->latestLocation;
-            if (! $latest || $latest->recorded_at < $cutoff) {
-                continue;
-            }
-
-            if ($alertDeviceIds->contains($device->id)) {
-                $alerts++;
-            }
-
-            if ((float) ($latest->speed ?? 0) > self::MOVING_SPEED_KMH) {
-                $running++;
-            } else {
-                $parked++;
-            }
-        }
-
-        return compact('running', 'parked', 'maintenance', 'alerts');
+        return [
+            'running' => $fleetCounts['running'],
+            'parked' => $fleetCounts['parked'] + $fleetCounts['stopped'] + $fleetCounts['idle'],
+            'maintenance' => $maintenance,
+            'alerts' => $alerts,
+        ];
     }
 
     public function getRecentActivities(Collection $deviceIds): Collection
@@ -289,11 +268,13 @@ class UserDashboardService
     public function presentMapStatus(string $key, string $label): array
     {
         $presentation = match ($key) {
+            'running' => ['class' => 'bg-success', 'dot' => 'bg-success'],
             'moving' => ['class' => 'bg-success', 'dot' => 'bg-success'],
             'idle' => ['class' => 'bg-warning', 'dot' => 'bg-warning'],
             'stopped' => ['class' => 'bg-warning', 'dot' => 'bg-warning'],
             'parked' => ['class' => 'bg-info', 'dot' => 'bg-info'],
             'delayed' => ['class' => 'bg-warning text-dark', 'dot' => 'bg-warning'],
+            'stale' => ['class' => 'bg-warning text-dark', 'dot' => 'bg-warning'],
             'offline' => ['class' => 'bg-secondary', 'dot' => 'bg-secondary'],
             'alert' => ['class' => 'bg-danger', 'dot' => 'bg-danger'],
             'blocked' => ['class' => 'bg-dark', 'dot' => 'bg-dark'],

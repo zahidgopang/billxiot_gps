@@ -58,12 +58,13 @@ class TraccarEventReader implements EventReaderInterface
         $query = DB::table(config('traccar.tables.events', 'tc_events'))
             ->where('deviceid', $traccarDeviceId);
 
+        // tc_events.eventtime is stored in UTC — convert app-tz bounds to UTC.
         if ($from) {
-            $query->where('eventtime', '>=', $from);
+            $query->where('eventtime', '>=', $from->copy()->utc());
         }
 
         if ($to) {
-            $query->where('eventtime', '<=', $to);
+            $query->where('eventtime', '<=', $to->copy()->utc());
         }
 
         if ($types) {
@@ -105,7 +106,7 @@ class TraccarEventReader implements EventReaderInterface
             ->whereIn('deviceid', $traccarDeviceIds);
 
         if ($from) {
-            $query->where('eventtime', '>=', $from);
+            $query->where('eventtime', '>=', $from->copy()->utc());
         }
 
         if (! $types) {
@@ -126,7 +127,7 @@ class TraccarEventReader implements EventReaderInterface
         }
 
         return DB::table(config('traccar.tables.events', 'tc_events'))
-            ->where('eventtime', '>=', $from)
+            ->where('eventtime', '>=', $from->copy()->utc())
             ->count();
     }
 

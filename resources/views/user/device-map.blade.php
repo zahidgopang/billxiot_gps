@@ -1790,11 +1790,14 @@
                         @php
                             $liveChipKey = $initialStatus['key'] ?? 'offline';
                             $liveChipClass = match ($liveChipKey) {
+                                'running' => 'running',
                                 'moving' => 'moving',
                                 'idle' => 'idle',
                                 'ignition_off' => 'stopped',
                                 'parked' => 'parked',
                                 'stopped' => 'stopped',
+                                'delayed' => 'delayed',
+                                'stale' => 'stale',
                                 'alert' => 'alert',
                                 default => 'offline',
                             };

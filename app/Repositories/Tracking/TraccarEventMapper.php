@@ -57,7 +57,11 @@ class TraccarEventMapper
             'lat' => (float) ($attrs['latitude'] ?? 0),
             'lng' => (float) ($attrs['longitude'] ?? 0),
             'meta' => $attrs['meta'] ?? null,
-            'occurred_at' => Carbon::parse($data['eventtime'] ?? now()),
+            // tc_events.eventtime is stored in UTC — parse as UTC then convert to
+            // the app timezone so alert times display correctly (not offset).
+            'occurred_at' => isset($data['eventtime'])
+                ? Carbon::parse($data['eventtime'], 'UTC')->setTimezone(config('app.timezone'))
+                : now(),
         ]);
 
         $event->id = (int) ($data['id'] ?? 0);

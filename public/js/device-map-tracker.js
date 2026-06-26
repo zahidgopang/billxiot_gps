@@ -203,11 +203,16 @@
         return null;
     }
 
+    function isValidCoord(value) {
+        const n = parseFloat(value);
+        return Number.isFinite(n);
+    }
+
     function normalizePoint(raw) {
         if (!raw) return null;
-        const lat = parseFloat(raw.lat ?? raw.latitude ?? 0);
-        const lng = parseFloat(raw.lng ?? raw.longitude ?? 0);
-        if (!lat || !lng || Number.isNaN(lat) || Number.isNaN(lng)) return null;
+        const lat = parseFloat(raw.lat ?? raw.latitude ?? NaN);
+        const lng = parseFloat(raw.lng ?? raw.longitude ?? NaN);
+        if (!isValidCoord(lat) || !isValidCoord(lng)) return null;
 
         const ts = resolvePointTimestamp(raw);
         const tsMs = parseRouteTimestampMs(ts);
@@ -1795,7 +1800,7 @@ ${pts}
             return;
         }
         offlineTimer = setTimeout(() => {
-            if (isConnectivityStale(lastTelemetry)) {
+            if (isVehicleOffline(lastTelemetry)) {
                 triggerAlert('offline', mi('noGpsRecently', 'No GPS update received recently'), 'warning', mi('deviceOffline', 'Device Offline'));
             }
         }, onlineTimeoutMs);
@@ -1885,7 +1890,7 @@ ${pts}
             const data = await parseJsonResponse(res);
             if (handleMapAccessDenied(res, data)) return;
             if (!res.ok) return;
-            if (data && data.lat) applyLivePoint(data);
+            if (data && isValidCoord(data.lat) && isValidCoord(data.lng)) applyLivePoint(data);
             await pollNewAlerts();
         } catch (e) {
             console.warn('Live poll failed', e);

@@ -23,7 +23,7 @@ class TraccarPositionMapper
         $rawFixtime = $data['fixtime'] ?? $data['devicetime'] ?? $data['servertime'] ?? null;
         $recordedAt = $rawFixtime !== null
             ? ($rawFixtime instanceof \DateTimeInterface
-                ? Carbon::instance($rawFixtime)->setTimezone($appTz)
+                ? Carbon::instance($rawFixtime)->utc()->setTimezone($appTz)
                 : Carbon::parse($rawFixtime, 'UTC')->setTimezone($appTz))
             : now();
 

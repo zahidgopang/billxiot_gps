@@ -36,11 +36,26 @@ class TrackingMetricsService
         return $this->distanceFromLegacy($deviceIds, $days);
     }
 
+    /**
+     * tc_positions.fixtime is stored in UTC; convert app-tz instants before
+     * comparing so dashboard metrics are not off by the timezone offset.
+     */
+    private function utc(Carbon $dt): Carbon
+    {
+        return $dt->copy()->utc();
+    }
+
+    /** Current app-timezone offset (e.g. "+03:00") for SQL CONVERT_TZ. */
+    private function appOffset(): string
+    {
+        return now()->format('P');
+    }
+
     public function positionCountSince(Carbon $from): int
     {
         if (TraccarMode::readsTraccar() && TraccarSchema::isReady()) {
             return (int) DB::table(config('traccar.tables.positions', 'tc_positions'))
-                ->where('fixtime', '>=', $from)
+                ->where('fixtime', '>=', $this->utc($from))
                 ->count();
         }
 
@@ -74,8 +89,8 @@ class TrackingMetricsService
 
             return (int) DB::table(config('traccar.tables.positions', 'tc_positions'))
                 ->whereIn('deviceid', $traccarIds)
-                ->where('fixtime', '>=', $from)
-                ->selectRaw('COUNT(DISTINCT DATE(fixtime)) as days')
+                ->where('fixtime', '>=', $this->utc($from))
+                ->selectRaw('COUNT(DISTINCT DATE(CONVERT_TZ(fixtime, ?, ?))) as days', ['+00:00', $this->appOffset()])
                 ->value('days');
         }
 
@@ -102,14 +117,16 @@ class TrackingMetricsService
 
         if (TraccarMode::readsTraccar() && TraccarSchema::isReady()) {
             $table = config('traccar.tables.positions', 'tc_positions');
+            $off = $this->appOffset();
+            $startUtc = $this->utc($start);
             $gpsByDay = DB::table($table)
-                ->where('fixtime', '>=', $start)
-                ->selectRaw('DATE(fixtime) as day, COUNT(*) as total')
+                ->where('fixtime', '>=', $startUtc)
+                ->selectRaw('DATE(CONVERT_TZ(fixtime, ?, ?)) as day, COUNT(*) as total', ['+00:00', $off])
                 ->groupBy('day')
                 ->pluck('total', 'day');
             $devicesByDay = DB::table($table)
-                ->where('fixtime', '>=', $start)
-                ->selectRaw('DATE(fixtime) as day, COUNT(DISTINCT deviceid) as total')
+                ->where('fixtime', '>=', $startUtc)
+                ->selectRaw('DATE(CONVERT_TZ(fixtime, ?, ?)) as day, COUNT(DISTINCT deviceid) as total', ['+00:00', $off])
                 ->groupBy('day')
                 ->pluck('total', 'day');
         } elseif (Schema::hasTable('device_locations')) {
@@ -150,7 +167,7 @@ class TrackingMetricsService
 
         if (TraccarMode::readsTraccar() && TraccarSchema::isReady()) {
             return (int) DB::table(config('traccar.tables.positions', 'tc_positions'))
-                ->whereBetween('fixtime', [$from, $to])
+                ->whereBetween('fixtime', [$this->utc($from), $this->utc($to)])
                 ->distinct('deviceid')
                 ->count('deviceid');
         }
@@ -170,7 +187,8 @@ class TrackingMetricsService
         if (TraccarMode::readsTraccar() && TraccarSchema::isReady()) {
             $max = DB::table(config('traccar.tables.positions', 'tc_positions'))->max('fixtime');
 
-            return $max ? Carbon::parse($max) : null;
+            // fixtime is UTC — parse as UTC then present in app timezone.
+            return $max ? Carbon::parse($max, 'UTC')->setTimezone(config('app.timezone')) : null;
         }
 
         if (! Schema::hasTable('device_locations')) {
