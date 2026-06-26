@@ -30,8 +30,8 @@ class UserDashboardService
 
     public const MOVING_SPEED_KMH = VehicleStatusSpec::MOVING_SPEED_KMH;
 
-    /** Canonical online window — matches map/mobile connectivity tiers (≤30 min). */
-    public const ONLINE_MINUTES = (int) (VehicleStatusSpec::OFFLINE_SECONDS / 60);
+    /** Canonical online window — matches map/mobile connectivity tiers (≤30 min; VehicleStatusSpec::OFFLINE_SECONDS). */
+    public const ONLINE_MINUTES = 30;
 
     public function getStats(User $user): array
     {

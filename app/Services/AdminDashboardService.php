@@ -21,8 +21,8 @@ use Spatie\Activitylog\Models\Activity;
 
 class AdminDashboardService
 {
-    /** Historical position-window metric for trend charts (30 min, aligned with canonical offline tier). */
-    public const ONLINE_MINUTES = (int) (VehicleStatusSpec::OFFLINE_SECONDS / 60);
+    /** Historical position-window metric for trend charts (30 min; matches VehicleStatusSpec::OFFLINE_SECONDS). */
+    public const ONLINE_MINUTES = 30;
 
     public const RECENT_ACTIVITY_LIMIT = 5;
 
