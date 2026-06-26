@@ -5,6 +5,10 @@
 @section('description', __('seo.pages.help.description'))
 
 @section('content')
+@php
+    $contactWhatsapp = config('contact.whatsapp');
+    $contactEmail = config('contact.email');
+@endphp
 
     <!-- Hero -->
     <section class="relative min-h-[60vh] flex items-center overflow-hidden">
@@ -237,13 +241,13 @@
                     <div class="p-6 rounded-xl bg-slate-50 dark:bg-slate-800/50">
                         <i class="fa-solid fa-phone text-sky-500 text-2xl mb-4"></i>
                         <div class="font-bold mb-2">Phone Support</div>
-                        <div class="text-slate-600 dark:text-slate-400">+92 300 3026824</div>
+                        <div class="text-slate-600 dark:text-slate-400" dir="ltr">{{ $contactWhatsapp }}</div>
                     </div>
 
                     <div class="p-6 rounded-xl bg-slate-50 dark:bg-slate-800/50">
                         <i class="fa-solid fa-envelope text-sky-500 text-2xl mb-4"></i>
                         <div class="font-bold mb-2">Email Support</div>
-                        <div class="text-slate-600 dark:text-slate-400">support@billxiotgps.com</div>
+                        <div class="text-slate-600 dark:text-slate-400">{{ $contactEmail }}</div>
                     </div>
 
                     <div onclick="openWhatsAppSupport()"
@@ -311,7 +315,7 @@
     <script>
         // WhatsApp Configuration
         const whatsappConfig = {
-            phoneNumber: '+923003026824', // Your WhatsApp number
+            phoneNumber: @json(config('contact.whatsapp')), // Your WhatsApp number
             defaultMessage: 'Hello! I need help with BillX GPS. I was on your help center page.',
             businessHours: {
                 start: 9, // 9 AM

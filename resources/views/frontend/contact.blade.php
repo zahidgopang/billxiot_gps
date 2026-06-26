@@ -205,7 +205,7 @@
                                                id="phone"
                                                name="phone"
                                                class="pl-10 w-full px-4 py-3 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent transition-all"
-                                               placeholder="+923003026824">
+                                               placeholder="+966 58 018 8223">
                                     </div>
                                 </div>
 
