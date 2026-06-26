@@ -117,7 +117,7 @@ return [
             'fleet_users' => 'Fleet users',
             'total_devices' => 'Total devices',
             'active_inactive' => ':active active · :inactive inactive',
-            'online_now' => 'Online now (:minutes m)',
+            'online_now' => 'Online now',
             'moving_offline' => ':moving moving · :offline offline',
             'active_subscriptions' => 'Active subscriptions',
             'subs_total_expired' => ':total total · :expired expired',

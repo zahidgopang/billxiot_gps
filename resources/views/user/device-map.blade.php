@@ -2216,7 +2216,7 @@
             staleMinSeconds: {{ \App\Services\Mobile\VehicleStatusSpec::STALE_MIN_SECONDS }},
             offlineSeconds: {{ \App\Services\Mobile\VehicleStatusSpec::OFFLINE_SECONDS }},
             recentSeconds: {{ \App\Services\Mobile\VehicleStatusSpec::DELAYED_MIN_SECONDS }},
-            pollIntervalMs: 3000,
+            pollIntervalMs: 2000,
             stopMinMinutes: 2,
             stopIcon: @json(asset('images/stop.svg')),
             startIcon: @json(asset('images/map/marker-start.svg')),

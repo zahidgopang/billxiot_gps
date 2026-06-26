@@ -7,6 +7,8 @@ use App\Contracts\Tracking\EventReaderInterface;
 use App\Models\ContactMessage;
 use App\Models\Device;
 use App\Services\ActivityLogService;
+use App\Services\Mobile\MobileMapStatusResolver;
+use App\Services\Mobile\VehicleStatusSpec;
 use App\Services\Tracking\DevicePositionLoader;
 use App\Services\Tracking\TrackingMetricsService;
 use App\Models\Subscription;
@@ -29,11 +31,11 @@ class AdminDashboardService
         private EventReaderInterface $events,
         private GeofenceStoreInterface $geofences,
         private ActivityLogService $activityLog,
+        private MobileMapStatusResolver $statusResolver,
     ) {}
 
     public function getStats(): array
     {
-        $cutoff = now()->subMinutes(self::ONLINE_MINUTES);
         $devices = Device::with(['user:id,name,email'])->get();
         $this->positionLoader->attachLatestToMany($devices);
 
@@ -44,17 +46,26 @@ class AdminDashboardService
         $inactiveDevices = $devices->where('status', 'inactive')->count();
         $blockedDevices = $devices->where('status', 'blocked')->count();
 
-        $onlineNow = $devices->filter(function (Device $d) use ($cutoff) {
-            return $d->status === 'active'
-                && $d->latestLocation
-                && $d->latestLocation->recorded_at >= $cutoff;
-        })->count();
+        // Use the canonical status engine so dashboard counts match the live map,
+        // fleet list, and mobile app exactly.
+        $online = 0;
+        $moving = 0;
+        foreach ($devices as $d) {
+            if ($d->status !== 'active') {
+                continue;
+            }
+            $resolved = $this->statusResolver->resolve($d->latestLocation, $d);
+            if (($resolved['connectivity_tier'] ?? 'offline') !== 'offline') {
+                $online++;
+            }
+            $key = VehicleStatusSpec::normalizeKey($resolved['key'] ?? '');
+            if ($key === 'running' || $key === 'moving') {
+                $moving++;
+            }
+        }
 
-        $movingNow = $devices->filter(function (Device $d) use ($cutoff) {
-            return $d->latestLocation
-                && $d->latestLocation->recorded_at >= $cutoff
-                && (float) ($d->latestLocation->speed ?? 0) > UserDashboardService::MOVING_SPEED_KMH;
-        })->count();
+        $onlineNow = $online;
+        $movingNow = $moving;
 
         $activeSubscriptions = Subscription::where('status', 'active')
             ->whereNotNull('device_id')
@@ -127,25 +138,33 @@ class AdminDashboardService
         ];
     }
 
+    /**
+     * Canonical device status badge — identical engine to the live map, fleet
+     * list, and mobile app (Running/Stopped/Parked/Moving/Delayed/Stale/Offline).
+     */
     public function deviceStatusLabel(Device $device): array
     {
-        $cutoff = now()->subMinutes(self::ONLINE_MINUTES);
-        $latest = $device->latestLocation;
+        $resolved = $this->statusResolver->resolve($device->latestLocation, $device);
+        $key = VehicleStatusSpec::normalizeKey($resolved['key'] ?? 'offline');
 
-        if ($device->status === 'blocked') {
-            return ['label' => 'Blocked', 'class' => 'badge-blocked'];
-        }
-        if ($device->status === 'inactive') {
-            return ['label' => 'Inactive', 'class' => 'badge-inactive'];
-        }
-        if (! $latest || $latest->recorded_at < $cutoff) {
-            return ['label' => 'Offline', 'class' => 'badge-offline'];
-        }
-        if ((float) ($latest->speed ?? 0) > UserDashboardService::MOVING_SPEED_KMH) {
-            return ['label' => 'Moving', 'class' => 'badge-active'];
-        }
+        return [
+            'label' => $resolved['label'] ?? (string) __('app.map.status_offline'),
+            'class' => self::statusBadgeClass($key),
+        ];
+    }
 
-        return ['label' => 'Online', 'class' => 'badge-active'];
+    private static function statusBadgeClass(string $key): string
+    {
+        return match ($key) {
+            'running', 'moving' => 'badge-running',
+            'stopped', 'idle' => 'badge-stopped',
+            'parked', 'ignition_off' => 'badge-parked',
+            'delayed' => 'badge-delayed',
+            'stale' => 'badge-stale',
+            'blocked', 'alert' => 'badge-blocked',
+            'offline' => 'badge-offline',
+            default => 'badge-inactive',
+        };
     }
 
     private function onlineDevicesAt(Carbon $at): int

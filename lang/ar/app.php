@@ -94,7 +94,7 @@ return [
             'fleet_users' => 'مستخدمو الأسطول',
             'total_devices' => 'إجمالي الأجهزة',
             'active_inactive' => ':active نشط · :inactive غير نشط',
-            'online_now' => 'متصل الآن (:minutes د)',
+            'online_now' => 'متصل الآن',
             'moving_offline' => ':moving متحرك · :offline غير متصل',
             'active_subscriptions' => 'اشتراكات نشطة',
             'subs_total_expired' => ':total إجمالي · :expired منتهية',

@@ -130,7 +130,13 @@
         .badge-status.badge-active { background: #dff7e0; color: #2f7d3a; }
         .badge-status.badge-inactive { background: #f3f4f6; color: #6b7280; }
         .badge-status.badge-blocked { background: #fee2e2; color: #b91c1c; }
-        .badge-status.badge-offline { background: #fef3c7; color: #92400e; }
+        .badge-status.badge-offline { background: #fee2e2; color: #b91c1c; }
+        /* Canonical status colors — match the live map / fleet / mobile. */
+        .badge-status.badge-running { background: #dcfce7; color: #15803d; }
+        .badge-status.badge-stopped { background: #ffedd5; color: #c2410c; }
+        .badge-status.badge-parked { background: #f1f5f9; color: #475569; }
+        .badge-status.badge-delayed { background: #fef9c3; color: #854d0e; }
+        .badge-status.badge-stale { background: #fef3c7; color: #92400e; }
     </style>
 @endpush
 

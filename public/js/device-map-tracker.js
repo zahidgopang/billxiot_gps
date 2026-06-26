@@ -115,6 +115,7 @@
     let livePopupAddress = '';
     let livePollTimer = null;
     let alertsPollTimer = null;
+    let statusTicker = null;
     let markerAnimationFrame = null;
     let animFromPos = null;
     let animFromHeading = 0;
@@ -528,10 +529,17 @@
 
     /** Age of last GPS fix in milliseconds, or null when unknown. */
     function gpsAgeMs(point) {
-        if (!point?.recorded_at) {
+        if (!point) {
             return null;
         }
-        return Date.now() - new Date(point.recorded_at).getTime();
+        // Prefer the timezone-aware parsed timestamp so the connectivity tier
+        // (live/delayed/stale/offline) is correct regardless of app timezone.
+        const ms = point.recorded_at_ms
+            ?? parseRouteTimestampMs(point.recorded_at);
+        if (ms == null) {
+            return null;
+        }
+        return Date.now() - ms;
     }
 
     function connectivityTier(point) {
@@ -1922,6 +1930,23 @@ ${pts}
         return true;
     }
 
+    /**
+     * Re-evaluate the displayed status from the last known telemetry every second
+     * so the status chip transitions in real time (Live → Delayed → Stale →
+     * Offline) and the "last seen" stays current between live polls.
+     */
+    function tickStatus() {
+        if (!lastTelemetry || playbackActive) {
+            return;
+        }
+        updateTelemetryUI(lastTelemetry);
+        if (vehiclePopupPinned) {
+            updateLiveVehiclePopup(lastTelemetry);
+        }
+        // Refresh marker color so it reflects the aging status tier.
+        ensureFleetRenderer()?.updateVehicleIcon(lastTelemetry);
+    }
+
     function setupRealtime() {
         if (livePollTimer) {
             clearInterval(livePollTimer);
@@ -1929,10 +1954,14 @@ ${pts}
         if (alertsPollTimer) {
             clearInterval(alertsPollTimer);
         }
+        if (statusTicker) {
+            clearInterval(statusTicker);
+        }
 
         pollLive();
         livePollTimer = setInterval(() => pollLive(), pollIntervalMs);
         alertsPollTimer = setInterval(pollNewAlerts, pollIntervalMs);
+        statusTicker = setInterval(tickStatus, 1000);
 
         if (window.Echo && typeof window.Echo.private === 'function') {
             try {
