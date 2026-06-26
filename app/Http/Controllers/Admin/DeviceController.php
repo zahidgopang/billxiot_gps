@@ -61,6 +61,26 @@ class DeviceController extends Controller
         ]);
     }
 
+    public function show(Request $request, Device $device)
+    {
+        $this->authorizePermission('devices.view');
+        $this->assertDeviceInScope($request, $device);
+
+        $device->load(['user', 'subscription']);
+        app(\App\Services\Tracking\DevicePositionLoader::class)->attachLatest($device);
+
+        $clientId = $this->tenantScope()->clientIdForDevice($device);
+        $client = $clientId ? Client::query()->find($clientId) : null;
+        $canManage = \Illuminate\Support\Facades\Gate::allows('manage-device', $device);
+
+        return view('admin.devices.show', [
+            'device' => $device,
+            'client' => $client,
+            'canManage' => $canManage,
+            'panel' => $this->panelPrefix(),
+        ]);
+    }
+
     public function create()
     {
         $this->authorizePermission('devices.manage');
@@ -370,5 +390,15 @@ class DeviceController extends Controller
         }
 
         return $this->clientStock->installableTypesForClient($clientId, $includeType);
+    }
+
+    private function assertDeviceInScope(Request $request, Device $device): void
+    {
+        $exists = $this->tenantScope()
+            ->scopeDevices(Device::query(), $request->user())
+            ->whereKey($device->getKey())
+            ->exists();
+
+        abort_unless($exists, 404);
     }
 }

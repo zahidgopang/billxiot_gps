@@ -148,6 +148,8 @@ return [
             'type' => 'Type',
             'user' => 'User',
             'last_known' => 'Last Known',
+            'device_details' => 'Device details',
+            'back_to_list' => 'Back to devices',
         ],
         'stock' => [
             'title' => 'Device Stock',
@@ -320,6 +322,11 @@ return [
             'fleet_map_back' => 'Back to users',
             'fleet_map_refresh' => 'Refresh positions',
             'fleet_map_fit' => 'Fit all vehicles',
+            'user_details' => 'User details',
+            'back_to_list' => 'Back to users',
+            'account_details' => 'Account details',
+            'assigned_devices' => 'Assigned devices',
+            'no_devices' => 'No devices assigned to this user yet.',
         ],
         'subscriptions' => [
             'title' => 'Subscriptions',

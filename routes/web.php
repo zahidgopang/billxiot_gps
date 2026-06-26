@@ -284,7 +284,7 @@ Route::middleware(['auth', 'panel:client', 'can:client-panel'])
 
         Route::patch('users/{user}/toggle-status', [AdminUserController::class, 'toggleStatus'])
             ->name('users.toggle-status');
-        Route::resource('users', AdminUserController::class)->except(['destroy', 'show']);
+        Route::resource('users', AdminUserController::class)->except(['destroy']);
 
         Route::patch('devices/{device}/toggle-status', [AdminDeviceController::class, 'toggleStatus'])
             ->name('devices.toggle-status');

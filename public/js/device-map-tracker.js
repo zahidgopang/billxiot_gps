@@ -2246,14 +2246,23 @@ ${pts}
         lastMapBootError = '';
         hideLoading();
         resizeMap();
-        if (!mapDataStarted) {
-            mapDataStarted = true;
-            hydrateAlertsFromConfig();
-            loadGeofences();
-            loadHistory();
-            startMapDataServices();
-        }
+        kickOffMapData();
         window.dispatchEvent(new CustomEvent('device-map-ready'));
+    }
+
+    // Fetch route/live/alert data as soon as the map instance exists, decoupled
+    // from Google tile painting. The route + 24h history render onto the map even
+    // before tiles finish loading, so data appears at a consistent speed instead
+    // of waiting on variable tile-server / network latency.
+    function kickOffMapData() {
+        if (mapDataStarted) {
+            return;
+        }
+        mapDataStarted = true;
+        hydrateAlertsFromConfig();
+        loadGeofences();
+        loadHistory();
+        startMapDataServices();
     }
 
     function bindMapWatchers() {
@@ -2409,6 +2418,9 @@ ${pts}
             }
 
             bindMapWatchers();
+            // Start fetching route history + live data immediately, in parallel
+            // with tile painting, so 24h data loads at a consistent speed.
+            kickOffMapData();
             await verifyMapRendered();
             onMapTilesReady();
             mapBootAttempts = 0;
@@ -2426,7 +2438,7 @@ ${pts}
             }
 
             if (mapBootAttempts < MAP_BOOT_MAX) {
-                await sleep(Math.min(1500 * mapBootAttempts, 6000));
+                await sleep(Math.min(800 * mapBootAttempts, 2500));
                 mapBootRunning = false;
                 return bootDeviceMap();
             }
@@ -2437,7 +2449,7 @@ ${pts}
                 : retryMsg;
             showLoading(detail);
             mapBootAttempts = 0;
-            await sleep(8000);
+            await sleep(3000);
             mapBootRunning = false;
             return bootDeviceMap();
         } finally {

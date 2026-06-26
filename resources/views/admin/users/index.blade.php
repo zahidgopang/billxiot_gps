@@ -120,6 +120,7 @@
                         </td>
                         <td><x-admin.ltr>{{ $u->created_at?->diffForHumans() ?? '—' }}</x-admin.ltr></td>
                         <td>
+                            <a href="{{ route($panel . '.users.show', $u) }}" class="btn btn-sm btn-outline-secondary">{{ __('app.common.view') }}</a>
                             <a href="{{ route($panel . '.users.edit', $u) }}" class="btn btn-sm btn-outline-primary">{{ __('app.common.edit') }}</a>
 
                             @if($isEndUser && ($u->tracker_devices_count ?? 0) > 0 && Gate::allows('permission', 'maps.view'))

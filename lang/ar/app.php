@@ -125,6 +125,8 @@ return [
             'type' => 'النوع',
             'user' => 'المستخدم',
             'last_known' => 'آخر موقع معروف',
+            'device_details' => 'تفاصيل الجهاز',
+            'back_to_list' => 'العودة إلى الأجهزة',
         ],
         'stock' => [
             'title' => 'مخزون الأجهزة',
@@ -297,6 +299,11 @@ return [
             'fleet_map_back' => 'العودة إلى المستخدمين',
             'fleet_map_refresh' => 'تحديث المواقع',
             'fleet_map_fit' => 'ملاءمة جميع المركبات',
+            'user_details' => 'تفاصيل المستخدم',
+            'back_to_list' => 'العودة إلى المستخدمين',
+            'account_details' => 'تفاصيل الحساب',
+            'assigned_devices' => 'الأجهزة المخصصة',
+            'no_devices' => 'لا توجد أجهزة مخصصة لهذا المستخدم بعد.',
         ],
         'subscriptions' => [
             'title' => 'الاشتراكات',

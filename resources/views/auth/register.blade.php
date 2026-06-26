@@ -53,8 +53,8 @@
                     <!-- Country Code Selector -->
                     <div class="country-code-selector" id="countryCodeSelector">
                         <div class="selected-country">
-                            <span class="country-flag" id="selectedFlag">🇺🇸</span>
-                            <span class="country-code" id="selectedCode">+1</span>
+                            <span class="country-flag" id="selectedFlag">🇸🇦</span>
+                            <span class="country-code" id="selectedCode">+966</span>
                             <svg class="dropdown-arrow" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                 <polyline points="6 9 12 15 18 9"></polyline>
                             </svg>
@@ -72,7 +72,7 @@
                             </div>
                         </div>
                     </div>
-                    <input type="hidden" name="country_code" id="countryCode" value="+1">
+                    <input type="hidden" name="country_code" id="countryCode" value="{{ old('country_code', '+966') }}">
 
                     <!-- Phone Number Input -->
                     <div class="phone-number-wrapper">
@@ -1144,6 +1144,19 @@
 
         // Initialize country list
         populateCountryList();
+
+        // Sync the visible selector with the current country code (defaults to
+        // Saudi Arabia, or the value retained after a validation error).
+        (function syncSelectedCountry() {
+            const current = countryCodeInput.value || '+966';
+            const match = countries.find(c => c.code === current)
+                || countries.find(c => c.code === '+966');
+            if (match) {
+                selectedFlag.textContent = match.flag;
+                selectedCode.textContent = match.code;
+                countryCodeInput.value = match.code;
+            }
+        })();
 
         // Toggle country dropdown
         countryCodeSelector.addEventListener('click', (e) => {

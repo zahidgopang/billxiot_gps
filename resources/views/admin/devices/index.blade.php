@@ -112,6 +112,7 @@
                         </td>
                         <td><x-admin.ltr>{{ optional($d->latestLocation?->recorded_at)->diffForHumans() ?? '-' }}</x-admin.ltr></td>
                         <td>
+                            <a href="{{ route($panel . '.devices.show', $d) }}" class="btn btn-sm btn-outline-secondary">{{ __('app.common.view') }}</a>
                             <a href="{{ route($panel . '.devices.edit', $d) }}" class="btn btn-sm btn-outline-primary">{{ __('app.common.edit') }}</a>
 
                             @if($panel === 'admin')

@@ -8,6 +8,7 @@ use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Services\AdminAuditService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\Rule;
 
 class UserController extends Controller
@@ -46,6 +47,29 @@ class UserController extends Controller
 
         return view('admin.users.index', [
             'users' => $users,
+            'panel' => $this->panelPrefix(),
+        ]);
+    }
+
+    public function show(Request $request, User $user)
+    {
+        $this->authorizePermission('users.view');
+        $this->assertUserInScope($request, $user);
+
+        $user->load(['clients:id,name']);
+
+        $devices = $user->trackableDevicesQuery()
+            ->orderByDesc('id')
+            ->get();
+
+        app(\App\Services\Tracking\DevicePositionLoader::class)->attachLatestToMany($devices);
+
+        $canManage = Gate::allows('manage-user', $user);
+
+        return view('admin.users.show', [
+            'user' => $user,
+            'devices' => $devices,
+            'canManage' => $canManage,
             'panel' => $this->panelPrefix(),
         ]);
     }
@@ -295,6 +319,16 @@ class UserController extends Controller
             'name' => $request->input('name'),
             'can_track_maps' => $request->boolean('can_track_maps'),
         ]);
+    }
+
+    private function assertUserInScope(Request $request, User $user): void
+    {
+        $exists = $this->tenantScope()
+            ->scopeUsers(User::query(), $request->user())
+            ->whereKey($user->getKey())
+            ->exists();
+
+        abort_unless($exists, 404);
     }
 
 }
