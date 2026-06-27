@@ -227,22 +227,32 @@ class TrackingMetricsService
             return 0;
         }
 
+        $fromUtc = $this->utc(now()->subDays($days));
+        $table = config('traccar.tables.positions', 'tc_positions');
         $total = 0.0;
 
-        foreach (Device::query()->whereIn('id', $deviceIds)->get() as $device) {
-            $history = $this->positions->historyForDevice($device, now()->subDays($days), null, 'asc');
-            $prev = null;
+        foreach ($traccarIds as $traccarDeviceId) {
+            $prevLat = null;
+            $prevLng = null;
 
-            foreach ($history as $loc) {
-                if ($prev instanceof DeviceLocation) {
-                    $total += $this->haversineKm(
-                        (float) $prev->lat,
-                        (float) $prev->lng,
-                        (float) $loc->lat,
-                        (float) $loc->lng
-                    );
+            // Stream lat/lng only — loading full DeviceLocation collections for 30 days
+            // per device exhausts memory on live fleets and caused HTTP 500 on /user/dashboard.
+            foreach (DB::table($table)
+                ->where('deviceid', $traccarDeviceId)
+                ->where('fixtime', '>=', $fromUtc)
+                ->orderBy('fixtime')
+                ->orderBy('id')
+                ->select(['latitude', 'longitude'])
+                ->lazy(1000) as $row) {
+                $lat = (float) ($row->latitude ?? 0);
+                $lng = (float) ($row->longitude ?? 0);
+
+                if ($prevLat !== null) {
+                    $total += $this->haversineKm($prevLat, $prevLng, $lat, $lng);
                 }
-                $prev = $loc;
+
+                $prevLat = $lat;
+                $prevLng = $lng;
             }
         }
 

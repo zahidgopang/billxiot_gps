@@ -14,6 +14,7 @@ use App\Services\Tracking\TrackingMetricsService;
 use App\Services\Traccar\TraccarTrackingGate;
 use App\Services\Traccar\TraccarUserAccessService;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Schema;
 use Spatie\Activitylog\Models\Activity;
 
 class UserDashboardService
@@ -46,7 +47,12 @@ class UserDashboardService
 
         $totalDevices = $devices->count();
         $activeDevices = $devices->where('status', 'active')->count();
-        $totalDistanceKm = $this->metrics->calculateTotalDistanceKm($deviceIds);
+        try {
+            $totalDistanceKm = $this->metrics->calculateTotalDistanceKm($deviceIds);
+        } catch (\Throwable $e) {
+            report($e);
+            $totalDistanceKm = 0;
+        }
         $activeAlerts = $deviceIds->isEmpty()
             ? 0
             : $this->events->countForDevices(
@@ -140,20 +146,23 @@ class UserDashboardService
                 },
             ]);
 
-        $activityItems = Activity::where('log_name', 'device')
-            ->where('subject_type', Device::class)
-            ->whereIn('subject_id', $deviceIds)
-            ->latest()
-            ->limit(8)
-            ->get()
-            ->map(fn (Activity $activity) => [
-                'type' => 'activity',
-                'title' => $activity->description ?? 'Device activity',
-                'description' => data_get($activity->properties, 'device_name') ?: ($activity->description ?? ''),
-                'time' => $activity->created_at,
-                'icon' => 'fa-satellite',
-                'gradient' => 'linear-gradient(135deg, #10B981, #059669)',
-            ]);
+        $activityItems = collect();
+        if (Schema::hasTable(config('activitylog.table_name', 'activity_log'))) {
+            $activityItems = Activity::where('log_name', 'device')
+                ->where('subject_type', Device::class)
+                ->whereIn('subject_id', $deviceIds)
+                ->latest()
+                ->limit(8)
+                ->get()
+                ->map(fn (Activity $activity) => [
+                    'type' => 'activity',
+                    'title' => $activity->description ?? 'Device activity',
+                    'description' => data_get($activity->properties, 'device_name') ?: ($activity->description ?? ''),
+                    'time' => $activity->created_at,
+                    'icon' => 'fa-satellite',
+                    'gradient' => 'linear-gradient(135deg, #10B981, #059669)',
+                ]);
+        }
 
         return $vehicleItems
             ->concat($activityItems)

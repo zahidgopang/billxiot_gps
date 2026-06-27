@@ -52,7 +52,7 @@
                             <h2 class="mb-3">
                                 {{ __('app.user.dashboard.welcome_back') }}
                                 <span style="color: var(--primary-blue);">
-                            {{ $trackerDisplayName ?? auth()->user()->name }}
+                                {{ $trackerDisplayName ?? auth()->user()?->name }}
                         </span>! 👋
                             </h2>
 

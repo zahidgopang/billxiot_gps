@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Device;
 use App\Services\Auth\UserPasswordVerifier;
+use App\Services\Authorization\RbacService;
 use App\Services\DeviceSubscriptionService;
 use App\Services\UserAvatarService;
 use App\Services\UserDashboardService;
@@ -12,9 +13,16 @@ use Illuminate\Support\Facades\Hash;
 
 class UserController extends Controller
 {
-    public function dashboard(Request $request, UserDashboardService $dashboard)
+    public function dashboard(Request $request, UserDashboardService $dashboard, RbacService $rbac)
     {
         $user = auth()->user();
+
+        // Panel roles (client/admin) must not render the end-user dashboard — send them
+        // to their own panel so /user/dashboard never 500s for fleet managers.
+        if ($rbac->canAccessPanel($user)) {
+            return redirect()->route($rbac->panelRouteFor($user));
+        }
+
         $stats = $dashboard->getStats($user);
 
         return view('user.dashboard', array_merge($stats, [
