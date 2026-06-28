@@ -133,11 +133,16 @@ class DeviceDataController extends Controller
 
         app(DeviceConnectivityPushService::class)->onPositionReceived($device);
 
+        // Deliver any operator-queued commands back to the tracker on this check-in.
+        $commands = app(\App\Services\Tracking\CommandService::class)->deliverPendingForDevice($device);
+
         return response()->json([
 
             'ok' => true,
 
-            'location_id' => $loc->id
+            'location_id' => $loc->id,
+
+            'commands' => $commands,
         ]);
     }
 

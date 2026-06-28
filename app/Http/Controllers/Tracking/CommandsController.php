@@ -26,7 +26,8 @@ class CommandsController extends Controller
         return view('tracking.commands', $this->viewData($request, $panel, [
             'jsonUrl' => route("{$panel}.tracking.commands.json"),
             'sendUrl' => route("{$panel}.tracking.commands.send"),
-            'allowedTypes' => CommandService::ALLOWED_TYPES,
+            'cancelUrl' => route("{$panel}.tracking.commands.cancel", ['command' => 0]),
+            'commandTypes' => CommandService::typeLabels(),
         ]));
     }
 
@@ -48,6 +49,13 @@ class CommandsController extends Controller
         $result = $this->commands->send($request->user(), $validated);
 
         return $this->noStoreJson($result, ($result['success'] ?? false) ? 200 : 422);
+    }
+
+    public function cancel(Request $request, int $command): JsonResponse
+    {
+        $ok = $this->commands->cancel($request->user(), $command);
+
+        return $this->noStoreJson(['success' => $ok], $ok ? 200 : 422);
     }
 
     /**

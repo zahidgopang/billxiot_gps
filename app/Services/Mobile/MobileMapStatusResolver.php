@@ -4,6 +4,7 @@ namespace App\Services\Mobile;
 
 use App\Models\Device;
 use App\Models\DeviceLocation;
+use App\Services\Tracking\TrackingSettingsService;
 
 /**
  * Canonical vehicle status for mobile API, web live map, and fleet lists.
@@ -12,6 +13,10 @@ use App\Models\DeviceLocation;
  */
 class MobileMapStatusResolver
 {
+    public function __construct(
+        private ?TrackingSettingsService $trackingSettings = null,
+    ) {}
+
     public const MOVING_SPEED_KMH = VehicleStatusSpec::MOVING_SPEED_KMH;
 
     public const DELAYED_MIN_SECONDS = VehicleStatusSpec::DELAYED_MIN_SECONDS;
@@ -36,6 +41,7 @@ class MobileMapStatusResolver
      */
     public function resolve(?DeviceLocation $latest, Device $device): array
     {
+        $thresholds = $this->trackingSettings?->forDevice($device);
         $lastKnown = $this->motionStatus($latest);
 
         if ($device->status === 'blocked') {
@@ -72,7 +78,7 @@ class MobileMapStatusResolver
         $speed = (float) ($latest->speed ?? 0);
         $ignition = (bool) $latest->ignition;
 
-        if ($latest->power_cut && VehicleStatusSpec::connectivityTier($seconds) === 'live') {
+        if ($latest->power_cut && VehicleStatusSpec::connectivityTier($seconds, $thresholds) === 'live') {
             return $this->pack(
                 key: 'alert',
                 label: (string) __('app.map.status_power_cut'),
@@ -82,7 +88,7 @@ class MobileMapStatusResolver
             );
         }
 
-        if ($latest->panic && VehicleStatusSpec::connectivityTier($seconds) === 'live') {
+        if ($latest->panic && VehicleStatusSpec::connectivityTier($seconds, $thresholds) === 'live') {
             return $this->pack(
                 key: 'alert',
                 label: (string) __('app.map.status_sos'),
@@ -92,7 +98,7 @@ class MobileMapStatusResolver
             );
         }
 
-        $resolved = VehicleStatusSpec::resolve($seconds, $speed, $ignition);
+        $resolved = VehicleStatusSpec::resolve($seconds, $speed, $ignition, $thresholds);
 
         return $this->pack(
             key: $resolved['key'],
@@ -125,16 +131,17 @@ class MobileMapStatusResolver
         ];
     }
 
-    public function isRecentlyOnline(?DeviceLocation $latest): bool
+    public function isRecentlyOnline(?DeviceLocation $latest, ?Device $device = null): bool
     {
         if (! $latest || ! $latest->recorded_at) {
             return false;
         }
 
         $seconds = $this->secondsSinceUpdate($latest);
+        $thresholds = $device ? $this->trackingSettings?->forDevice($device) : null;
 
         return $seconds !== null
-            && VehicleStatusSpec::connectivityTier($seconds) !== 'offline';
+            && VehicleStatusSpec::connectivityTier($seconds, $thresholds) !== 'offline';
     }
 
     public function secondsSinceUpdate(?DeviceLocation $latest): ?int

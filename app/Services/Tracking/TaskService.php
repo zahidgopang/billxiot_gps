@@ -6,7 +6,6 @@ use App\Models\Device;
 use App\Models\TrackingTask;
 use App\Models\User;
 use Carbon\Carbon;
-use Illuminate\Support\Carbon as SupportCarbon;
 
 class TaskService
 {
@@ -129,7 +128,7 @@ class TaskService
         return ($value === null || $value === '') ? null : (string) $value;
     }
 
-    private function nullableDate(mixed $value): ?SupportCarbon
+    private function nullableDate(mixed $value): ?Carbon
     {
         if (empty($value)) {
             return null;

@@ -18,6 +18,6 @@
 </div>
 @endsection
 @push('scripts')
-<script>window.TRACKING_DRIVERS_CONFIG = { jsonUrl: @json($jsonUrl), storeUrl: @json($storeUrl), vehicles: @json($vehicles) };</script>
+<script>window.TRACKING_DRIVERS_CONFIG = { jsonUrl: @json($jsonUrl), storeUrl: @json($storeUrl), vehicles: @json($vehicles), confirmDelete: @json(__('app.tracking.driver_confirm_delete')), deleteFailed: @json(__('app.tracking.driver_delete_failed')) };</script>
 <script src="{{ protected_js('tracking-drivers.js') }}"></script>
 @endpush

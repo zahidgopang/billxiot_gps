@@ -47,6 +47,8 @@ final class PushNotificationType
 
     public const GPS_WEAK = 'gps_weak';
 
+    public const MAINTENANCE_DUE = 'maintenance_due';
+
     /** @return array<int, string> */
     public static function all(): array
     {
@@ -70,6 +72,7 @@ final class PushNotificationType
             self::IGNITION_OFF_MOVING,
             self::GSM_WEAK,
             self::GPS_WEAK,
+            self::MAINTENANCE_DUE,
         ];
     }
 
@@ -95,6 +98,7 @@ final class PushNotificationType
             self::IGNITION_OFF_MOVING => 'Ignition off while moving',
             self::GSM_WEAK => 'GSM signal weak',
             self::GPS_WEAK => 'GPS signal weak',
+            self::MAINTENANCE_DUE => 'Maintenance due',
             default => 'Fleet alert',
         };
     }
@@ -114,6 +118,7 @@ final class PushNotificationType
             self::LOW_BATTERY,
             self::IGNITION_OFF_MOVING,
             self::DEVICE_OFFLINE,
+            self::MAINTENANCE_DUE,
             self::GEOFENCE_EXIT => 'warning',
             default => 'info',
         };

@@ -189,7 +189,36 @@
         }
 
         .tc-row-info { flex: 1; min-width: 0; }
+        .tc-row-titlewrap {
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            flex-wrap: wrap;
+        }
         .tc-row-title { font-weight: 600; font-size: 0.86rem; color: #1e293b; }
+
+        .tc-status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.32rem;
+            font-size: 0.66rem;
+            font-weight: 700;
+            line-height: 1;
+            white-space: nowrap;
+            padding: 0.2rem 0.45rem;
+            border-radius: 999px;
+            color: var(--st, #64748b);
+            background: color-mix(in srgb, var(--st, #64748b) 15%, #fff);
+            border: 1px solid color-mix(in srgb, var(--st, #64748b) 35%, transparent);
+        }
+        .tc-status-badge::before {
+            content: '';
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: var(--st, #64748b);
+            flex-shrink: 0;
+        }
         .tc-row-meta {
             font-size: 0.72rem;
             color: #64748b;
@@ -246,6 +275,33 @@
         .tc-form .form-select { margin-bottom: 0.55rem; }
         .tc-form-actions { display: flex; gap: 0.4rem; }
         .tc-form-actions .btn { flex: 1; }
+
+        /* Object select (Select2) sizing to match the small Bootstrap controls */
+        .tc-form .select2-container { margin-bottom: 0.55rem; width: 100% !important; }
+        .tc-form .select2-container--bootstrap-5 .select2-selection {
+            min-height: calc(1.5em + 0.5rem + 2px);
+            font-size: 0.875rem;
+            padding: 0.05rem 0.5rem;
+        }
+        .tc-form .select2-container--bootstrap-5 .select2-selection--single .select2-selection__rendered {
+            line-height: calc(1.5em + 0.5rem);
+            padding: 0;
+        }
+        .tc-form .select2-container--bootstrap-5 .select2-selection--single .select2-selection__arrow {
+            height: calc(1.5em + 0.5rem + 2px);
+        }
+
+        /* History date + time on one aligned row */
+        .tc-datetime-row {
+            display: flex;
+            gap: 0.4rem;
+            align-items: center;
+            margin-bottom: 0.55rem;
+        }
+        .tc-datetime-row .tc-date-input { flex: 1 1 auto; min-width: 0; }
+        .tc-datetime-row .tc-time-input { flex: 0 0 7.25rem; width: 7.25rem; }
+        /* row already supplies bottom spacing; avoid double margin from inputs */
+        .tc-datetime-row .form-control { margin-bottom: 0; }
 
         .tc-empty { padding: 1.2rem 0.8rem; text-align: center; color: #94a3b8; font-size: 0.82rem; }
 
@@ -542,22 +598,23 @@
                 <div class="tc-tab-body" data-tab-body="history">
                     <div class="tc-form tc-hist-form">
                         <label for="tcHistVehicle">{{ __('app.tracking.object') }}</label>
-                        <select id="tcHistVehicle" class="form-select form-select-sm">
+                        <select id="tcHistVehicle" class="form-select form-select-sm no-select2">
                             @foreach($vehicles as $vehicle)
                                 <option value="{{ $vehicle['id'] }}">{{ $vehicle['title'] ?? ('#' . $vehicle['id']) }}</option>
                             @endforeach
                         </select>
 
+                        @php($tcToday = now()->format('Y-m-d'))
                         <label for="tcHistDateFrom">{{ __('app.tracking.date_from') }}</label>
-                        <div class="d-flex gap-2">
-                            <input type="date" id="tcHistDateFrom" class="form-control form-control-sm admin-ltr" dir="ltr">
-                            <input type="time" id="tcHistTimeFrom" class="form-control form-control-sm admin-ltr" dir="ltr" value="00:00" style="max-width:7rem;">
+                        <div class="tc-datetime-row">
+                            <input type="date" id="tcHistDateFrom" class="form-control form-control-sm admin-ltr tc-date-input" dir="ltr" value="{{ $tcToday }}">
+                            <input type="time" id="tcHistTimeFrom" class="form-control form-control-sm admin-ltr tc-time-input" dir="ltr" value="00:00">
                         </div>
 
                         <label for="tcHistDateTo">{{ __('app.tracking.date_to') }}</label>
-                        <div class="d-flex gap-2">
-                            <input type="date" id="tcHistDateTo" class="form-control form-control-sm admin-ltr" dir="ltr">
-                            <input type="time" id="tcHistTimeTo" class="form-control form-control-sm admin-ltr" dir="ltr" value="23:59" style="max-width:7rem;">
+                        <div class="tc-datetime-row">
+                            <input type="date" id="tcHistDateTo" class="form-control form-control-sm admin-ltr tc-date-input" dir="ltr" value="{{ $tcToday }}">
+                            <input type="time" id="tcHistTimeTo" class="form-control form-control-sm admin-ltr tc-time-input" dir="ltr" value="23:59">
                         </div>
 
                         <div class="tc-form-actions mt-2">
@@ -659,7 +716,7 @@
             devicePanelUrl: @json(Route::has($routes['devicePanel']) ? route($routes['devicePanel']) : null),
             deviceMileageUrl: @json(Route::has($routes['deviceMileage']) ? route($routes['deviceMileage']) : null),
             commandsSendUrl: @json(Route::has($routes['commandsSend']) ? route($routes['commandsSend']) : null),
-            commandTypes: @json(\App\Services\Tracking\CommandService::ALLOWED_TYPES),
+            commandTypes: @json(\App\Services\Tracking\CommandService::typeLabels()),
             csrfToken: @json(csrf_token()),
             pollIntervalMs: 2000,
             animDurationMs: 1200,

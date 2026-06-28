@@ -37,6 +37,7 @@ final class PushNotificationMapper
             VehicleEvent::TYPE_GEOFENCE_ENTER => PushNotificationType::GEOFENCE_ENTER,
             VehicleEvent::TYPE_GEOFENCE_EXIT => PushNotificationType::GEOFENCE_EXIT,
             VehicleEvent::TYPE_OVERSPEED => PushNotificationType::OVERSPEED,
+            VehicleEvent::TYPE_MAINTENANCE => PushNotificationType::MAINTENANCE_DUE,
             default => null,
         };
     }

@@ -34,6 +34,10 @@ return Application::configure(basePath: dirname(__DIR__))
                 ->everyFiveMinutes()
                 ->withoutOverlapping(5);
         }
+
+        $schedule->command('maintenance:check')
+            ->hourly()
+            ->withoutOverlapping(10);
     })
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->alias([

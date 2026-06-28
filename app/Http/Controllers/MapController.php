@@ -12,6 +12,7 @@ use App\Models\VehicleEvent;
 use App\Support\DateTime\AppDateTime;
 use App\Services\Mobile\MobileMapStatusResolver;
 use App\Services\Tracking\DeviceHistoryFetcher;
+use App\Services\Tracking\NotificationPreferenceService;
 use App\Services\VehicleEventService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -28,6 +29,7 @@ class MapController extends Controller
         private GeofenceStoreInterface $geofences,
         private MobileMapStatusResolver $mapStatus,
         private DeviceHistoryFetcher $historyFetcher,
+        private NotificationPreferenceService $notificationPrefs,
     ) {}
 
     public function map(Request $request, string $token)
@@ -57,7 +59,7 @@ class MapController extends Controller
         $user = $request->user();
         $mapTourMode = $user->getMapTourPreference();
         $showMapTourOnLoad = $user->shouldShowMapTourOnLoad();
-        $initialAlerts = $this->bellAlertsForDevice($device, 15)
+        $initialAlerts = $this->filterByWebPrefs($this->bellAlertsForDevice($device, 15), $user)
             ->map(fn (VehicleEvent $event) => $event->toAlertArray())
             ->values()
             ->all();
@@ -260,11 +262,26 @@ class MapController extends Controller
             $collection = $this->events->latestForDevice($device, $limit);
         }
 
-        $events = $collection
+        $events = $this->filterByWebPrefs($collection, $request->user())
             ->map(fn (VehicleEvent $event) => $event->toAlertArray())
             ->values();
 
         return response()->json($events);
+    }
+
+    /**
+     * Drop event types the viewing user disabled for the web notification feed.
+     * No-op for guest/token viewers without preferences.
+     */
+    private function filterByWebPrefs(Collection $events, $user): Collection
+    {
+        if (! $user) {
+            return $events;
+        }
+
+        return $events
+            ->filter(fn (VehicleEvent $event) => ! $this->notificationPrefs->isWebSuppressed($user, $event->type))
+            ->values();
     }
 
     /**

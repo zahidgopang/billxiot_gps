@@ -1,6 +1,41 @@
 @extends($layout)
 @section('title', __('app.tracking.reports_title') . ' - ' . __('app.brand'))
-@push('styles')@include('tracking.partials.module-styles')@endpush
+@push('styles')
+@include('tracking.partials.module-styles')
+<style>
+    .gt-report-toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        margin-bottom: 0.5rem;
+        min-height: 32px;
+    }
+    .gt-report-pager { display: flex; align-items: center; gap: 0.35rem; }
+    .gt-report-pager .form-select-sm { width: auto; }
+    .gt-report-tablewrap { position: relative; min-height: 160px; }
+    .gt-report-overlay {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(255, 255, 255, 0.7);
+        z-index: 5;
+        border-radius: 8px;
+    }
+    .gt-report-overlay[hidden] { display: none !important; }
+    .gt-report-empty {
+        padding: 2.5rem 1rem;
+        text-align: center;
+        color: #94a3b8;
+        font-size: 0.9rem;
+    }
+    .gt-report-empty[hidden] { display: none !important; }
+    #gtReportTable td, #gtReportTable th { white-space: nowrap; }
+</style>
+@endpush
 @section('content')
 <div class="gt-module-page">
     @include('tracking.partials.hub-nav')
@@ -35,11 +70,21 @@
             </div>
             <div class="col-lg-9">
                 <div id="gtReportMap" class="mb-3" hidden></div>
-                <div class="table-responsive">
-                    <table class="table table-sm table-hover" id="gtReportTable">
-                        <thead><tr id="gtReportHead"></tr></thead>
-                        <tbody id="gtReportBody"></tbody>
-                    </table>
+                <div class="gt-report-toolbar">
+                    <span id="gtReportCount" class="text-muted small"></span>
+                    <div class="gt-report-pager" id="gtReportPager"></div>
+                </div>
+                <div class="gt-report-tablewrap">
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover" id="gtReportTable">
+                            <thead><tr id="gtReportHead"></tr></thead>
+                            <tbody id="gtReportBody"></tbody>
+                        </table>
+                    </div>
+                    <div class="gt-report-empty" id="gtReportEmpty" hidden></div>
+                    <div class="gt-report-overlay" id="gtReportOverlay" hidden>
+                        <div class="spinner-border text-primary" role="status" aria-hidden="true"></div>
+                    </div>
                 </div>
             </div>
         </div>

@@ -80,6 +80,7 @@ class TraccarEventMapper
             'geofenceEnter' => VehicleEvent::TYPE_GEOFENCE_ENTER,
             'geofenceExit' => VehicleEvent::TYPE_GEOFENCE_EXIT,
             'deviceOverspeed' => VehicleEvent::TYPE_OVERSPEED,
+            'maintenance' => VehicleEvent::TYPE_MAINTENANCE,
             'alarm' => VehicleEvent::TYPE_PANIC,
             default => $traccarType,
         };
@@ -91,6 +92,7 @@ class TraccarEventMapper
             VehicleEvent::TYPE_GEOFENCE_ENTER => 'geofenceEnter',
             VehicleEvent::TYPE_GEOFENCE_EXIT => 'geofenceExit',
             VehicleEvent::TYPE_OVERSPEED => 'deviceOverspeed',
+            VehicleEvent::TYPE_MAINTENANCE => 'maintenance',
             VehicleEvent::TYPE_PANIC, VehicleEvent::TYPE_POWER_CUT => 'alarm',
             default => $laravelType,
         };
@@ -134,6 +136,7 @@ class TraccarEventMapper
             VehicleEvent::TYPE_LOW_BATTERY => ['Low battery', sprintf('Low battery on %s.', $deviceName)],
             VehicleEvent::TYPE_STOPPED => ['Vehicle stopped', sprintf('%s has stopped.', $deviceName)],
             VehicleEvent::TYPE_RUNNING => ['Vehicle running', sprintf('%s is moving.', $deviceName)],
+            VehicleEvent::TYPE_MAINTENANCE => ['Maintenance due', sprintf('%s is due for scheduled maintenance.', $deviceName)],
             default => [
                 ucfirst(str_replace('_', ' ', $laravelType)),
                 sprintf('%s event recorded.', $deviceName),

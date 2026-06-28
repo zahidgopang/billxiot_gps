@@ -41,6 +41,8 @@ class VehicleEvent extends Model
 
     public const TYPE_GPS_WEAK = 'gps_weak';
 
+    public const TYPE_MAINTENANCE = 'maintenance_due';
+
     /** @return list<string> */
     public static function criticalTypes(): array
     {
@@ -65,6 +67,7 @@ class VehicleEvent extends Model
             self::TYPE_LOW_BATTERY,
             self::TYPE_IGNITION,
             self::TYPE_OFFLINE,
+            self::TYPE_MAINTENANCE,
         ];
     }
 
@@ -123,7 +126,8 @@ class VehicleEvent extends Model
             self::TYPE_COMM_LOST_IGNITION,
             self::TYPE_GSM_WEAK,
             self::TYPE_GPS_WEAK,
-            self::TYPE_OFFLINE => 'warning',
+            self::TYPE_OFFLINE,
+            self::TYPE_MAINTENANCE => 'warning',
             default => 'info',
         };
     }
@@ -148,6 +152,7 @@ class VehicleEvent extends Model
             self::TYPE_TAMPERING => 'Tampering suspected',
             self::TYPE_GSM_WEAK => 'GSM signal weak',
             self::TYPE_GPS_WEAK => 'GPS signal weak',
+            self::TYPE_MAINTENANCE => 'Maintenance due',
             default => ucfirst(str_replace('_', ' ', $this->type)),
         };
     }

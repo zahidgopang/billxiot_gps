@@ -69,6 +69,7 @@ return function (): void {
         Route::get('/', [CommandsController::class, 'index'])->name('index');
         Route::get('/json', [CommandsController::class, 'json'])->name('json');
         Route::post('/send', [CommandsController::class, 'send'])->name('send');
+        Route::delete('/{command}', [CommandsController::class, 'cancel'])->name('cancel');
     });
 
     Route::prefix('tasks')->name('tasks.')->group(function () {

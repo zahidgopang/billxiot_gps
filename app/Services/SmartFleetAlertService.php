@@ -9,6 +9,7 @@ use App\Models\DeviceLocation;
 use App\Models\VehicleEvent;
 use App\Services\Mobile\MobileMapStatusResolver;
 use App\Services\Push\PushNotificationDispatcher;
+use App\Services\Tracking\TrackingSettingsService;
 use App\Support\Push\PushNotificationType;
 use Carbon\Carbon;
 
@@ -22,6 +23,7 @@ class SmartFleetAlertService
         private PositionReaderInterface $positions,
         private MobileMapStatusResolver $mapStatus,
         private PushNotificationDispatcher $push,
+        private ?TrackingSettingsService $trackingSettings = null,
     ) {}
 
     public function onPositionReceived(Device $device, DeviceLocation $location): void
@@ -223,11 +225,12 @@ class SmartFleetAlertService
         float $lng,
         Carbon $at,
     ): void {
-        $cooldown = (int) config('tracking.event_cooldown_seconds', 300);
+        $cfg = $this->trackingSettings?->forDevice($device) ?? [];
+        $cooldown = (int) ($cfg['event_cooldown_seconds'] ?? config('tracking.event_cooldown_seconds', 300));
         $name = $device->notificationDisplayName();
-        $gsmThreshold = (int) config('tracking.gsm_weak_percent', 25);
-        $gpsThreshold = (int) config('tracking.gps_weak_percent', 30);
-        $minSatellites = (int) config('tracking.gps_min_satellites', 4);
+        $gsmThreshold = (int) ($cfg['gsm_weak_percent'] ?? config('tracking.gsm_weak_percent', 25));
+        $gpsThreshold = (int) ($cfg['gps_weak_percent'] ?? config('tracking.gps_weak_percent', 30));
+        $minSatellites = (int) ($cfg['gps_min_satellites'] ?? config('tracking.gps_min_satellites', 4));
 
         $gsm = $location->gsm_signal;
         if ($gsm !== null && (int) $gsm > 0 && (int) $gsm < $gsmThreshold) {

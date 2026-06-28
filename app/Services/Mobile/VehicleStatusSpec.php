@@ -64,24 +64,25 @@ class VehicleStatusSpec
         };
     }
 
-    /**
-     * @return 'live'|'delayed'|'stale'|'offline'
-     */
-    public static function connectivityTier(?int $secondsSinceUpdate): string
+    public static function connectivityTier(?int $secondsSinceUpdate, ?array $thresholds = null): string
     {
         if ($secondsSinceUpdate === null) {
             return 'offline';
         }
 
-        if ($secondsSinceUpdate > self::OFFLINE_SECONDS) {
+        $delayed = (int) ($thresholds['delayed_min_seconds'] ?? self::DELAYED_MIN_SECONDS);
+        $stale = (int) ($thresholds['stale_min_seconds'] ?? self::STALE_MIN_SECONDS);
+        $offline = (int) ($thresholds['offline_seconds'] ?? self::OFFLINE_SECONDS);
+
+        if ($secondsSinceUpdate > $offline) {
             return 'offline';
         }
 
-        if ($secondsSinceUpdate >= self::STALE_MIN_SECONDS) {
+        if ($secondsSinceUpdate >= $stale) {
             return 'stale';
         }
 
-        if ($secondsSinceUpdate >= self::DELAYED_MIN_SECONDS) {
+        if ($secondsSinceUpdate >= $delayed) {
             return 'delayed';
         }
 
@@ -125,14 +126,18 @@ class VehicleStatusSpec
     /**
      * @return array{key: string, label: string, tier: string}
      */
-    public static function resolve(?int $secondsSinceUpdate, float $speed, bool $ignition): array
+    public static function resolve(?int $secondsSinceUpdate, float $speed, bool $ignition, ?array $thresholds = null): array
     {
+        $movingSpeed = (float) ($thresholds['moving_speed_kmh'] ?? self::MOVING_SPEED_KMH);
+        $motionKey = $ignition
+            ? ($speed > $movingSpeed ? 'running' : 'stopped')
+            : ($speed > $movingSpeed ? 'moving' : 'parked');
         $motion = [
-            'key' => self::motionKey($speed, $ignition),
-            'label' => self::motionLabel(self::motionKey($speed, $ignition)),
+            'key' => $motionKey,
+            'label' => self::motionLabel($motionKey),
         ];
 
-        $tier = self::connectivityTier($secondsSinceUpdate);
+        $tier = self::connectivityTier($secondsSinceUpdate, $thresholds);
 
         if ($tier === 'offline') {
             return [

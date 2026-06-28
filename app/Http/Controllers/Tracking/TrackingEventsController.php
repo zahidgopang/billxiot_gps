@@ -8,6 +8,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Device;
 use App\Models\VehicleEventRead;
 use App\Services\Tracking\GlobalTrackingService;
+use App\Services\Tracking\NotificationPreferenceService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -20,6 +21,7 @@ class TrackingEventsController extends Controller
     public function __construct(
         private GlobalTrackingService $tracking,
         private EventReaderInterface $events,
+        private NotificationPreferenceService $notificationPrefs,
     ) {}
 
     public function index(Request $request): View
@@ -43,6 +45,7 @@ class TrackingEventsController extends Controller
         $page = max(1, (int) $request->query('page', 1));
         $perPage = min(100, max(10, (int) $request->query('per_page', 25)));
 
+        // Respect the user's per-type "web" notification preferences (unless filtering by type).
         $all = [];
         foreach (array_slice($allowed, 0, 20) as $deviceId) {
             $device = Device::query()->find($deviceId);
@@ -50,6 +53,9 @@ class TrackingEventsController extends Controller
                 continue;
             }
             foreach ($this->events->forDevice($device, $from, $to, $types, limit: 200) as $event) {
+                if (! $type && $this->notificationPrefs->isWebSuppressed($user, $event->type)) {
+                    continue;
+                }
                 $all[] = array_merge($event->toAlertArray(), [
                     'device_id' => $device->id,
                     'device_name' => $device->mapMarkerTitle(),

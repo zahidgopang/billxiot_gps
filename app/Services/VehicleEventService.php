@@ -9,6 +9,7 @@ use App\Models\DeviceLocation;
 use App\Models\VehicleEvent;
 use App\Services\Push\PushNotificationDispatcher;
 use App\Services\SmartFleetAlertService;
+use App\Services\Tracking\TrackingSettingsService;
 use App\Support\Traccar\GeofenceWkt;
 use Carbon\Carbon;
 
@@ -18,6 +19,7 @@ class VehicleEventService
         private EventWriterInterface $events,
         private GeofenceStoreInterface $geofences,
         private SmartFleetAlertService $smartAlerts,
+        private TrackingSettingsService $trackingSettings,
     ) {}
     public function processLocation(Device $device, DeviceLocation $location, ?DeviceLocation $previous = null): void
     {
@@ -43,9 +45,10 @@ class VehicleEventService
 
     private function processMotionState(Device $device, float $speed, float $lat, float $lng, Carbon $at): void
     {
-        $stopped = config('tracking.stopped_speed_kmh', 5);
-        $slowMax = config('tracking.slow_speed_max_kmh', 30);
-        $overspeed = config('tracking.overspeed_kmh', 80);
+        $cfg = $this->trackingSettings->forDevice($device);
+        $stopped = (float) ($cfg['stopped_speed_kmh'] ?? config('tracking.stopped_speed_kmh', 5));
+        $slowMax = (float) ($cfg['slow_speed_max_kmh'] ?? config('tracking.slow_speed_max_kmh', 30));
+        $overspeed = (float) ($cfg['overspeed_kmh'] ?? config('tracking.overspeed_kmh', 80));
 
         $state = match (true) {
             $speed > $overspeed => VehicleEvent::TYPE_OVERSPEED,
@@ -185,7 +188,8 @@ class VehicleEventService
         Carbon $at,
         ?DeviceLocation $previous
     ): void {
-        $cooldown = config('tracking.event_cooldown_seconds', 300);
+        $cfg = $this->trackingSettings->forDevice($device);
+        $cooldown = (int) ($cfg['event_cooldown_seconds'] ?? config('tracking.event_cooldown_seconds', 300));
 
         if ($location->panic) {
             $this->recordOnce(
@@ -227,7 +231,7 @@ class VehicleEventService
             );
         }
 
-        $lowBattery = config('tracking.low_battery_percent', 20);
+        $lowBattery = (float) ($cfg['low_battery_percent'] ?? config('tracking.low_battery_percent', 20));
         if ($location->battery_level !== null && (float) $location->battery_level <= $lowBattery) {
             $this->recordOnce(
                 "device.{$device->id}.event.battery",

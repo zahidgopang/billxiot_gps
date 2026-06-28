@@ -11,7 +11,9 @@
     'use strict';
 
     const DEFAULT_CENTER = { lat: 25.276987, lng: 55.296249 };
-    const TRAIL_MAX = 20;
+    const TRAIL_MAX = 22;
+    // Minimum movement (deg, ~2.5 m) before a new trail vertex is committed.
+    const TRAIL_MIN_STEP_DEG = 0.000022;
     const MEDIUM_SPEED = 60;
     const OVER_SPEED = 80;
     const STOP_MIN_SEC = 120;
@@ -251,6 +253,7 @@
             // history
             this.historyLayers = [];
             this.historyActive = false;
+            this.historyPulse = null;
 
             // places
             this.placeLayers = [];
@@ -343,6 +346,7 @@
                 this.showLiveLayer(true);
             } else if (tab === 'history') {
                 this.showLiveLayer(false);
+                this.ensureHistorySelect2();
             } else {
                 this.showLiveLayer(true);
             }
@@ -404,7 +408,10 @@
                     <input type="checkbox" class="form-check-input tc-check tc-check-follow" data-follow="${v.id}" ${follow} title="${escHtml(i18n.colFollow || 'Follow / zoom')}">
                     <span class="tc-veh-icon" data-veh-icon="${v.id}" style="color:${escHtml(dot)}" title="${escHtml(v.status_label || v.status || '')}"><i class="fas ${escHtml(v.icon || 'fa-location-crosshairs')}"></i></span>
                     <span class="tc-row-info">
-                        <span class="tc-row-title">${escHtml(v.title || v.plate || ('#' + v.id))}</span>
+                        <span class="tc-row-titlewrap">
+                            <span class="tc-row-title">${escHtml(v.title || v.plate || ('#' + v.id))}</span>
+                            <span class="tc-status-badge" data-status="${v.id}" style="--st:${escHtml(dot)}">${escHtml(v.status_label || v.status || v.status_key || '—')}</span>
+                        </span>
                         <span class="tc-row-meta" data-meta="${v.id}">${this.metaHtml(v)}</span>
                     </span>
                 </div>`;
@@ -438,10 +445,9 @@
 
         metaHtml(v) {
             const i18n = this.cfg.i18n || {};
-            const status = escHtml(v.status_label || v.status || v.status_key || '—');
             const speed = v.speed != null ? `${v.speed} ${i18n.kmhUnit || 'km/h'}` : '—';
             const updated = escHtml(v.recorded_at_human || '—');
-            const parts = [`<span>${status}</span>`, `<span>${speed}</span>`, `<span>${updated}</span>`];
+            const parts = [`<span>${speed}</span>`, `<span>${updated}</span>`];
             if (v.ignition != null) parts.push(`<span>${v.ignition ? (i18n.ignitionOn || 'Ign ON') : (i18n.ignitionOff || 'Ign OFF')}</span>`);
             return parts.join(' · ');
         }
@@ -553,10 +559,41 @@
             st.trailPolylines = [];
         }
 
-        // Live tracking shows moving markers only — NO route polyline.
-        // Route/path polylines are drawn exclusively in the History view.
-        pushTrailPoint(st) {
-            this.clearTrail(st);
+        /**
+         * Short Traccar-style tail behind a moving marker. Samples the live
+         * (animated) render position, keeps the last TRAIL_MAX vertices and
+         * always ends exactly at the marker head so the tail follows smoothly.
+         */
+        appendTrail(st, lat, lng, color) {
+            if (!this.map || lat == null || lng == null) return;
+            const committed = st.trail;
+            const last = committed[committed.length - 1];
+            if (!last || Math.abs(lat - last.lat) > TRAIL_MIN_STEP_DEG || Math.abs(lng - last.lng) > TRAIL_MIN_STEP_DEG) {
+                committed.push({ lat, lng });
+                while (committed.length > TRAIL_MAX) committed.shift();
+            }
+            const path = committed.slice();
+            const tail = path[path.length - 1];
+            if (!tail || tail.lat !== lat || tail.lng !== lng) path.push({ lat, lng });
+            if (path.length < 2) return;
+
+            let line = st.trailPolylines[0];
+            if (!line) {
+                line = new google.maps.Polyline({
+                    map: this.map,
+                    path,
+                    strokeColor: color,
+                    strokeOpacity: 0.6,
+                    strokeWeight: 5,
+                    zIndex: 400,
+                    clickable: false,
+                });
+                st.trailPolylines = [line];
+            } else {
+                line.setPath(path);
+                line.setOptions({ strokeColor: color });
+                if (line.getMap() !== this.map) line.setMap(this.map);
+            }
         }
 
         applyPoint(id, point) {
@@ -568,11 +605,17 @@
 
             const metaEl = document.querySelector(`[data-meta="${id}"]`);
             if (metaEl) metaEl.innerHTML = this.metaHtml(merged);
+            const liveColor = colorForPoint(merged, this.stateColors);
             const iconEl = document.querySelector(`[data-veh-icon="${id}"]`);
             if (iconEl) {
-                iconEl.style.color = colorForPoint(merged, this.stateColors);
+                iconEl.style.color = liveColor;
                 iconEl.title = merged.status_label || merged.status || '';
                 if (merged.icon) iconEl.innerHTML = `<i class="fas ${merged.icon}"></i>`;
+            }
+            const statusEl = document.querySelector(`[data-status="${id}"]`);
+            if (statusEl) {
+                statusEl.style.setProperty('--st', liveColor);
+                statusEl.textContent = merged.status_label || merged.status || merged.status_key || '—';
             }
             this.updateCounts();
 
@@ -594,7 +637,7 @@
                 st.renderHeading = parseFloat(merged.heading || 0);
                 st.lastPoint = merged;
                 st.motion = null;
-                if (MOVING_KEYS.has(key)) this.pushTrailPoint(st, merged);
+                if (MOVING_KEYS.has(key)) this.appendTrail(st, merged.lat, merged.lng, color);
                 if (this.followId === id) this.map.panTo({ lat: merged.lat, lng: merged.lng });
                 return;
             }
@@ -629,7 +672,7 @@
                 start: performance.now(),
             };
             st.lastPoint = to;
-            if (moving) this.pushTrailPoint(st, to);
+            if (!moving) this.clearTrail(st);
             this.startMotionLoop();
         }
 
@@ -685,6 +728,7 @@
                 st.marker.setMap(this.map);
                 st.marker.setPosition({ lat, lng });
                 st.marker.setIcon(arrowIcon(m.color, heading));
+                if (MOVING_KEYS.has(st.lastPoint?.status_key || '')) this.appendTrail(st, lat, lng, m.color);
                 if (this.followId === id) this.map.panTo({ lat, lng });
 
                 if (done) { st.motion = null; } else { active = true; }
@@ -797,6 +841,26 @@
             if (to && !to.value) to.value = fmt(now);
         }
 
+        ensureHistorySelect2() {
+            if (this._histSelectReady) return;
+            const selectEl = document.getElementById('tcHistVehicle');
+            const $ = window.jQuery;
+            if (!selectEl || !$ || typeof $.fn?.select2 !== 'function') return;
+            // Initialise only once the History tab is visible so Select2 can
+            // measure the panel width correctly (init while display:none breaks sizing).
+            if (!selectEl.offsetParent) return;
+            this._histSelectReady = true;
+            const $sel = $(selectEl);
+            if ($sel.hasClass('select2-hidden-accessible')) $sel.select2('destroy');
+            $sel.select2({
+                theme: 'bootstrap-5',
+                width: '100%',
+                dropdownParent: $sel.closest('[data-tab-body="history"]'),
+                placeholder: this.cfg.i18n?.selectVehicle || 'Select a vehicle',
+                dir: document.documentElement.getAttribute('dir') || 'ltr',
+            });
+        }
+
         bindHistory() {
             document.getElementById('tcHistShow')?.addEventListener('click', () => this.loadHistory());
             document.getElementById('tcHistHide')?.addEventListener('click', () => this.exitHistory());
@@ -810,6 +874,7 @@
         clearHistory() {
             this.historyLayers.forEach((l) => l.setMap(null));
             this.historyLayers = [];
+            this.historyPulse?.hide();
             this.stopInfo?.close();
             if (this.legendEl) this.legendEl.innerHTML = '';
             const res = document.getElementById('tcHistResults');
@@ -889,8 +954,11 @@
                 });
                 this.historyLayers.push(line);
             }
-            this.addEndpoint(points[0], 'start');
-            this.addEndpoint(points[points.length - 1], 'end');
+            const startPoint = points[0];
+            const endPoint = points[points.length - 1];
+            this.addEndpoint(startPoint, 'start');
+            this.addEndpoint(endPoint, 'end');
+            this.showHistoryPulse(endPoint, vehicle);
 
             (vehicle.events || []).forEach((ev) => {
                 if (hasGeo(ev.lat, ev.lng)) this.addEventDot({ type: ev.event_type || ev.type || 'event', lat: ev.lat, lng: ev.lng, title: ev.title || ev.message || 'Event' });
@@ -1158,7 +1226,9 @@
                 kv(i.lblIgnition || 'Ignition', panel.ignition == null ? dash : (panel.ignition ? (i.ignitionOn || 'On') : (i.ignitionOff || 'Off')), 'fa-key'),
             ].join('');
 
-            const cmdOpts = (this.cfg.commandTypes || []).map((t) => `<option value="${escHtml(t)}">${escHtml(t)}</option>`).join('');
+            const cmdTypes = this.cfg.commandTypes || {};
+            const cmdEntries = Array.isArray(cmdTypes) ? cmdTypes.map((t) => [t, t]) : Object.entries(cmdTypes);
+            const cmdOpts = cmdEntries.map(([value, label]) => `<option value="${escHtml(value)}">${escHtml(label)}</option>`).join('');
             const control = this.cfg.commandsSendUrl ? `
                 <div class="tc-ctrl-row">
                     <select class="form-select form-select-sm" id="tcCmdType">${cmdOpts}</select>
@@ -1360,6 +1430,7 @@
         }
 
         addEndpoint(point, type) {
+            if (!point || !hasGeo(point.lat, point.lng)) return;
             const url = type === 'start' ? (this.cfg.startIconUrl || '/images/map/marker-start.svg') : (this.cfg.endIconUrl || '/images/map/marker-end.svg');
             const marker = new google.maps.Marker({
                 position: { lat: point.lat, lng: point.lng }, map: this.map,
@@ -1368,6 +1439,31 @@
                 title: type === 'start' ? (this.cfg.i18n?.routeStart || 'Start') : (this.cfg.i18n?.routeEnd || 'End'),
             });
             this.historyLayers.push(marker);
+        }
+
+        /**
+         * Pulsing overlay at the route end (the vehicle's current location),
+         * mirroring the live device page. Colored by the vehicle's last status.
+         */
+        showHistoryPulse(point, vehicle) {
+            if (!point || !hasGeo(point.lat, point.lng)) return;
+            const VM = global.VehicleMarker;
+            if (!VM || typeof VM.createPulseController !== 'function') return;
+            if (!this.historyPulse) {
+                this.historyPulse = VM.createPulseController({
+                    googleMaps: global.google,
+                    stateColors: this.stateColors,
+                    getColor: (p) => colorForPoint(p, this.stateColors),
+                });
+            }
+            this.historyPulse.attachMap(this.map);
+            const statusKey = point.status_key || vehicle?.status_key || 'moving';
+            this.historyPulse.update({
+                lat: point.lat,
+                lng: point.lng,
+                status_key: statusKey,
+                color: point.color || vehicle?.color || this.stateColors[statusKey],
+            });
         }
 
         addEventDot(ev) {

@@ -9,8 +9,10 @@ use App\Http\Controllers\Api\Mobile\ExportController as MobileExportController;
 use App\Http\Controllers\Api\Mobile\GeofenceController as MobileGeofenceController;
 use App\Http\Controllers\Api\Mobile\LiveStreamController as MobileLiveStreamController;
 use App\Http\Controllers\Api\Mobile\MapController as MobileMapController;
+use App\Http\Controllers\Api\Mobile\NotificationPreferenceController as MobileNotificationPreferenceController;
 use App\Http\Controllers\Api\Mobile\ProfileController as MobileProfileController;
 use App\Http\Controllers\Api\Mobile\PushTokenController as MobilePushTokenController;
+use App\Http\Controllers\Api\Mobile\TrackingSettingsController as MobileTrackingSettingsController;
 use App\Http\Controllers\Api\UserDeviceController;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\RateLimiter;
@@ -63,6 +65,12 @@ Route::middleware([
     Route::get('/alerts', [MobileAlertController::class, 'index']);
     Route::get('/alerts/unread', [MobileAlertController::class, 'unread']);
     Route::post('/alerts/read', [MobileAlertController::class, 'markRead']);
+
+    Route::get('/notification-preferences', [MobileNotificationPreferenceController::class, 'show']);
+    Route::post('/notification-preferences', [MobileNotificationPreferenceController::class, 'update']);
+
+    Route::get('/tracking-settings', [MobileTrackingSettingsController::class, 'show']);
+    Route::post('/tracking-settings', [MobileTrackingSettingsController::class, 'update']);
 
     Route::get('/address', [MobileMapController::class, 'address']);
 

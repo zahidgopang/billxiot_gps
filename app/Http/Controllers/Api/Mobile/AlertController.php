@@ -8,6 +8,7 @@ use App\Http\Concerns\RespondsWithMobileJson;
 use App\Models\Device;
 use App\Models\VehicleEvent;
 use App\Models\VehicleEventRead;
+use App\Services\Tracking\NotificationPreferenceService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -19,6 +20,7 @@ class AlertController extends Controller
 
     public function __construct(
         private EventReaderInterface $events,
+        private NotificationPreferenceService $notificationPrefs,
     ) {}
 
     public function index(Request $request)
@@ -43,6 +45,7 @@ class AlertController extends Controller
             : null;
 
         $events = $this->fetchFleetEvents($deviceIds, $devicesById, $from, $to, $limit, $request);
+        $events = $this->applyWebPreferences($user, $events, $request);
 
         return $this->mobileSuccess(
             $events->map(fn (VehicleEvent $e) => $this->formatAlert($e, $readIds, $devicesById))->values()
@@ -62,12 +65,16 @@ class AlertController extends Controller
         $devicesById = $devices->keyBy('id');
         $readIds = $this->readEventIds($user->id);
 
-        $events = $this->fetchFleetEvents(
-            $deviceIds,
-            $devicesById,
-            now()->subDays(30),
-            null,
-            50,
+        $events = $this->applyWebPreferences(
+            $user,
+            $this->fetchFleetEvents(
+                $deviceIds,
+                $devicesById,
+                now()->subDays(30),
+                null,
+                50,
+                $request
+            ),
             $request
         )->filter(fn (VehicleEvent $e) => ! in_array($e->id, $readIds, true));
 
@@ -173,6 +180,29 @@ class AlertController extends Controller
         }
 
         return $events;
+    }
+
+    /**
+     * Hide event types the user disabled for the in-app/web feed. Skipped when the
+     * request explicitly filters by a single type (the user asked for it directly).
+     *
+     * @param  \Illuminate\Support\Collection<int, VehicleEvent>  $events
+     * @return \Illuminate\Support\Collection<int, VehicleEvent>
+     */
+    private function applyWebPreferences($user, $events, Request $request)
+    {
+        if ($request->filled('type')) {
+            return $events;
+        }
+
+        $suppressed = $this->notificationPrefs->suppressedWebTypes($user);
+        if ($suppressed === []) {
+            return $events;
+        }
+
+        return $events
+            ->filter(fn (VehicleEvent $e) => ! $this->notificationPrefs->isWebSuppressed($user, $e->type))
+            ->values();
     }
 
     /**

@@ -44,8 +44,8 @@ class TrackingSettingsController extends Controller
             'settings' => 'required|array',
         ]);
 
-        $settings = $this->settings->update($request->user(), $validated['settings']);
+        $result = $this->settings->update($request->user(), $validated['settings']);
 
-        return $this->noStoreJson(['success' => true, 'settings' => $settings]);
+        return $this->noStoreJson($result, ($result['success'] ?? false) ? 200 : 422);
     }
 }
