@@ -370,6 +370,7 @@
             this.bindModules();
             this.bindPanelToggle();
             this.fitAppHeight();
+            this.initAlerts();
             this.setDefaultDates();
 
             // Show all vehicles by default (Traccar behavior).
@@ -410,7 +411,7 @@
                 this.showLiveLayer(true);
             }
 
-            if (tab === 'events' && !this._eventsLoaded) this.loadEvents();
+            if (tab === 'events') { this.clearAlertBadge(); if (!this._eventsLoaded) this.loadEvents(); }
             if (tab === 'places' && !this._placesLoaded) this.loadPlaces();
         }
 
@@ -777,9 +778,11 @@
             }
         }
 
-        toast(message) {
+        toast(message, type) {
+            const icon = ['success', 'error', 'warning', 'info', 'question'].includes(type) ? type : 'success';
             if (global.Swal) {
-                global.Swal.fire({ toast: true, position: 'top-end', timer: 1800, showConfirmButton: false, icon: 'success', title: message });
+                const timer = (icon === 'error' || icon === 'warning') ? 4000 : 2200;
+                global.Swal.fire({ toast: true, position: 'top-end', timer, showConfirmButton: false, icon, title: message });
             } else {
                 global.alert(message);
             }
@@ -1816,7 +1819,7 @@
             const spd = Math.max(0, Math.round(parseFloat(speed) || 0));
             const max = parseFloat(maxSpd) || 160;
             const frac = Math.min(1, spd / max);
-            const gaugeColor = frac > 0.8 ? '#dc2626' : frac > 0.5 ? '#f59e0b' : '#16a34a';
+            const gaugeColor = frac > 0.8 ? '#d6394d' : frac > 0.5 ? '#d99a16' : '#1f9d57';
             return `<svg class="tc-gauge" viewBox="0 0 120 72">
                 <path d="M10 62 A 50 50 0 0 1 110 62" fill="none" stroke="#e2e8f0" stroke-width="10" stroke-linecap="round" pathLength="100"></path>
                 <path d="M10 62 A 50 50 0 0 1 110 62" fill="none" stroke="${gaugeColor}" stroke-width="10" stroke-linecap="round" pathLength="100" stroke-dasharray="${(frac * 100).toFixed(1)} 100"></path>
@@ -2095,6 +2098,244 @@
             });
             this.map.panTo({ lat, lng });
             if (this.map.getZoom() < 14) this.map.setZoom(15);
+        }
+
+        /* ---------- Alerts: sound chime + desktop notifications ---------- */
+        alertPrefsKey() {
+            return `tc_alert_prefs_${this.cfg.userId || 'guest'}`;
+        }
+
+        loadAlertPrefs() {
+            const def = { sound: true, desktop: false };
+            try {
+                const raw = localStorage.getItem(this.alertPrefsKey());
+                if (!raw) return def;
+                const saved = JSON.parse(raw);
+                return { sound: saved.sound !== false, desktop: saved.desktop === true };
+            } catch (_) { return def; }
+        }
+
+        saveAlertPrefs() {
+            try { localStorage.setItem(this.alertPrefsKey(), JSON.stringify(this.alertPrefs)); } catch (_) { /* ignore */ }
+        }
+
+        initAlerts() {
+            this.alertPrefs = this.loadAlertPrefs();
+            this._lastEventId = null;
+            this._alertBadge = 0;
+            this._seenEventIds = new Set();
+
+            this.bindSoundToggle();
+            this.bindDesktopToggle();
+            this.syncAlertButtons();
+
+            // Resume the audio context on the first user gesture (autoplay policy).
+            const unlock = () => {
+                this.ensureAudioCtx();
+                if (this._audioCtx && this._audioCtx.state === 'suspended') this._audioCtx.resume().catch(() => {});
+                document.removeEventListener('pointerdown', unlock);
+                document.removeEventListener('keydown', unlock);
+            };
+            document.addEventListener('pointerdown', unlock, { once: false });
+            document.addEventListener('keydown', unlock, { once: false });
+
+            if (!this.cfg.eventsJsonUrl) return;
+            // Baseline first, then poll for new alerts.
+            this.pollAlerts(true);
+            const interval = this.cfg.alertPollIntervalMs || 15000;
+            this.alertTimer = setInterval(() => this.pollAlerts(false), interval);
+        }
+
+        bindSoundToggle() {
+            const btn = document.getElementById('tcSoundToggle');
+            if (!btn) return;
+            btn.addEventListener('click', () => {
+                this.alertPrefs.sound = !this.alertPrefs.sound;
+                this.saveAlertPrefs();
+                this.syncAlertButtons();
+                if (this.alertPrefs.sound) {
+                    this.ensureAudioCtx();
+                    if (this._audioCtx && this._audioCtx.state === 'suspended') this._audioCtx.resume().catch(() => {});
+                    this.playChime();
+                } else {
+                    this.toast(this.cfg.i18n?.alertSoundOff || 'Alert sound: off', 'info');
+                }
+            });
+        }
+
+        bindDesktopToggle() {
+            const btn = document.getElementById('tcDesktopToggle');
+            if (!btn) return;
+            btn.addEventListener('click', async () => {
+                const supported = 'Notification' in window;
+                if (!supported) {
+                    this.toast(this.cfg.i18n?.alertDesktopBlocked || 'Desktop notifications not supported', 'error');
+                    return;
+                }
+                if (this.alertPrefs.desktop) {
+                    this.alertPrefs.desktop = false;
+                    this.saveAlertPrefs();
+                    this.syncAlertButtons();
+                    this.toast(this.cfg.i18n?.alertDesktopOff || 'Desktop notifications disabled', 'info');
+                    return;
+                }
+                let perm = Notification.permission;
+                if (perm === 'default') {
+                    try { perm = await Notification.requestPermission(); } catch (_) { perm = Notification.permission; }
+                }
+                if (perm === 'granted') {
+                    this.alertPrefs.desktop = true;
+                    this.saveAlertPrefs();
+                    this.syncAlertButtons();
+                    this.toast(this.cfg.i18n?.alertDesktopOn || 'Desktop notifications enabled', 'success');
+                } else {
+                    this.toast(this.cfg.i18n?.alertDesktopBlocked || 'Desktop notifications are blocked', 'error');
+                }
+            });
+        }
+
+        syncAlertButtons() {
+            const sBtn = document.getElementById('tcSoundToggle');
+            if (sBtn) {
+                const on = !!this.alertPrefs.sound;
+                sBtn.classList.toggle('on', on);
+                sBtn.classList.toggle('muted', !on);
+                sBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+                sBtn.title = on ? (this.cfg.i18n?.alertSound || 'Alert sound: on') : (this.cfg.i18n?.alertSoundOff || 'Alert sound: off');
+                const ic = sBtn.querySelector('i');
+                if (ic) ic.className = on ? 'fas fa-volume-high' : 'fas fa-volume-xmark';
+            }
+            const dBtn = document.getElementById('tcDesktopToggle');
+            if (dBtn) {
+                const on = !!this.alertPrefs.desktop && ('Notification' in window) && Notification.permission === 'granted';
+                dBtn.classList.toggle('on', on);
+                dBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+                const ic = dBtn.querySelector('i');
+                if (ic) ic.className = on ? 'fas fa-bell' : 'fas fa-bell-slash';
+            }
+        }
+
+        async pollAlerts(baseline) {
+            if (!this.cfg.eventsJsonUrl) return;
+            // Narrow window keeps the scan + payload light.
+            const since = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+            const url = `${this.cfg.eventsJsonUrl}?per_page=25&page=1&from=${encodeURIComponent(since)}&_=${Date.now()}`;
+            try {
+                const res = await fetch(url, { credentials: 'same-origin', cache: 'no-store' });
+                if (!res.ok) return;
+                const data = await res.json();
+                const events = (data.events || []).filter((e) => e && e.id != null);
+                if (events.length === 0) return;
+
+                // Events come newest-first; compute the highest id.
+                const maxId = events.reduce((m, e) => Math.max(m, Number(e.id) || 0), 0);
+
+                if (baseline || this._lastEventId == null) {
+                    this._lastEventId = maxId;
+                    events.forEach((e) => this._seenEventIds.add(Number(e.id)));
+                    return;
+                }
+
+                // New events = id greater than last seen, oldest first for natural ordering.
+                const fresh = events
+                    .filter((e) => Number(e.id) > this._lastEventId && !this._seenEventIds.has(Number(e.id)))
+                    .sort((a, b) => Number(a.id) - Number(b.id));
+
+                fresh.forEach((e) => {
+                    this._seenEventIds.add(Number(e.id));
+                    this.onNewAlert(e);
+                });
+                this._lastEventId = Math.max(this._lastEventId, maxId);
+
+                if (fresh.length) {
+                    this.bumpAlertBadge(fresh.length);
+                    if (this._eventsLoaded) this.loadEvents();
+                }
+            } catch (err) {
+                console.warn('[traccar-ui] alert poll failed', err);
+            }
+        }
+
+        onNewAlert(ev) {
+            const sev = (ev.type || '').toLowerCase();
+            const toastType = sev === 'critical' ? 'error' : (sev === 'warning' ? 'warning' : 'info');
+            const device = ev.device_name || '';
+            const title = ev.title || ev.message || this.cfg.i18n?.newAlertTitle || 'New alert';
+            const body = [device, ev.message && ev.message !== title ? ev.message : (ev.time || '')]
+                .filter(Boolean).join(' · ');
+
+            if (this.alertPrefs.sound) this.playChime(sev);
+
+            // In-app toast (visible while the map is open).
+            this.toast(device ? `${device} — ${title}` : title, toastType);
+
+            // Desktop notification when the tab is hidden or the window is not focused.
+            const notFocused = document.visibilityState === 'hidden' || (typeof document.hasFocus === 'function' && !document.hasFocus());
+            if (this.alertPrefs.desktop && ('Notification' in window) && Notification.permission === 'granted' && notFocused) {
+                try {
+                    const n = new Notification(title, {
+                        body: body || title,
+                        tag: `tc-evt-${ev.id}`,
+                        renotify: false,
+                    });
+                    n.onclick = () => {
+                        window.focus();
+                        if (hasGeo(ev.lat, ev.lng)) this.locateEvent(parseFloat(ev.lat), parseFloat(ev.lng));
+                        n.close();
+                    };
+                } catch (_) { /* ignore */ }
+            }
+        }
+
+        bumpAlertBadge(n) {
+            this._alertBadge = (this._alertBadge || 0) + n;
+            const badge = document.getElementById('tcEventsBadge');
+            if (badge) {
+                badge.textContent = this._alertBadge > 99 ? '99+' : String(this._alertBadge);
+                badge.hidden = false;
+            }
+        }
+
+        clearAlertBadge() {
+            this._alertBadge = 0;
+            const badge = document.getElementById('tcEventsBadge');
+            if (badge) { badge.hidden = true; badge.textContent = '0'; }
+        }
+
+        ensureAudioCtx() {
+            if (this._audioCtx) return this._audioCtx;
+            const Ctx = window.AudioContext || window.webkitAudioContext;
+            if (!Ctx) return null;
+            try { this._audioCtx = new Ctx(); } catch (_) { this._audioCtx = null; }
+            return this._audioCtx;
+        }
+
+        /** Synthesize a short two-note chime via Web Audio (no asset file needed). */
+        playChime(severity) {
+            const ctx = this.ensureAudioCtx();
+            if (!ctx) return;
+            if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+            const now = ctx.currentTime;
+            // Critical alerts get a slightly more urgent, lower/triple tone.
+            const notes = severity === 'critical' ? [988, 740, 988] : [880, 1175];
+            const master = ctx.createGain();
+            master.gain.value = 0.0001;
+            master.connect(ctx.destination);
+            notes.forEach((freq, i) => {
+                const t = now + i * 0.16;
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(freq, t);
+                gain.gain.setValueAtTime(0.0001, t);
+                gain.gain.exponentialRampToValueAtTime(0.22, t + 0.02);
+                gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.32);
+                osc.connect(gain);
+                gain.connect(master);
+                osc.start(t);
+                osc.stop(t + 0.34);
+            });
+            master.gain.setValueAtTime(1, now);
         }
 
         /* ---------- Places (geofences) ---------- */

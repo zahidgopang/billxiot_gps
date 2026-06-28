@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>tracking premium UI</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<style>
+  *{box-sizing:border-box;} body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;}
+  .fake-nav{height:56px;background:#101828;color:#fff;display:flex;align-items:center;padding:0 1rem;font-weight:600;}
+  :root{
+    --tc-radius-sm:7px;--tc-radius:11px;--tc-radius-lg:16px;
+    --tc-shadow-sm:0 1px 2px rgba(16,24,40,.06),0 1px 3px rgba(16,24,40,.05);
+    --tc-shadow:0 8px 20px -10px rgba(16,24,40,.22),0 2px 6px -2px rgba(16,24,40,.10);
+    --tc-shadow-lg:0 24px 48px -16px rgba(16,24,40,.30),0 8px 20px -12px rgba(16,24,40,.16);
+    --tc-bg:#eff2f7;--tc-surface:#fff;--tc-surface-2:#f6f8fb;--tc-surface-3:#eef1f6;
+    --tc-border:#e6ebf2;--tc-border-strong:#d6dce6;--tc-border-soft:#eef2f7;
+    --tc-text:#1c2533;--tc-text-soft:#475467;--tc-text-muted:#7a8699;--tc-text-faint:#9aa6b6;
+    --tc-primary:#4154d6;--tc-primary-strong:#3343b8;--tc-primary-soft:#eef1fd;--tc-primary-softer:#f5f7fe;
+    --tc-running:#1f9d57;--tc-idle:#d99a16;--tc-stopped:#e8763a;--tc-offline:#e1556a;--tc-alert:#d6394d;
+  }
+  .tc-app{display:flex;flex-direction:column;height:calc(100vh - 56px);background:var(--tc-bg);}
+  .tc-iconbar{display:flex;align-items:center;gap:.15rem;padding:.4rem .7rem;background:var(--tc-surface);border-bottom:1px solid var(--tc-border);box-shadow:var(--tc-shadow-sm);}
+  .tc-iconbar a{display:inline-flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:var(--tc-radius-sm);color:var(--tc-text-muted);text-decoration:none;font-size:1.02rem;}
+  .tc-iconbar a:hover{background:var(--tc-primary-soft);color:var(--tc-primary);}
+  .tc-iconbar a.active{background:var(--tc-primary);color:#fff;box-shadow:0 4px 10px -3px color-mix(in srgb,var(--tc-primary) 55%,transparent);}
+  .sep{flex:1;}
+  .tc-main{flex:1;display:flex;min-height:0;}
+  .tc-panel{width:360px;display:flex;flex-direction:column;background:var(--tc-surface);border-inline-end:1px solid var(--tc-border);}
+  .tc-tabs{display:flex;border-bottom:1px solid var(--tc-border);}
+  .tc-tab{flex:1;padding:.6rem .4rem;font-size:.82rem;font-weight:600;color:var(--tc-text-muted);background:var(--tc-surface-2);border:none;border-bottom:2px solid transparent;}
+  .tc-tab.active{color:var(--tc-primary);background:var(--tc-surface);border-bottom-color:var(--tc-primary);}
+  .tc-tab-head{padding:.6rem;border-bottom:1px solid var(--tc-border);}
+  .tc-tab-head input{width:100%;padding:.35rem .6rem;border:1px solid var(--tc-border);border-radius:var(--tc-radius-sm);}
+  .tc-chips{display:flex;gap:.3rem;margin-top:.5rem;}
+  .tc-chip{border:1px solid var(--tc-border);background:var(--tc-surface);color:var(--tc-text-soft);border-radius:999px;padding:.22rem .65rem;font-size:.72rem;font-weight:600;display:inline-flex;gap:.3rem;}
+  .tc-chip .c{background:var(--tc-surface-3);border-radius:999px;padding:0 .35rem;font-size:.68rem;color:var(--tc-text-muted);}
+  .tc-chip.active{background:var(--tc-primary);border-color:var(--tc-primary);color:#fff;box-shadow:0 3px 8px -3px color-mix(in srgb,var(--tc-primary) 55%,transparent);}
+  .tc-chip.active .c{background:rgba(255,255,255,.25);color:#fff;}
+  .tc-list-head{display:flex;gap:.5rem;padding:.4rem .7rem;background:var(--tc-surface-2);border-bottom:1px solid var(--tc-border);font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--tc-text-muted);}
+  .tc-list{flex:1;overflow:auto;}
+  .tc-row{display:flex;align-items:flex-start;gap:.5rem;padding:.6rem .7rem;border-bottom:1px solid var(--tc-border-soft);}
+  .tc-row.active{background:var(--tc-primary-soft);box-shadow:inset 3px 0 0 0 var(--tc-primary);}
+  .tc-veh-icon{width:20px;text-align:center;font-size:1rem;margin-top:.1rem;}
+  .tc-row-info{flex:1;min-width:0;}
+  .tw{display:flex;align-items:center;gap:.4rem;flex-wrap:wrap;}
+  .tc-row-title{font-weight:600;font-size:.86rem;color:var(--tc-text);}
+  .badge{display:inline-flex;align-items:center;gap:.32rem;font-size:.66rem;font-weight:700;padding:.2rem .45rem;border-radius:999px;color:var(--st);background:color-mix(in srgb,var(--st) 15%,#fff);border:1px solid color-mix(in srgb,var(--st) 35%,transparent);}
+  .badge::before{content:'';width:7px;height:7px;border-radius:50%;background:var(--st);}
+  .chips{display:flex;flex-wrap:wrap;gap:.3rem .5rem;margin-top:.15rem;}
+  .mc{display:inline-flex;align-items:center;gap:.22rem;font-size:.72rem;color:var(--tc-text-muted);}
+  .kebab{border:0;background:transparent;color:var(--tc-text-faint);width:26px;height:26px;border-radius:6px;}
+  .tc-map-wrap{position:relative;flex:1;display:flex;flex-direction:column;}
+  .tc-map-area{position:relative;flex:1;}
+  #map{position:absolute;inset:0;background:var(--tc-surface-3) repeating-linear-gradient(45deg,#e7ecf3,#e7ecf3 18px,#dfe6ef 18px,#dfe6ef 36px);display:flex;align-items:center;justify-content:center;color:var(--tc-text-muted);font-weight:600;}
+  .ctrls{position:absolute;top:12px;inset-inline-end:12px;display:flex;flex-direction:column;gap:8px;}
+  .ctrls .btn{width:42px;height:42px;display:inline-flex;align-items:center;justify-content:center;background:var(--tc-surface);color:var(--tc-text-soft);border:1px solid var(--tc-border);border-radius:var(--tc-radius);box-shadow:var(--tc-shadow);}
+  .ctrls .btn.active{background:var(--tc-primary);color:#fff;border-color:var(--tc-primary);}
+  .grp{display:flex;flex-direction:column;border-radius:var(--tc-radius);overflow:hidden;box-shadow:var(--tc-shadow);}
+  .grp .btn{box-shadow:none;border-radius:0;border:none;}
+  .grp .btn+.btn{border-top:1px solid var(--tc-border);}
+  .legend{position:absolute;bottom:12px;inset-inline-start:12px;background:color-mix(in srgb,var(--tc-surface) 94%,transparent);border:1px solid var(--tc-border);border-radius:var(--tc-radius);padding:.5rem .7rem;box-shadow:var(--tc-shadow);font-size:.76rem;}
+  .legend .li{display:flex;align-items:center;gap:.4rem;margin-bottom:.2rem;}
+  .legend .sw{width:14px;height:14px;border-radius:3px;}
+  .footer{height:250px;display:flex;flex-direction:column;background:var(--tc-surface);border-top:1px solid var(--tc-border);box-shadow:0 -6px 20px -8px rgba(16,24,40,.14);}
+  .fhead{display:flex;align-items:center;gap:.75rem;padding:0 .7rem;border-bottom:1px solid var(--tc-border-soft);}
+  .ftab{border:none;background:none;padding:.55rem .7rem;font-size:.8rem;font-weight:600;color:var(--tc-text-muted);border-bottom:2px solid transparent;}
+  .ftab.active{color:var(--tc-primary);border-bottom-color:var(--tc-primary);}
+  .ftitle{flex:1;font-weight:700;color:var(--tc-text);text-align:center;}
+  .fbody{flex:1;display:flex;gap:.6rem;padding:.5rem .8rem;overflow:auto;}
+  .col{flex:0 0 250px;border:1px solid var(--tc-border);border-radius:var(--tc-radius);background:var(--tc-surface-2);padding:.55rem .75rem;}
+  .col h6{font-size:.7rem;text-transform:uppercase;letter-spacing:.5px;color:var(--tc-primary);margin:0 0 .35rem;font-weight:700;}
+  .kv{display:flex;justify-content:space-between;gap:.75rem;padding:.12rem 0;font-size:.8rem;border-bottom:1px dashed var(--tc-border-soft);}
+  .kv .k{color:var(--tc-text-muted);}
+  .kv .v{color:var(--tc-text);font-weight:600;}
+</style>
+</head>
+<body>
+<div class="fake-nav"><i class="fas fa-satellite-dish" style="margin-right:8px"></i> Tracking</div>
+<div class="tc-app">
+  <div class="tc-iconbar">
+    <a class="active"><i class="fas fa-location-arrow"></i></a>
+    <a><i class="fas fa-chart-bar"></i></a><a><i class="fas fa-draw-polygon"></i></a>
+    <a><i class="fas fa-wrench"></i></a><a><i class="fas fa-id-card"></i></a>
+    <a><i class="fas fa-terminal"></i></a><a><i class="fas fa-tasks"></i></a>
+    <a><i class="fas fa-bell"></i></a><a><i class="fas fa-sliders-h"></i></a>
+    <span class="sep"></span>
+  </div>
+  <div class="tc-main">
+    <aside class="tc-panel">
+      <div class="tc-tabs"><button class="tc-tab active">Objects</button><button class="tc-tab">Events</button><button class="tc-tab">Places</button><button class="tc-tab">History</button></div>
+      <div class="tc-tab-head"><input placeholder="Search vehicles…">
+        <div class="tc-chips"><span class="tc-chip active">All <span class="c">7</span></span><span class="tc-chip">Moving <span class="c">3</span></span><span class="tc-chip">Stopped <span class="c">2</span></span><span class="tc-chip">Offline <span class="c">2</span></span></div>
+      </div>
+      <div class="tc-list-head" style="gap:.5rem"><span style="width:16px"><i class="fas fa-eye"></i></span><span style="width:16px"><i class="fas fa-shoe-prints"></i></span><span style="flex:1;text-align:center">OBJECT</span></div>
+      <div class="tc-list" id="list"></div>
+    </aside>
+    <div class="tc-map-wrap">
+      <div class="tc-map-area">
+        <div id="map">MAP AREA</div>
+        <div class="ctrls">
+          <div class="grp"><button class="btn"><i class="fas fa-plus"></i></button><button class="btn"><i class="fas fa-minus"></i></button></div>
+          <button class="btn"><i class="fas fa-compress-arrows-alt"></i></button>
+          <button class="btn active"><i class="fas fa-crosshairs"></i></button>
+          <button class="btn"><i class="fas fa-sync-alt"></i></button>
+          <button class="btn"><i class="fas fa-traffic-light"></i></button>
+          <button class="btn"><i class="fas fa-layer-group"></i></button>
+          <button class="btn"><i class="fas fa-camera"></i></button>
+        </div>
+        <div class="legend"><div class="li"><span class="sw" style="background:var(--tc-running)"></span>Running</div><div class="li"><span class="sw" style="background:var(--tc-idle)"></span>Idle</div><div class="li"><span class="sw" style="background:var(--tc-stopped)"></span>Stopped</div><div class="li"><span class="sw" style="background:var(--tc-offline)"></span>Offline</div></div>
+      </div>
+      <div class="footer">
+        <div class="fhead"><button class="ftab active">Data</button><button class="ftab">Graph</button><button class="ftab">Messages</button><span class="ftitle">Toyota Hilux (42 km/h)</span><button class="kebab"><i class="fas fa-times"></i></button></div>
+        <div class="fbody">
+          <div class="col"><h6>Object</h6><div class="kv"><span class="k">Status</span><span class="v" style="color:var(--tc-running)">Running</span></div><div class="kv"><span class="k">Speed</span><span class="v">42 km/h</span></div><div class="kv"><span class="k">Ignition</span><span class="v">ON</span></div><div class="kv"><span class="k">Odometer</span><span class="v">8,805 km</span></div></div>
+          <div class="col"><h6>Daily statistics</h6><div class="kv"><span class="k">Route length</span><span class="v">22.6 km</span></div><div class="kv"><span class="k">Top speed</span><span class="v">87 km/h</span></div><div class="kv"><span class="k">Move duration</span><span class="v">2h 15m</span></div></div>
+          <div class="col"><h6>Recent events</h6><div class="kv"><span class="k">Ignition On</span><span class="v">14:19</span></div><div class="kv"><span class="k">Online</span><span class="v">14:14</span></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+  var data=[
+    ['Toyota Hilux','running','42 km/h','--tc-running',true,1],
+    ['Isuzu D-Max','idle','0 km/h','--tc-idle',true,0],
+    ['Suzuki Carry','stopped','0 km/h','--tc-stopped',false,0],
+    ['Honda CG','running','58 km/h','--tc-running',true,0],
+    ['Hino 300','offline','—','--tc-offline',false,0],
+    ['Mazda BT-50','running','31 km/h','--tc-running',true,0],
+    ['Kia K2700','offline','—','--tc-offline',false,0]
+  ];
+  document.getElementById('list').innerHTML=data.map(function(d){
+    var col='var('+d[3]+')';
+    return '<div class="tc-row '+(d[5]?'active':'')+'">'
+      +'<input type="checkbox" '+(d[4]?'checked':'')+' style="margin-top:.25rem">'
+      +'<input type="checkbox" style="margin-top:.25rem">'
+      +'<span class="tc-veh-icon" style="color:'+col+'"><i class="fas fa-car-side"></i></span>'
+      +'<span class="tc-row-info"><span class="tw"><span class="tc-row-title">'+d[0]+'</span>'
+      +'<span class="badge" style="--st:'+col+'">'+d[1]+'</span></span>'
+      +'<span class="chips"><span class="mc"><i class="fas fa-gauge-high"></i>'+d[2]+'</span>'
+      +'<span class="mc"><i class="fas fa-clock"></i>2m</span>'
+      +(d[4]?'<span class="mc" style="color:var(--tc-running)"><i class="fas fa-key"></i>ON</span>':'<span class="mc"><i class="fas fa-key"></i>OFF</span>')
+      +'<span class="mc" style="color:var(--tc-running)"><i class="fas fa-satellite-dish"></i>11</span>'
+      +'<span class="mc" style="color:var(--tc-running)"><i class="fas fa-battery-full"></i>92%</span></span></span>'
+      +'<button class="kebab"><i class="fas fa-ellipsis-v"></i></button></div>';
+  }).join('');
+</script>
+</body>
+</html>
