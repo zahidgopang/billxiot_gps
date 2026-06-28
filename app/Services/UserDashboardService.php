@@ -7,9 +7,11 @@ use App\Contracts\Tracking\EventReaderInterface;
 use App\Models\Device;
 use App\Models\VehicleEvent;
 use App\Models\User;
+use App\Services\Authorization\RbacService;
 use App\Services\Mobile\MobileMapStatusResolver;
 use App\Services\Mobile\VehicleStatusSpec;
 use App\Services\Tracking\DevicePositionLoader;
+use App\Services\Tracking\GlobalTrackingService;
 use App\Services\Tracking\TrackingMetricsService;
 use App\Services\Traccar\TraccarTrackingGate;
 use App\Services\Traccar\TraccarUserAccessService;
@@ -27,6 +29,8 @@ class UserDashboardService
         private TraccarUserAccessService $trackerUsers,
         private TraccarTrackingGate $trackingGate,
         private MobileMapStatusResolver $mapStatus,
+        private RbacService $rbac,
+        private GlobalTrackingService $tracking,
     ) {}
 
     public const MOVING_SPEED_KMH = VehicleStatusSpec::MOVING_SPEED_KMH;
@@ -36,12 +40,12 @@ class UserDashboardService
 
     public function getStats(User $user): array
     {
-        if (! $this->trackerUsers->hasTrackerAccount($user)) {
+        $devices = $this->resolveDashboardDevices($user);
+
+        if ($devices->isEmpty() && ! $this->rbac->canAccessPanel($user)) {
             return $this->emptyTrackerStats();
         }
 
-        $devices = $user->trackerDevicesQuery()->with(['subscription'])->get();
-        $devices = $this->trackingGate->filterTrackable($user, $devices);
         $this->positionLoader->attachLatestToMany($devices);
         $deviceIds = $devices->pluck('id');
 
@@ -81,6 +85,31 @@ class UserDashboardService
             'alertsPercent' => min(100, $activeAlerts * 20),
             'distancePercent' => min(100, (int) round($totalDistanceKm / 50)),
         ];
+    }
+
+    /**
+     * Role-scoped device set for dashboard counts/recent list.
+     * Staff (super-admin/admin/client) see their full fleet; end-users see their own devices.
+     *
+     * @return Collection<int, Device>
+     */
+    private function resolveDashboardDevices(User $user): Collection
+    {
+        if ($this->rbac->canAccessPanel($user)) {
+            $devices = $this->tracking->devicesForActor($user);
+            $devices->loadMissing('subscription');
+
+            return $devices;
+        }
+
+        if (! $this->trackerUsers->hasTrackerAccount($user)) {
+            return collect();
+        }
+
+        return $this->trackingGate->filterTrackable(
+            $user,
+            $user->trackerDevicesQuery()->with(['subscription'])->get()
+        );
     }
 
     public function calculateTotalDistanceKm(Collection $deviceIds, int $days = 30): float
