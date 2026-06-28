@@ -907,6 +907,8 @@ return [
         'geofence_save_failed' => 'Failed to save geofence',
         'geofence_draw_first' => 'Draw a shape on the map first',
         'geofence_pick_vehicle' => 'Select a vehicle first',
+        'geofence_track_hint' => 'Checked vehicles appear on the map with live trails. The geofence is saved for the first checked vehicle.',
+        'geofence_saved_for_vehicle' => 'Geofence saved for :vehicle',
         'geofence_delete_confirm' => 'Delete this geofence?',
         'geofence_delete_failed' => 'Failed to delete geofence',
         'geofence_none' => 'No geofences yet. Pick a vehicle, then draw one on the map.',

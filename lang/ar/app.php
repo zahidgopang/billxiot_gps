@@ -877,6 +877,8 @@ return [
         'geofence_save_failed' => 'فشل حفظ المنطقة',
         'geofence_draw_first' => 'ارسم شكلاً على الخريطة أولاً',
         'geofence_pick_vehicle' => 'اختر مركبة أولاً',
+        'geofence_track_hint' => 'المركبات المحددة تظهر على الخريطة مع مسار مباشر. تُحفظ المنطقة الجغرافية للمركبة الأولى المحددة.',
+        'geofence_saved_for_vehicle' => 'تم حفظ المنطقة الجغرافية لـ :vehicle',
         'geofence_delete_confirm' => 'حذف هذه المنطقة؟',
         'geofence_delete_failed' => 'فشل حذف المنطقة',
         'geofence_none' => 'لا توجد مناطق بعد. اختر مركبة ثم ارسم منطقة على الخريطة.',

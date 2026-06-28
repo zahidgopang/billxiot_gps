@@ -601,23 +601,31 @@
             const st = this.vehicleState(id);
             this.ensureMarker(id);
             const merged = { ...this.vehicles.get(id), ...point, id };
+            // Live payload carries the label as `status` (not `status_label`) and a
+            // fresh `color` / `status_key`. Normalize so the list badge, marker icon
+            // and footer all read the up-to-date status text — not the stale initial one.
+            const liveLabel = point.status ?? point.status_label;
+            if (liveLabel != null) merged.status_label = liveLabel;
+            if (point.color != null) merged.color = point.color;
             this.vehicles.set(id, merged);
 
+            const statusText = merged.status_label || merged.status || merged.status_key || '—';
             const metaEl = document.querySelector(`[data-meta="${id}"]`);
             if (metaEl) metaEl.innerHTML = this.metaHtml(merged);
             const liveColor = colorForPoint(merged, this.stateColors);
             const iconEl = document.querySelector(`[data-veh-icon="${id}"]`);
             if (iconEl) {
                 iconEl.style.color = liveColor;
-                iconEl.title = merged.status_label || merged.status || '';
+                iconEl.title = statusText;
                 if (merged.icon) iconEl.innerHTML = `<i class="fas ${merged.icon}"></i>`;
             }
             const statusEl = document.querySelector(`[data-status="${id}"]`);
             if (statusEl) {
                 statusEl.style.setProperty('--st', liveColor);
-                statusEl.textContent = merged.status_label || merged.status || merged.status_key || '—';
+                statusEl.textContent = statusText;
             }
             this.updateCounts();
+            this.updatePanelLive(merged);
 
             const prev = st.lastPoint;
             const key = merged.status_key || 'offline';
@@ -867,6 +875,8 @@
             document.getElementById('tcFooterClose')?.addEventListener('click', () => {
                 const f = document.getElementById('tcFooter');
                 if (f) f.hidden = true;
+                this._footerMode = null;
+                this._panelDeviceId = null;
                 this.resizeMapSoon();
             });
         }
@@ -1206,24 +1216,24 @@
             const i = this.cfg.i18n || {};
             const kmh = i.kmhUnit || 'km/h';
             const dash = '—';
-            const kv = (k, v, icon) => `<div class="tc-kv"><span class="tc-kv-k">${icon ? `<i class="fas ${icon}"></i>` : ''}${escHtml(k)}</span><span class="tc-kv-v">${v}</span></div>`;
+            const kv = (k, v, icon, id) => `<div class="tc-kv"><span class="tc-kv-k">${icon ? `<i class="fas ${icon}"></i>` : ''}${escHtml(k)}</span><span class="tc-kv-v"${id ? ` id="${id}"` : ''}>${v}</span></div>`;
             const pos = (panel.lat != null && panel.lng != null)
                 ? `<a href="#" data-tc-locate="${panel.lat},${panel.lng}">${Number(panel.lat).toFixed(6)}, ${Number(panel.lng).toFixed(6)}</a>`
                 : dash;
             const colA = [
                 kv(i.lblObject || 'Object', escHtml(panel.name || dash), panel.icon),
                 kv(i.lblPlate || 'Plate', escHtml(panel.plate || dash), 'fa-id-card'),
-                kv(i.lblStatus || 'Status', `<span style="color:${escHtml(panel.color || '#475569')}">${escHtml(panel.status || dash)}</span>`, 'fa-circle-info'),
+                kv(i.lblStatus || 'Status', `<span id="tcPanelStatus" style="color:${escHtml(panel.color || '#475569')}">${escHtml(panel.status || dash)}</span>`, 'fa-circle-info'),
                 kv(i.lblOdometer || 'Odometer', panel.odometer != null ? `${Math.round(panel.odometer)} km` : dash, 'fa-gauge'),
                 kv(i.lblAltitude || 'Altitude', panel.altitude != null ? `${panel.altitude} m` : dash, 'fa-mountain'),
-                kv(i.lblAngle || 'Angle', panel.angle != null ? `${panel.angle}\u00b0` : dash, 'fa-compass'),
+                kv(i.lblAngle || 'Angle', panel.angle != null ? `${panel.angle}\u00b0` : dash, 'fa-compass', 'tcPanelAngle'),
             ].join('');
             const colB = [
-                kv(i.lblPosition || 'Position', pos, 'fa-location-dot'),
-                kv(i.lblSpeed || 'Speed', `${panel.speed != null ? panel.speed : 0} ${kmh}`, 'fa-gauge-high'),
-                kv(i.lblTimePosition || 'Time (position)', escHtml(panel.time_position || dash), 'fa-clock'),
-                kv(i.lblTimeServer || 'Time (server)', escHtml(panel.time_server || dash), 'fa-server'),
-                kv(i.lblIgnition || 'Ignition', panel.ignition == null ? dash : (panel.ignition ? (i.ignitionOn || 'On') : (i.ignitionOff || 'Off')), 'fa-key'),
+                kv(i.lblPosition || 'Position', pos, 'fa-location-dot', 'tcPanelPos'),
+                kv(i.lblSpeed || 'Speed', `${panel.speed != null ? Math.round(panel.speed) : 0} ${escHtml(kmh)}`, 'fa-gauge-high', 'tcPanelSpeed'),
+                kv(i.lblTimePosition || 'Time (position)', escHtml(panel.time_position || dash), 'fa-clock', 'tcPanelTimePos'),
+                kv(i.lblTimeServer || 'Time (server)', escHtml(panel.time_server || dash), 'fa-server', 'tcPanelTimeServer'),
+                kv(i.lblIgnition || 'Ignition', panel.ignition == null ? dash : (panel.ignition ? (i.ignitionOn || 'On') : (i.ignitionOff || 'Off')), 'fa-key', 'tcPanelIgnition'),
             ].join('');
 
             const cmdTypes = this.cfg.commandTypes || {};
@@ -1278,17 +1288,9 @@
                 ? this.mileageBarsHtml(panel.mileage)
                 : `<div id="tcMileageBody"><div class="tc-empty">…</div></div>`;
 
-            // Speedometer gauge (SVG semicircle)
-            const spd = Math.max(0, Math.round(parseFloat(panel.speed) || 0));
-            const maxSpd = parseFloat(panel.speed_max) || 160;
-            const frac = Math.min(1, spd / maxSpd);
-            const gaugeColor = frac > 0.8 ? '#dc2626' : frac > 0.5 ? '#f59e0b' : '#16a34a';
-            const speedoHtml = `<svg class="tc-gauge" viewBox="0 0 120 72">
-                <path d="M10 62 A 50 50 0 0 1 110 62" fill="none" stroke="#e2e8f0" stroke-width="10" stroke-linecap="round" pathLength="100"></path>
-                <path d="M10 62 A 50 50 0 0 1 110 62" fill="none" stroke="${gaugeColor}" stroke-width="10" stroke-linecap="round" pathLength="100" stroke-dasharray="${(frac * 100).toFixed(1)} 100"></path>
-                <text x="60" y="52" text-anchor="middle" class="tc-gauge-val">${spd}</text>
-                <text x="60" y="66" text-anchor="middle" class="tc-gauge-unit">${escHtml(kmh)}</text>
-            </svg>`;
+            // Speedometer gauge (SVG semicircle) — wrapped so live polls can re-render it in place.
+            this._panelSpeedMax = parseFloat(panel.speed_max) || 160;
+            const speedoHtml = `<div id="tcPanelSpeedo">${this.speedoSvg(panel.speed, this._panelSpeedMax)}</div>`;
 
             // Notes / Photo
             const notesHtml = panel.notes
@@ -1326,6 +1328,74 @@
 
             if (panel.mileage == null && this.cfg.deviceMileageUrl) {
                 this.loadPanelMileage(panel.id);
+            }
+        }
+
+        speedoSvg(speed, maxSpd) {
+            const kmh = this.cfg.i18n?.kmhUnit || 'km/h';
+            const spd = Math.max(0, Math.round(parseFloat(speed) || 0));
+            const max = parseFloat(maxSpd) || 160;
+            const frac = Math.min(1, spd / max);
+            const gaugeColor = frac > 0.8 ? '#dc2626' : frac > 0.5 ? '#f59e0b' : '#16a34a';
+            return `<svg class="tc-gauge" viewBox="0 0 120 72">
+                <path d="M10 62 A 50 50 0 0 1 110 62" fill="none" stroke="#e2e8f0" stroke-width="10" stroke-linecap="round" pathLength="100"></path>
+                <path d="M10 62 A 50 50 0 0 1 110 62" fill="none" stroke="${gaugeColor}" stroke-width="10" stroke-linecap="round" pathLength="100" stroke-dasharray="${(frac * 100).toFixed(1)} 100"></path>
+                <text x="60" y="52" text-anchor="middle" class="tc-gauge-val">${spd}</text>
+                <text x="60" y="66" text-anchor="middle" class="tc-gauge-unit">${escHtml(kmh)}</text>
+            </svg>`;
+        }
+
+        /**
+         * Live-refresh the open footer panel's volatile fields (speedometer,
+         * speed, status, ignition, position, time) when a new fix arrives for the
+         * device whose panel is currently shown — no full re-fetch needed.
+         */
+        updatePanelLive(v) {
+            if (this._footerMode !== 'panel' || this._panelDeviceId == null) return;
+            if (Number(this._panelDeviceId) !== Number(v.id)) return;
+
+            const i = this.cfg.i18n || {};
+            const kmh = i.kmhUnit || 'km/h';
+            const dash = '—';
+
+            const footerTitle = document.getElementById('tcFooterTitle');
+            if (footerTitle) footerTitle.textContent = this.labelFor(v);
+
+            const speedo = document.getElementById('tcPanelSpeedo');
+            if (speedo) speedo.innerHTML = this.speedoSvg(v.speed, this._panelSpeedMax || 160);
+
+            const spdEl = document.getElementById('tcPanelSpeed');
+            if (spdEl) spdEl.textContent = `${v.speed != null ? Math.round(parseFloat(v.speed) || 0) : 0} ${kmh}`;
+
+            const statusEl = document.getElementById('tcPanelStatus');
+            if (statusEl) {
+                statusEl.textContent = v.status_label || v.status || v.status_key || dash;
+                statusEl.style.color = colorForPoint(v, this.stateColors);
+            }
+
+            const ignEl = document.getElementById('tcPanelIgnition');
+            if (ignEl) ignEl.textContent = v.ignition == null ? dash : (v.ignition ? (i.ignitionOn || 'On') : (i.ignitionOff || 'Off'));
+
+            if (v.heading != null) {
+                const angleEl = document.getElementById('tcPanelAngle');
+                if (angleEl) angleEl.textContent = `${Math.round(parseFloat(v.heading) || 0)}\u00b0`;
+            }
+
+            const timePosEl = document.getElementById('tcPanelTimePos');
+            if (timePosEl && (v.recorded_at_human || v.last_update)) {
+                timePosEl.textContent = v.recorded_at_human || v.last_update;
+            }
+
+            const posEl = document.getElementById('tcPanelPos');
+            if (posEl && v.lat != null && v.lng != null) {
+                posEl.innerHTML = `<a href="#" data-tc-locate="${v.lat},${v.lng}">${Number(v.lat).toFixed(6)}, ${Number(v.lng).toFixed(6)}</a>`;
+                posEl.querySelector('[data-tc-locate]')?.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    if (hasGeo(v.lat, v.lng)) {
+                        this.map.panTo({ lat: Number(v.lat), lng: Number(v.lng) });
+                        if (this.map.getZoom() < 15) this.map.setZoom(16);
+                    }
+                });
             }
         }
 

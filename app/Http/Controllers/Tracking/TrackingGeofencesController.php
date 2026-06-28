@@ -7,6 +7,7 @@ use App\Http\Concerns\ResolvesTrackingPanel;
 use App\Http\Controllers\Controller;
 use App\Models\Device;
 use App\Models\Geofence;
+use App\Services\Mobile\VehicleStatusSpec;
 use App\Services\Tracking\GlobalTrackingService;
 use App\Services\Traccar\TraccarGeofenceManager;
 use Illuminate\Http\JsonResponse;
@@ -30,6 +31,9 @@ class TrackingGeofencesController extends Controller
         return view('tracking.geofences', $this->viewData($request, $panel, [
             'jsonUrl' => route("{$panel}.tracking.geofences.json"),
             'storeUrl' => route("{$panel}.tracking.geofences.store"),
+            'deleteUrl' => route("{$panel}.tracking.geofences.destroy", ['geofence' => 0]),
+            'liveJsonUrl' => route("{$panel}.tracking.live-json"),
+            'stateColors' => VehicleStatusSpec::STATE_COLORS,
         ]));
     }
 

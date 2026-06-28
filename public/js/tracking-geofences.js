@@ -1,16 +1,28 @@
 (function (global) {
     'use strict';
+
     const cfg = global.TRACKING_GEOFENCES_CONFIG;
-    if (!cfg?.googleMapsKey) return;
+    if (!cfg) return;
 
     const i18n = cfg.i18n || {};
     const $ = (id) => document.getElementById(id);
     const csrf = () => cfg.csrfToken || document.querySelector('meta[name="csrf-token"]')?.content || '';
 
+    const TRAIL_MAX = 22;
+    const TRAIL_MIN_STEP_DEG = 0.000022;
+
     let map = null;
+    let DrawingManagerClass = null;
+    let OverlayType = null;
     let drawingManager = null;
-    let currentDrawing = null;     // shape being created (not yet saved)
-    let existingShapes = [];       // shapes loaded from the server
+    let currentDrawing = null;
+    let existingShapes = [];
+    let pollTimer = null;
+    let pollInFlight = false;
+
+    const vehicles = new Map((cfg.vehicles || []).map((v) => [Number(v.id), { ...v }]));
+    const visible = new Set([...vehicles.keys()]);
+    const trackStates = new Map();
 
     function escapeHtml(value) {
         return String(value ?? '')
@@ -20,79 +32,384 @@
 
     function notify(message, type) {
         if (global.Swal) {
-            global.Swal.fire({ toast: true, position: 'top-end', timer: 2200, showConfirmButton: false, icon: type || 'info', title: message });
+            global.Swal.fire({
+                toast: true,
+                position: 'top-end',
+                timer: type === 'success' ? 2200 : 2800,
+                showConfirmButton: false,
+                icon: type || 'info',
+                title: message,
+            });
         } else if (type === 'error') {
             global.alert(message);
         }
     }
 
-    global.__gtGeoReady = () => {
-        map = new google.maps.Map($('gtGeofenceMap'), {
-            center: { lat: 25.276987, lng: 55.296249 },
-            zoom: 11,
-            mapTypeControl: true,
-            streetViewControl: false,
-        });
-        initDrawing();
-        bindControls();
-        loadList();
-    };
+    function colorForVehicle(v) {
+        const key = v?.status_key || 'offline';
+        return v?.color || (cfg.stateColors && cfg.stateColors[key]) || '#2563eb';
+    }
 
-    function initDrawing() {
-        if (!google.maps.drawing?.DrawingManager) {
-            ['gtGeoDrawPolygon', 'gtGeoDrawCircle', 'gtGeoSave'].forEach((id) => { const el = $(id); if (el) el.disabled = true; });
-            notify(i18n.drawingUnavailable || 'Drawing tools failed to load', 'error');
-            return;
+    function selectedVehicleIds() {
+        return [...document.querySelectorAll('.gt-geo-veh-check:checked')].map((el) => parseInt(el.value, 10)).filter(Boolean);
+    }
+
+    function firstSelectedVehicle() {
+        const id = selectedVehicleIds()[0];
+        if (!id) return null;
+        return vehicles.get(id) || null;
+    }
+
+    function vehicleState(id) {
+        if (!trackStates.has(id)) {
+            trackStates.set(id, { marker: null, trail: [], trailLine: null, lastPoint: null });
         }
-        drawingManager = new google.maps.drawing.DrawingManager({
-            drawingMode: null,
-            drawingControl: false,
-            polygonOptions: { fillColor: '#2563eb', fillOpacity: 0.15, strokeColor: '#2563eb', strokeWeight: 2 },
-            circleOptions: { fillColor: '#2563eb', fillOpacity: 0.15, strokeColor: '#2563eb', strokeWeight: 2 },
-        });
-        drawingManager.setMap(map);
+        return trackStates.get(id);
+    }
 
-        google.maps.event.addListener(drawingManager, 'overlaycomplete', (e) => {
-            currentDrawing = e.overlay;
-            drawingManager.setDrawingMode(null);
-            $('gtGeoSave').disabled = false;
-            $('gtGeoCancel').hidden = false;
+    function loadMapsScript(key) {
+        return new Promise((resolve, reject) => {
+            if (typeof global.google?.maps?.importLibrary === 'function') {
+                resolve();
+                return;
+            }
+
+            const existing = document.querySelector('script[data-gt-geo-maps]');
+            if (existing) {
+                const start = Date.now();
+                (function wait() {
+                    if (typeof global.google?.maps?.importLibrary === 'function') {
+                        resolve();
+                        return;
+                    }
+                    if (Date.now() - start > 15000) {
+                        reject(new Error('Google Maps importLibrary unavailable'));
+                        return;
+                    }
+                    setTimeout(wait, 50);
+                })();
+                return;
+            }
+
+            const script = document.createElement('script');
+            script.dataset.gtGeoMaps = '1';
+            script.async = true;
+            script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&loading=async`;
+            script.onerror = () => reject(new Error('Google Maps script failed'));
+            script.onload = () => {
+                const start = Date.now();
+                (function wait() {
+                    if (typeof global.google?.maps?.importLibrary === 'function') {
+                        resolve();
+                        return;
+                    }
+                    if (Date.now() - start > 15000) {
+                        reject(new Error('Google Maps importLibrary unavailable'));
+                        return;
+                    }
+                    setTimeout(wait, 50);
+                })();
+            };
+            document.head.appendChild(script);
         });
     }
 
-    function startDraw(mode) {
-        if (!drawingManager) return;
+    async function ensureDrawingClasses() {
+        if (DrawingManagerClass && OverlayType) {
+            return true;
+        }
+        try {
+            const drawingLib = await global.google.maps.importLibrary('drawing');
+            DrawingManagerClass = drawingLib.DrawingManager;
+            OverlayType = drawingLib.OverlayType;
+            return !!DrawingManagerClass;
+        } catch (err) {
+            console.warn('[tracking-geofences] drawing library failed', err);
+            return false;
+        }
+    }
+
+    async function initDrawingManager() {
+        if (drawingManager || !map) {
+            return drawingManager;
+        }
+        if (!await ensureDrawingClasses()) {
+            return null;
+        }
+
+        try {
+            drawingManager = new DrawingManagerClass({
+                drawingMode: null,
+                drawingControl: false,
+                polygonOptions: {
+                    fillColor: '#2563eb',
+                    fillOpacity: 0.15,
+                    strokeColor: '#2563eb',
+                    strokeWeight: 2,
+                },
+                circleOptions: {
+                    fillColor: '#2563eb',
+                    fillOpacity: 0.15,
+                    strokeColor: '#2563eb',
+                    strokeWeight: 2,
+                },
+            });
+            drawingManager.setMap(map);
+
+            global.google.maps.event.addListener(drawingManager, 'overlaycomplete', (e) => {
+                currentDrawing?.setMap(null);
+                currentDrawing = e.overlay;
+                drawingManager.setDrawingMode(null);
+                const saveBtn = $('gtGeoSave');
+                if (saveBtn) saveBtn.disabled = false;
+                const cancelBtn = $('gtGeoCancel');
+                if (cancelBtn) cancelBtn.hidden = false;
+            });
+        } catch (err) {
+            console.warn('[tracking-geofences] DrawingManager init failed', err);
+            drawingManager = null;
+        }
+
+        return drawingManager;
+    }
+
+    async function startDraw(mode) {
+        if (!mode) {
+            notify(i18n.drawingUnavailable || 'Drawing tools failed to load', 'error');
+            return;
+        }
+        const dm = drawingManager || await initDrawingManager();
+        if (!dm || !OverlayType) {
+            notify(i18n.drawingUnavailable || 'Drawing tools failed to load', 'error');
+            return;
+        }
+
         currentDrawing?.setMap(null);
         currentDrawing = null;
-        $('gtGeoSave').disabled = true;
-        $('gtGeoCancel').hidden = false;
-        drawingManager.setDrawingMode(mode);
+        const saveBtn = $('gtGeoSave');
+        if (saveBtn) saveBtn.disabled = true;
+        const cancelBtn = $('gtGeoCancel');
+        if (cancelBtn) cancelBtn.hidden = false;
+        dm.setDrawingMode(mode);
     }
 
     function cancelDraw() {
         currentDrawing?.setMap(null);
         currentDrawing = null;
         drawingManager?.setDrawingMode(null);
-        $('gtGeoSave').disabled = true;
-        $('gtGeoCancel').hidden = true;
+        const saveBtn = $('gtGeoSave');
+        if (saveBtn) saveBtn.disabled = true;
+        const cancelBtn = $('gtGeoCancel');
+        if (cancelBtn) cancelBtn.hidden = true;
+    }
+
+    function teardownVehicle(id) {
+        const st = trackStates.get(id);
+        if (!st) return;
+        st.marker?.setMap(null);
+        st.trailLine?.setMap(null);
+        trackStates.delete(id);
+    }
+
+    function ensureMarker(id) {
+        const v = vehicles.get(id);
+        const st = vehicleState(id);
+        if (!map || !v || v.lat == null || v.lng == null) return;
+
+        const color = colorForVehicle(v);
+        const pos = { lat: Number(v.lat), lng: Number(v.lng) };
+
+        if (!st.marker) {
+            st.marker = new global.google.maps.Marker({
+                map,
+                position: pos,
+                title: v.title || v.plate || `#${id}`,
+                icon: {
+                    path: global.google.maps.SymbolPath.CIRCLE,
+                    fillColor: color,
+                    fillOpacity: 1,
+                    strokeColor: '#fff',
+                    strokeWeight: 2,
+                    scale: 7,
+                },
+                zIndex: 500,
+            });
+        } else {
+            st.marker.setPosition(pos);
+            st.marker.setIcon({
+                path: global.google.maps.SymbolPath.CIRCLE,
+                fillColor: color,
+                fillOpacity: 1,
+                strokeColor: '#fff',
+                strokeWeight: 2,
+                scale: 7,
+            });
+            if (st.marker.getMap() !== map) st.marker.setMap(map);
+        }
+    }
+
+    function appendTrail(id, lat, lng, color) {
+        if (!map || lat == null || lng == null) return;
+        const st = vehicleState(id);
+        const committed = st.trail;
+        const last = committed[committed.length - 1];
+        if (!last || Math.abs(lat - last.lat) > TRAIL_MIN_STEP_DEG || Math.abs(lng - last.lng) > TRAIL_MIN_STEP_DEG) {
+            committed.push({ lat, lng });
+            while (committed.length > TRAIL_MAX) committed.shift();
+        }
+
+        const path = committed.slice();
+        const tail = path[path.length - 1];
+        if (!tail || tail.lat !== lat || tail.lng !== lng) path.push({ lat, lng });
+        if (path.length < 2) return;
+
+        if (!st.trailLine) {
+            st.trailLine = new global.google.maps.Polyline({
+                map,
+                path,
+                strokeColor: color,
+                strokeOpacity: 0.65,
+                strokeWeight: 4,
+                zIndex: 400,
+                clickable: false,
+            });
+        } else {
+            st.trailLine.setPath(path);
+            st.trailLine.setOptions({ strokeColor: color });
+            if (st.trailLine.getMap() !== map) st.trailLine.setMap(map);
+        }
+    }
+
+    function applyVehiclePoint(id, point) {
+        if (!visible.has(id) || !point || point.lat == null || point.lng == null) return;
+
+        const merged = { ...vehicles.get(id), ...point, id };
+        vehicles.set(id, merged);
+        ensureMarker(id);
+        appendTrail(id, Number(point.lat), Number(point.lng), colorForVehicle(merged));
+    }
+
+    function syncVisibleFromCheckboxes() {
+        const next = new Set(selectedVehicleIds());
+        visible.forEach((id) => {
+            if (!next.has(id)) {
+                visible.delete(id);
+                teardownVehicle(id);
+            }
+        });
+        next.forEach((id) => {
+            if (!visible.has(id)) {
+                visible.add(id);
+                const v = vehicles.get(id);
+                if (v?.lat != null && v?.lng != null) {
+                    ensureMarker(id);
+                    appendTrail(id, Number(v.lat), Number(v.lng), colorForVehicle(v));
+                }
+            }
+        });
+        startPolling();
+        fitVisibleVehicles();
+    }
+
+    function fitVisibleVehicles() {
+        if (!map || visible.size === 0) return;
+        const bounds = new global.google.maps.LatLngBounds();
+        let count = 0;
+        visible.forEach((id) => {
+            const v = vehicles.get(id);
+            if (v?.lat != null && v?.lng != null) {
+                bounds.extend({ lat: Number(v.lat), lng: Number(v.lng) });
+                count++;
+            }
+        });
+        if (count === 0) return;
+        if (count === 1) {
+            map.setCenter(bounds.getCenter());
+            if (map.getZoom() < 13) map.setZoom(14);
+        } else {
+            map.fitBounds(bounds, 50);
+        }
+    }
+
+    function startPolling() {
+        if (pollTimer) {
+            clearInterval(pollTimer);
+            pollTimer = null;
+        }
+        if (visible.size === 0 || !cfg.liveJsonUrl) return;
+        pollLive(true);
+        pollTimer = setInterval(() => pollLive(false), cfg.pollIntervalMs || 4000);
+    }
+
+    async function pollLive(force) {
+        if (pollInFlight && !force) return;
+        const ids = [...visible];
+        if (ids.length === 0 || !cfg.liveJsonUrl) return;
+
+        pollInFlight = true;
+        try {
+            const res = await fetch(`${cfg.liveJsonUrl}?ids=${ids.join(',')}&_=${Date.now()}`, {
+                credentials: 'same-origin',
+                cache: 'no-store',
+            });
+            if (!res.ok) return;
+            const data = await res.json();
+            (data.devices || []).forEach((d) => applyVehiclePoint(Number(d.id), d));
+        } catch (err) {
+            console.warn('[tracking-geofences] live poll failed', err);
+        } finally {
+            pollInFlight = false;
+        }
+    }
+
+    function bindVehiclePicker() {
+        document.querySelectorAll('.gt-geo-veh-check').forEach((el) => {
+            el.addEventListener('change', syncVisibleFromCheckboxes);
+        });
+
+        $('gtGeoSelectAll')?.addEventListener('click', () => {
+            document.querySelectorAll('.gt-geo-veh-check').forEach((el) => { el.checked = true; });
+            syncVisibleFromCheckboxes();
+        });
+
+        $('gtGeoSelectNone')?.addEventListener('click', () => {
+            document.querySelectorAll('.gt-geo-veh-check').forEach((el) => { el.checked = false; });
+            syncVisibleFromCheckboxes();
+        });
     }
 
     function bindControls() {
-        $('gtGeoDrawPolygon')?.addEventListener('click', () => startDraw(google.maps.drawing.OverlayType.POLYGON));
-        $('gtGeoDrawCircle')?.addEventListener('click', () => startDraw(google.maps.drawing.OverlayType.CIRCLE));
+        $('gtGeoDrawPolygon')?.addEventListener('click', async () => {
+            await ensureDrawingClasses();
+            startDraw(OverlayType?.POLYGON);
+        });
+        $('gtGeoDrawCircle')?.addEventListener('click', async () => {
+            await ensureDrawingClasses();
+            startDraw(OverlayType?.CIRCLE);
+        });
         $('gtGeoCancel')?.addEventListener('click', cancelDraw);
         $('gtGeoSave')?.addEventListener('click', saveGeofence);
     }
 
     async function saveGeofence() {
-        if (!currentDrawing) { notify(i18n.drawFirst || 'Draw a shape first', 'error'); return; }
-        const deviceId = $('gtGeoDevice')?.value;
-        if (!deviceId) { notify(i18n.pickVehicle || 'Select a vehicle first', 'error'); return; }
+        if (!currentDrawing) {
+            notify(i18n.drawFirst || 'Draw a shape first', 'error');
+            return;
+        }
+
+        const vehicle = firstSelectedVehicle();
+        if (!vehicle) {
+            notify(i18n.pickVehicle || 'Select a vehicle first', 'error');
+            return;
+        }
 
         const name = ($('gtGeoName')?.value || '').trim() || `Geofence ${new Date().toLocaleString()}`;
-        const payload = { name, device_id: parseInt(deviceId, 10) };
+        const payload = {
+            name,
+            device_id: Number(vehicle.id),
+        };
 
-        if (currentDrawing instanceof google.maps.Polygon) {
+        if (currentDrawing instanceof global.google.maps.Polygon) {
             payload.type = 'polygon';
             payload.coords = [];
             const path = currentDrawing.getPath();
@@ -100,8 +417,11 @@
                 const ll = path.getAt(i);
                 payload.coords.push([ll.lat(), ll.lng()]);
             }
-            if (payload.coords.length < 3) { notify(i18n.drawFirst || 'Draw a shape first', 'error'); return; }
-        } else if (currentDrawing instanceof google.maps.Circle) {
+            if (payload.coords.length < 3) {
+                notify(i18n.drawFirst || 'Draw a shape first', 'error');
+                return;
+            }
+        } else if (currentDrawing instanceof global.google.maps.Circle) {
             payload.type = 'circle';
             const c = currentDrawing.getCenter();
             payload.center = [c.lat(), c.lng()];
@@ -111,24 +431,34 @@
         }
 
         const btn = $('gtGeoSave');
-        btn.disabled = true;
+        if (btn) btn.disabled = true;
         try {
             const res = await fetch(cfg.storeUrl, {
                 method: 'POST',
                 credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf(), Accept: 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': csrf(),
+                    Accept: 'application/json',
+                },
                 body: JSON.stringify(payload),
             });
             const json = await res.json().catch(() => ({}));
             if (!res.ok || json.success === false) throw new Error(json.message || 'save failed');
+
             currentDrawing.setMap(null);
             currentDrawing = null;
-            $('gtGeoCancel').hidden = true;
-            if ($('gtGeoName')) $('gtGeoName').value = '';
-            notify(i18n.saved || 'Geofence saved', 'success');
+            const cancelBtn = $('gtGeoCancel');
+            if (cancelBtn) cancelBtn.hidden = true;
+            const nameInput = $('gtGeoName');
+            if (nameInput) nameInput.value = '';
+
+            const savedMsg = (i18n.savedForVehicle || 'Geofence saved for :vehicle')
+                .replace(':vehicle', vehicle.title || vehicle.plate || `#${vehicle.id}`);
+            notify(savedMsg, 'success');
             await loadList();
         } catch (err) {
-            btn.disabled = false;
+            if (btn) btn.disabled = false;
             notify(i18n.saveFailed || 'Failed to save geofence', 'error');
         }
     }
@@ -161,20 +491,21 @@
                 : `<div class="text-muted">${escapeHtml(i18n.none || 'No geofences yet')}</div>`;
         }
 
-        const bounds = new google.maps.LatLngBounds();
+        if (!map) return;
+
+        const bounds = new global.google.maps.LatLngBounds();
         let hasBounds = false;
         geofences.forEach((g) => {
             const shape = drawGeofence(g);
             if (!shape) return;
             existingShapes.push(shape);
-            if (shape instanceof google.maps.Circle) {
+            if (shape instanceof global.google.maps.Circle) {
                 const b = shape.getBounds();
                 if (b) { bounds.union(b); hasBounds = true; }
             } else if (shape.getPath) {
                 shape.getPath().forEach((ll) => { bounds.extend(ll); hasBounds = true; });
             }
         });
-        if (hasBounds) map.fitBounds(bounds, 40);
 
         bindListActions(geofences);
     }
@@ -213,7 +544,8 @@
                 }
                 btn.disabled = true;
                 try {
-                    const res = await fetch(`${cfg.storeUrl}/${id}`, {
+                    const deleteUrl = (cfg.deleteUrl || `${cfg.storeUrl}/${id}`).replace(/\/0(\?|$)/, `/${id}$1`);
+                    const res = await fetch(deleteUrl, {
                         method: 'DELETE',
                         credentials: 'same-origin',
                         headers: { 'X-CSRF-TOKEN': csrf(), Accept: 'application/json' },
@@ -229,25 +561,75 @@
     }
 
     function drawGeofence(g) {
+        if (!map) return null;
         if (g.type === 'circle' && g.center && g.radius) {
             const c = Array.isArray(g.center) ? g.center : JSON.parse(g.center);
-            return new google.maps.Circle({
-                map, center: { lat: +c[0], lng: +c[1] }, radius: +g.radius,
-                fillColor: g.color || '#2563eb', fillOpacity: 0.15, strokeColor: g.color || '#2563eb', strokeWeight: 2,
+            return new global.google.maps.Circle({
+                map,
+                center: { lat: +c[0], lng: +c[1] },
+                radius: +g.radius,
+                fillColor: g.color || '#0891b2',
+                fillOpacity: 0.12,
+                strokeColor: g.color || '#0891b2',
+                strokeWeight: 2,
             });
         }
         if (g.coords) {
             const coords = Array.isArray(g.coords) ? g.coords : JSON.parse(g.coords);
             if (!coords?.length) return null;
-            return new google.maps.Polygon({
-                map, paths: coords.map((p) => ({ lat: +p[0], lng: +p[1] })),
-                fillColor: g.color || '#2563eb', fillOpacity: 0.15, strokeColor: g.color || '#2563eb', strokeWeight: 2,
+            return new global.google.maps.Polygon({
+                map,
+                paths: coords.map((p) => ({ lat: +p[0], lng: +p[1] })),
+                fillColor: g.color || '#0891b2',
+                fillOpacity: 0.12,
+                strokeColor: g.color || '#0891b2',
+                strokeWeight: 2,
             });
         }
         return null;
     }
 
-    const s = document.createElement('script');
-    s.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(cfg.googleMapsKey)}&libraries=drawing,geometry&callback=__gtGeoReady`;
-    document.head.appendChild(s);
+    async function boot() {
+        const mapEl = $('gtGeofenceMap');
+        const key = (cfg.googleMapsKey || '').trim();
+
+        if (!mapEl) return;
+
+        if (!key) {
+            mapEl.innerHTML = `<div class="d-flex align-items-center justify-content-center h-100 text-muted small p-3">${escapeHtml(i18n.mapKeyMissing || 'Google Maps key missing')}</div>`;
+            return;
+        }
+
+        try {
+            await loadMapsScript(key);
+            const { Map } = await global.google.maps.importLibrary('maps');
+
+            map = new Map(mapEl, {
+                center: { lat: 25.276987, lng: 55.296249 },
+                zoom: 11,
+                mapTypeControl: true,
+                streetViewControl: false,
+            });
+
+            global.google.maps.event.addListenerOnce(map, 'idle', () => {
+                global.google.maps.event.trigger(map, 'resize');
+            });
+            setTimeout(() => global.google.maps.event.trigger(map, 'resize'), 300);
+
+            bindVehiclePicker();
+            bindControls();
+            syncVisibleFromCheckboxes();
+            await loadList();
+        } catch (err) {
+            console.error('[tracking-geofences] boot failed', err);
+            mapEl.innerHTML = `<div class="d-flex align-items-center justify-content-center h-100 text-muted small p-3">${escapeHtml(i18n.mapLoadFailed || 'Map failed to load')}</div>`;
+            notify(i18n.mapLoadFailed || 'Map failed to load', 'error');
+        }
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', boot);
+    } else {
+        boot();
+    }
 })(window);
