@@ -46,7 +46,7 @@
     function arrowIcon(color, heading) {
         const g = global.google;
         if (!g?.maps) return null;
-        const bucket = Math.round((((heading || 0) % 360) + 360) % 360 / 5) * 5;
+        const bucket = Math.round((((heading || 0) % 360) + 360) % 360 / 3) * 3;
         const key = `${color}|${bucket}`;
         if (arrowIconCache[key]) return arrowIconCache[key];
         const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="52" viewBox="0 0 40 52">
@@ -201,6 +201,52 @@
         return Math.abs(a.lat - b.lat) < 1e-6 && Math.abs(a.lng - b.lng) < 1e-6;
     }
 
+    function distMeters(a, b) {
+        if (!a || !b) return 0;
+        return haversineKm(a.lat, a.lng, b.lat, b.lng) * 1000;
+    }
+
+    // Split a Date into local { date: 'YYYY-MM-DD', time: 'HH:MM' } for the history inputs.
+    function splitLocal(d) {
+        const p = (n) => String(n).padStart(2, '0');
+        return {
+            date: `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`,
+            time: `${p(d.getHours())}:${p(d.getMinutes())}`,
+        };
+    }
+
+    // Traccar "Show history" presets → concrete local from/to range.
+    function computePresetRange(preset) {
+        const now = new Date();
+        const startOfDay = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0);
+        const endOfDay = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 0);
+        const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
+        // Week starts Monday.
+        const startOfWeek = (d) => { const x = startOfDay(d); const day = (x.getDay() + 6) % 7; return addDays(x, -day); };
+
+        let from;
+        let to;
+        switch (preset) {
+            case 'last_hour': from = new Date(now.getTime() - 3600 * 1000); to = now; break;
+            case 'today': from = startOfDay(now); to = now; break;
+            case 'yesterday': { const y = addDays(now, -1); from = startOfDay(y); to = endOfDay(y); break; }
+            case 'before_2': { const y = addDays(now, -2); from = startOfDay(y); to = endOfDay(y); break; }
+            case 'before_3': { const y = addDays(now, -3); from = startOfDay(y); to = endOfDay(y); break; }
+            case 'this_week': from = startOfWeek(now); to = now; break;
+            case 'last_week': { const sw = startOfWeek(now); const lwStart = addDays(sw, -7); from = lwStart; to = endOfDay(addDays(sw, -1)); break; }
+            case 'this_month': from = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0); to = now; break;
+            case 'last_month': from = new Date(now.getFullYear(), now.getMonth() - 1, 1, 0, 0, 0); to = endOfDay(new Date(now.getFullYear(), now.getMonth(), 0)); break;
+            default: return { from: null, to: null };
+        }
+        return { from: splitLocal(from), to: splitLocal(to) };
+    }
+
+    // Shortest-arc angular interpolation (degrees), so the arrow never spins the long way.
+    function lerpHeading(from, to, t) {
+        const delta = ((to - from + 540) % 360) - 180;
+        return (from + delta * t + 360) % 360;
+    }
+
     // Valid map coordinate? Rejects non-finite, out-of-range, and the (0,0)
     // "null island" (Traccar uses 0/0 for events/positions with no GPS fix).
     function hasGeo(lat, lng) {
@@ -326,7 +372,14 @@
             this.renderList();
             this.updateCounts();
             this.visible.forEach((id) => { this.ensureMarker(id); this.subscribePusher(id); });
-            this.fitAll();
+
+            // "Follow (new window)" deep-link: ?follow=<deviceId>
+            const followId = parseInt(new URLSearchParams(global.location.search).get('follow'), 10);
+            if (followId && this.vehicles.has(followId)) {
+                this.setFollow(followId, true);
+            } else {
+                this.fitAll();
+            }
             this.startPolling();
         }
 
@@ -394,6 +447,7 @@
         renderList() {
             const listEl = document.getElementById('tcVehicleList');
             if (!listEl) return;
+            this.closeRowMenu();
             const items = this.filteredVehicles();
             if (items.length === 0) {
                 listEl.innerHTML = `<div class="tc-empty">${escHtml(this.cfg.i18n?.noVehicles || 'No vehicles')}</div>`;
@@ -415,6 +469,7 @@
                         </span>
                         <span class="tc-row-meta" data-meta="${v.id}">${this.metaHtml(v)}</span>
                     </span>
+                    <button type="button" class="tc-row-menu-btn" data-menu="${v.id}" title="${escHtml(i18n.menuActions || 'Actions')}" aria-label="${escHtml(i18n.menuActions || 'Actions')}"><i class="fas fa-ellipsis-v"></i></button>
                 </div>`;
             }).join('');
 
@@ -431,6 +486,12 @@
             });
             listEl.querySelectorAll('.tc-check-follow').forEach((cb) => {
                 cb.addEventListener('change', (e) => this.setFollow(parseInt(e.target.dataset.follow, 10), e.target.checked));
+            });
+            listEl.querySelectorAll('.tc-row-menu-btn').forEach((btn) => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this.openRowMenu(parseInt(btn.dataset.menu, 10), btn);
+                });
             });
             this.syncCheckAll();
         }
@@ -519,6 +580,191 @@
             }
             this.updateFollowBtn();
             this.renderList();
+        }
+
+        /* ---------- Per-vehicle action menu (Traccar-style kebab) ---------- */
+        closeRowMenu() {
+            if (this._rowMenu) { this._rowMenu.remove(); this._rowMenu = null; }
+            if (this._rowMenuCleanup) { this._rowMenuCleanup(); this._rowMenuCleanup = null; }
+        }
+
+        openRowMenu(id, anchorEl) {
+            if (this._rowMenu && this._rowMenuId === id) { this.closeRowMenu(); return; }
+            this.closeRowMenu();
+            this._rowMenuId = id;
+
+            const i = this.cfg.i18n || {};
+            const v = this.vehicles.get(id);
+            const menu = document.createElement('div');
+            menu.className = 'tc-veh-menu';
+            menu.setAttribute('role', 'menu');
+
+            const item = (icon, label, opts = {}) => {
+                const caret = opts.caret ? '<i class="fas fa-chevron-right tc-mi-caret"></i>' : '';
+                return `<button type="button" class="tc-veh-menu-item" data-act="${opts.act || ''}"><i class="fas ${icon} tc-mi-icon"></i><span>${escHtml(label)}</span>${caret}</button>`;
+            };
+
+            const parts = [
+                item('fa-clock', i.menuShowHistory || 'Show history', { act: 'history', caret: true }),
+                item('fa-shoe-prints', i.menuFollow || 'Follow', { act: 'follow' }),
+                item('fa-up-right-from-square', i.menuFollowNew || 'Follow (new window)', { act: 'follow-new' }),
+                item('fa-street-view', i.menuStreetView || 'Street View (new window)', { act: 'street' }),
+                item('fa-share-nodes', i.menuShare || 'Share position', { act: 'share' }),
+            ];
+            if (this.cfg.commandsSendUrl) parts.push(item('fa-paper-plane', i.menuSendCommand || 'Send command', { act: 'command' }));
+            if (this.cfg.deviceEditUrl) {
+                parts.push('<div class="tc-veh-menu-sep"></div>');
+                parts.push(item('fa-pen', i.menuEdit || 'Edit', { act: 'edit' }));
+            }
+            menu.innerHTML = parts.join('');
+            document.body.appendChild(menu);
+            this._rowMenu = menu;
+
+            this.positionMenu(menu, anchorEl);
+
+            menu.querySelectorAll('.tc-veh-menu-item').forEach((btn) => {
+                const act = btn.dataset.act;
+                if (act === 'history') {
+                    btn.addEventListener('click', (e) => { e.stopPropagation(); this.openHistorySubmenu(id, btn); });
+                } else {
+                    btn.addEventListener('click', (e) => { e.stopPropagation(); this.runRowAction(act, id, v); this.closeRowMenu(); });
+                }
+            });
+
+            const onDocClick = (e) => { if (!menu.contains(e.target) && e.target !== anchorEl) this.closeRowMenu(); };
+            const onKey = (e) => { if (e.key === 'Escape') this.closeRowMenu(); };
+            const onScroll = () => this.closeRowMenu();
+            setTimeout(() => document.addEventListener('click', onDocClick), 0);
+            document.addEventListener('keydown', onKey);
+            global.addEventListener('resize', onScroll);
+            document.getElementById('tcVehicleList')?.addEventListener('scroll', onScroll, { passive: true });
+            this._rowMenuCleanup = () => {
+                document.removeEventListener('click', onDocClick);
+                document.removeEventListener('keydown', onKey);
+                global.removeEventListener('resize', onScroll);
+                document.getElementById('tcVehicleList')?.removeEventListener('scroll', onScroll);
+            };
+        }
+
+        positionMenu(menu, anchorEl) {
+            const r = anchorEl.getBoundingClientRect();
+            const mw = menu.offsetWidth || 220;
+            const mh = menu.offsetHeight || 280;
+            const rtl = document.documentElement.getAttribute('dir') === 'rtl';
+            let left = rtl ? r.left - mw + r.width : r.right + 6;
+            if (left + mw > window.innerWidth - 8) left = r.left - mw - 6;
+            if (left < 8) left = 8;
+            let top = r.top;
+            if (top + mh > window.innerHeight - 8) top = Math.max(8, window.innerHeight - mh - 8);
+            menu.style.left = `${Math.round(left)}px`;
+            menu.style.top = `${Math.round(top)}px`;
+        }
+
+        openHistorySubmenu(id, anchorItem) {
+            // Replace the main menu content with the preset list (keeps it simple + mobile friendly).
+            const i = this.cfg.i18n || {};
+            const menu = this._rowMenu;
+            if (!menu) return;
+            const presets = [
+                ['last_hour', i.rangeLastHour || 'Last hour'],
+                ['today', i.rangeToday || 'Today'],
+                ['yesterday', i.rangeYesterday || 'Yesterday'],
+                ['before_2', i.rangeBefore2 || 'Before 2 days'],
+                ['before_3', i.rangeBefore3 || 'Before 3 days'],
+                ['this_week', i.rangeThisWeek || 'This week'],
+                ['last_week', i.rangeLastWeek || 'Last week'],
+                ['this_month', i.rangeThisMonth || 'This month'],
+                ['last_month', i.rangeLastMonth || 'Last month'],
+            ];
+            menu.classList.add('tc-veh-submenu');
+            menu.innerHTML = `<button type="button" class="tc-veh-menu-item" data-back="1"><i class="fas fa-chevron-left tc-mi-icon"></i><span>${escHtml(i.menuShowHistory || 'Show history')}</span></button>
+                <div class="tc-veh-menu-sep"></div>`
+                + presets.map(([k, label]) => `<button type="button" class="tc-veh-menu-item" data-range="${k}"><i class="fas fa-calendar-day tc-mi-icon"></i><span>${escHtml(label)}</span></button>`).join('');
+
+            menu.querySelector('[data-back]')?.addEventListener('click', (e) => { e.stopPropagation(); this.closeRowMenu(); this.openRowMenu(id, document.querySelector(`[data-menu="${id}"]`)); });
+            menu.querySelectorAll('[data-range]').forEach((btn) => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this.showHistoryPreset(id, btn.dataset.range);
+                    this.closeRowMenu();
+                });
+            });
+        }
+
+        runRowAction(act, id, v) {
+            switch (act) {
+                case 'follow':
+                    this.setFollow(id, true);
+                    break;
+                case 'follow-new':
+                    if (this.cfg.liveUrl) global.open(`${this.cfg.liveUrl}?follow=${id}`, '_blank');
+                    break;
+                case 'street':
+                    this.openStreetView(v);
+                    break;
+                case 'share':
+                    this.sharePosition(v);
+                    break;
+                case 'command':
+                    this.locateVehicle(id);
+                    setTimeout(() => document.getElementById('tcCmdType')?.focus(), 400);
+                    break;
+                case 'edit':
+                    if (this.cfg.deviceEditUrl) {
+                        global.open(this.cfg.deviceEditUrl.replace(/\/0(\?|$)/, `/${id}$1`), '_blank');
+                    }
+                    break;
+            }
+        }
+
+        openStreetView(v) {
+            if (!v || v.lat == null || v.lng == null) { this.toast(this.cfg.i18n?.noPosition || 'No position'); return; }
+            global.open(`https://www.google.com/maps?q=&layer=c&cbll=${v.lat},${v.lng}&cbp=11,0,0,0,0`, '_blank');
+        }
+
+        async sharePosition(v) {
+            const i = this.cfg.i18n || {};
+            if (!v || v.lat == null || v.lng == null) { this.toast(i.noPosition || 'No position'); return; }
+            const url = `https://www.google.com/maps?q=${v.lat},${v.lng}`;
+            const title = `${v.title || v.plate || ('#' + v.id)}`;
+            try {
+                if (navigator.share) {
+                    await navigator.share({ title, text: title, url });
+                    return;
+                }
+            } catch (_) { /* user cancelled or unsupported */ }
+            try {
+                await navigator.clipboard.writeText(url);
+                this.toast(i.shareCopied || 'Position link copied');
+            } catch (_) {
+                global.prompt(i.sharePositionTitle || 'Share position', url);
+            }
+        }
+
+        toast(message) {
+            if (global.Swal) {
+                global.Swal.fire({ toast: true, position: 'top-end', timer: 1800, showConfirmButton: false, icon: 'success', title: message });
+            } else {
+                global.alert(message);
+            }
+        }
+
+        showHistoryPreset(id, preset) {
+            const { from, to } = computePresetRange(preset);
+            if (!from) return;
+            this.switchTab('history');
+            const sel = document.getElementById('tcHistVehicle');
+            if (sel) {
+                sel.value = String(id);
+                const $ = global.jQuery;
+                if ($ && $(sel).hasClass('select2-hidden-accessible')) $(sel).trigger('change');
+            }
+            const setVal = (elId, val) => { const el = document.getElementById(elId); if (el) el.value = val; };
+            setVal('tcHistDateFrom', from.date);
+            setVal('tcHistTimeFrom', from.time);
+            setVal('tcHistDateTo', to.date);
+            setVal('tcHistTimeTo', to.time);
+            this.loadHistory();
         }
 
         ensureMarker(id) {
@@ -639,14 +885,21 @@
             st.marker.setTitle(this.labelFor(merged));
 
             if (!prev || samePosition(prev, merged)) {
+                const moving = MOVING_KEYS.has(key);
+                const spd = Math.max(0, parseFloat(merged.speed) || 0);
+                let h = parseFloat(merged.heading);
+                // Keep the last heading when stopped (noisy GPS heading at rest).
+                if (!Number.isFinite(h) || (!moving && spd < 3)) {
+                    h = st.renderHeading != null ? st.renderHeading : 0;
+                }
                 st.marker.setMap(this.map);
                 st.marker.setPosition({ lat: merged.lat, lng: merged.lng });
-                st.marker.setIcon(arrowIcon(color, merged.heading || 0));
+                st.marker.setIcon(arrowIcon(color, h));
                 st.renderPos = { lat: merged.lat, lng: merged.lng };
-                st.renderHeading = parseFloat(merged.heading || 0);
+                st.renderHeading = h;
                 st.lastPoint = merged;
                 st.motion = null;
-                if (MOVING_KEYS.has(key)) this.appendTrail(st, merged.lat, merged.lng, color);
+                if (moving) this.appendTrail(st, merged.lat, merged.lng, color);
                 if (this.followId === id) this.map.panTo({ lat: merged.lat, lng: merged.lng });
                 return;
             }
@@ -654,9 +907,12 @@
         }
 
         /**
-         * Continuous motion: glide from the current rendered position to the
-         * latest fix over the poll gap, then dead-reckon along the heading at the
-         * reported speed if the next poll is late — so moving markers never stop.
+         * Premium continuous motion. The marker glides from its current rendered
+         * position to the latest fix at constant velocity over slightly longer
+         * than the poll cadence, so the next fix almost always arrives before we
+         * reach the target — eliminating the snap-back/overshoot that makes
+         * dead-reckoning feel jittery. A short, capped dead-reckon bridges a late
+         * poll so genuinely-moving markers never freeze mid-street.
          */
         startMotion(id, to) {
             const st = this.vehicleState(id);
@@ -667,17 +923,29 @@
             const moving = MOVING_KEYS.has(to.status_key || 'offline');
             const speedKmh = Math.max(0, parseFloat(to.speed) || 0);
             const interval = this.cfg.pollIntervalMs || 2000;
+            const segMeters = distMeters(from, toLL);
+
+            // GPS heading is noisy at rest — keep the previous heading when the
+            // vehicle is effectively stopped so the arrow doesn't twitch/spin.
+            let toH = parseFloat(to.heading);
+            if (!Number.isFinite(toH) || (!moving && speedKmh < 3)) toH = fromH;
+
+            // Glide ~15% slower than the poll cadence to stay a hair behind
+            // real-time (buttery, no overshoot). Tighten the glide for big jumps
+            // (reconnect/gap) so the marker doesn't crawl across the map.
+            let catchupMs = interval * 1.15;
+            if (segMeters > 400) catchupMs = Math.min(catchupMs, 1200);
 
             st.motion = {
                 from,
                 to: toLL,
                 fromH,
-                toH: parseFloat(to.heading || 0),
+                toH,
                 speedKmh,
                 color: colorForPoint(to, this.stateColors),
-                catchupMs: Math.max(300, interval),
-                cruise: moving && speedKmh > 0,
-                maxCruiseSec: (interval * 1.5) / 1000,
+                catchupMs: Math.max(250, catchupMs),
+                cruise: moving && speedKmh > 1,
+                maxCruiseSec: Math.min(1.2, (interval * 0.6) / 1000),
                 start: performance.now(),
             };
             st.lastPoint = to;
@@ -709,11 +977,14 @@
 
                 if (elapsed <= m.catchupMs) {
                     const t = m.catchupMs > 0 ? elapsed / m.catchupMs : 1;
-                    const eased = 1 - Math.pow(1 - t, 3);
-                    lat = m.from.lat + (m.to.lat - m.from.lat) * eased;
-                    lng = m.from.lng + (m.to.lng - m.from.lng) * eased;
-                    const delta = ((m.toH - m.fromH + 540) % 360) - 180;
-                    heading = (m.fromH + delta * eased + 360) % 360;
+                    // Constant-velocity (linear) position so consecutive segments
+                    // join seamlessly — ease-out would brake the marker at every
+                    // fix and read as a stutter. Heading eases slightly for a
+                    // natural turn-in.
+                    lat = m.from.lat + (m.to.lat - m.from.lat) * t;
+                    lng = m.from.lng + (m.to.lng - m.from.lng) * t;
+                    const hT = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+                    heading = lerpHeading(m.fromH, m.toH, hT);
                 } else if (m.cruise) {
                     const cruiseSec = (elapsed - m.catchupMs) / 1000;
                     const cappedSec = Math.min(cruiseSec, m.maxCruiseSec);

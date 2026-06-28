@@ -343,6 +343,56 @@
         }
         .tc-map-controls .tc-ctrl-group .btn + .btn { border-top: 1px solid #e2e8f0; }
 
+        /* Per-vehicle kebab menu (Traccar-style row actions) */
+        .tc-row-menu-btn {
+            border: 0;
+            background: transparent;
+            color: #94a3b8;
+            width: 26px;
+            height: 26px;
+            border-radius: 6px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            cursor: pointer;
+            transition: background 0.15s, color 0.15s;
+        }
+        .tc-row-menu-btn:hover { background: #eef2f7; color: #334155; }
+        .tc-veh-menu {
+            position: fixed;
+            z-index: 1080;
+            min-width: 220px;
+            background: #fff;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            box-shadow: 0 12px 32px rgba(15, 23, 42, 0.18);
+            padding: 6px;
+            border-top: 3px solid #1976d2;
+            font-size: 0.875rem;
+        }
+        .tc-veh-menu-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            width: 100%;
+            padding: 8px 12px;
+            border: 0;
+            background: transparent;
+            border-radius: 7px;
+            cursor: pointer;
+            color: #334155;
+            text-align: start;
+            white-space: nowrap;
+            position: relative;
+        }
+        .tc-veh-menu-item:hover { background: #f1f5f9; }
+        .tc-veh-menu-item i.tc-mi-icon { width: 18px; text-align: center; color: #64748b; }
+        .tc-veh-menu-item .tc-mi-caret { margin-inline-start: auto; color: #94a3b8; font-size: 0.7rem; }
+        .tc-veh-menu-sep { height: 1px; background: #eef2f7; margin: 4px 6px; }
+        .tc-veh-submenu { min-width: 170px; }
+        [dir="rtl"] .tc-veh-menu-item { text-align: right; }
+
         .tc-legend {
             position: absolute;
             bottom: 12px;
@@ -740,6 +790,8 @@
             deviceMileageUrl: @json(Route::has($routes['deviceMileage']) ? route($routes['deviceMileage']) : null),
             commandsSendUrl: @json(Route::has($routes['commandsSend']) ? route($routes['commandsSend']) : null),
             commandTypes: @json(\App\Services\Tracking\CommandService::typeLabels()),
+            liveUrl: @json(route($routes['live'])),
+            deviceEditUrl: @json(Route::has("{$panel}.devices.edit") ? route("{$panel}.devices.edit", ['device' => 0]) : null),
             csrfToken: @json(csrf_token()),
             pollIntervalMs: 2000,
             animDurationMs: 1200,
@@ -805,6 +857,26 @@
                 noNotes: @json(__('app.tracking.no_notes')),
                 noPhoto: @json(__('app.tracking.no_photo')),
                 noDataFound: @json(__('app.tracking.no_data_found')),
+                menuShowHistory: @json(__('app.tracking.menu_show_history')),
+                menuFollow: @json(__('app.tracking.menu_follow')),
+                menuFollowNew: @json(__('app.tracking.menu_follow_new')),
+                menuStreetView: @json(__('app.tracking.menu_street_view')),
+                menuShare: @json(__('app.tracking.menu_share')),
+                menuSendCommand: @json(__('app.tracking.menu_send_command')),
+                menuEdit: @json(__('app.tracking.menu_edit')),
+                menuActions: @json(__('app.tracking.menu_actions')),
+                rangeLastHour: @json(__('app.tracking.range_last_hour')),
+                rangeToday: @json(__('app.tracking.range_today')),
+                rangeYesterday: @json(__('app.tracking.range_yesterday')),
+                rangeBefore2: @json(__('app.tracking.range_before_2_days')),
+                rangeBefore3: @json(__('app.tracking.range_before_3_days')),
+                rangeThisWeek: @json(__('app.tracking.range_this_week')),
+                rangeLastWeek: @json(__('app.tracking.range_last_week')),
+                rangeThisMonth: @json(__('app.tracking.range_this_month')),
+                rangeLastMonth: @json(__('app.tracking.range_last_month')),
+                shareCopied: @json(__('app.tracking.share_copied')),
+                sharePositionTitle: @json(__('app.tracking.share_position_title')),
+                noPosition: @json(__('app.tracking.no_position')),
             },
         };
     </script>
