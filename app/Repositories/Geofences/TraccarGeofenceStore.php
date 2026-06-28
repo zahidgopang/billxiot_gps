@@ -62,6 +62,8 @@ class TraccarGeofenceStore implements GeofenceStoreInterface
                     'radius' => isset($attrs[TraccarAppFields::KEY_GEOFENCE_RADIUS])
                         ? (int) $attrs[TraccarAppFields::KEY_GEOFENCE_RADIUS]
                         : (isset($attrs['radius']) ? (int) $attrs['radius'] : null),
+                    // Traccar stores the per-geofence map color in attributes.color (HTML name or hex).
+                    'color' => isset($attrs['color']) && $attrs['color'] !== '' ? (string) $attrs['color'] : null,
                 ];
             });
     }

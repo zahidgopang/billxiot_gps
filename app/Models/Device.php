@@ -158,7 +158,41 @@ class Device extends Model
         $this->pendingUserId = $userId;
     }
 
+    /**
+     * All users linked to this device (Traccar many-to-many).
+     *
+     * @return list<int>
+     */
+    public function getUserIdsAttribute(): array
+    {
+        return $this->resolveTraccarOwnerUserIds();
+    }
+
+    /**
+     * Assign one vehicle to multiple users (synced to tc_user_device on save).
+     *
+     * @param  array<int|string>|null  $userIds
+     */
+    public function setUserIdsAttribute($userIds): void
+    {
+        if ($userIds === null) {
+            $this->pendingUserIds = null;
+
+            return;
+        }
+
+        $this->pendingUserIds = collect((array) $userIds)
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn (int $id) => $id > 0)
+            ->unique()
+            ->values()
+            ->all();
+    }
+
     private ?int $pendingUserId = null;
+
+    /** @var list<int>|null */
+    private ?array $pendingUserIds = null;
 
     protected static function booted(): void
     {
@@ -177,7 +211,27 @@ class Device extends Model
         });
 
         static::saved(function (Device $device) {
-            if ($device->pendingUserId === null || ! $device->id) {
+            if (! $device->id) {
+                return;
+            }
+
+            // Multi-user assignment (Traccar parity): sync the full set of linked users.
+            if ($device->pendingUserIds !== null) {
+                $linker = app(\App\Services\Traccar\TraccarUserDeviceLinker::class);
+                $linker->removeForDevice((int) $device->id);
+
+                foreach ($device->pendingUserIds as $userId) {
+                    $linker->upsert((int) $userId, (int) $device->id);
+                }
+
+                $device->pendingUserIds = null;
+                $device->pendingUserId = null;
+
+                return;
+            }
+
+            // Legacy single-owner path (kept for existing callers).
+            if ($device->pendingUserId === null) {
                 return;
             }
 

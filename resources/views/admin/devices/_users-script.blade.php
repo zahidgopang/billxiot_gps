@@ -13,7 +13,7 @@
     const usersUrlForClient = function (clientId) {
         return @json(route($panel . '.clients.users', ['client' => '__CLIENT__'])).replace('__CLIENT__', encodeURIComponent(clientId));
     };
-    const selectedUserId = @json((string) ($selectedUserId ?? ''));
+    const selectedUserIds = @json($selectedUserIds ?? []).map(String);
     const i18n = {
         selectClientFirst: @json(__('app.forms.select_client_first')),
         selectUser: @json(__('app.forms.select_user')),
@@ -33,22 +33,22 @@
         window.FormEnhancements.initSelect2(userSelect.closest('.admin-field') || userSelect.parentElement);
     }
 
-    function setUserOptions(users, keepUserId) {
+    function setPlaceholder(text) {
+        userSelect.setAttribute('data-placeholder', text);
+    }
+
+    function setUserOptions(users, keepUserIds) {
         destroyUserSelect2();
 
-        const placeholder = users.length ? i18n.selectUser : i18n.noUsers;
+        const keep = (keepUserIds || []).map(String);
+        setPlaceholder(users.length ? i18n.selectUser : i18n.noUsers);
         userSelect.innerHTML = '';
-
-        const blank = document.createElement('option');
-        blank.value = '';
-        blank.textContent = placeholder;
-        userSelect.appendChild(blank);
 
         users.forEach(function (u) {
             const opt = document.createElement('option');
             opt.value = String(u.id);
             opt.textContent = u.text;
-            if (keepUserId && String(keepUserId) === String(u.id)) {
+            if (keep.indexOf(String(u.id)) !== -1) {
                 opt.selected = true;
             }
             userSelect.appendChild(opt);
@@ -58,14 +58,15 @@
         initUserSelect2();
 
         if ($ && $.fn.select2) {
-            $(userSelect).val(keepUserId ? String(keepUserId) : '').trigger('change');
+            $(userSelect).val(keep).trigger('change');
         }
     }
 
-    function loadUsersForClient(clientId, keepUserId) {
+    function loadUsersForClient(clientId, keepUserIds) {
         if (!clientId) {
             destroyUserSelect2();
-            userSelect.innerHTML = '<option value="">' + i18n.selectClientFirst + '</option>';
+            setPlaceholder(i18n.selectClientFirst);
+            userSelect.innerHTML = '';
             initUserSelect2();
             return;
         }
@@ -73,7 +74,7 @@
         const key = String(clientId);
 
         if (Object.prototype.hasOwnProperty.call(usersByClient, key)) {
-            setUserOptions(usersByClient[key] || [], keepUserId);
+            setUserOptions(usersByClient[key] || [], keepUserIds);
             return;
         }
 
@@ -92,15 +93,15 @@
             })
             .then(function (data) {
                 usersByClient[key] = data.users || [];
-                setUserOptions(usersByClient[key], keepUserId);
+                setUserOptions(usersByClient[key], keepUserIds);
             })
             .catch(function () {
-                setUserOptions([], null);
+                setUserOptions([], []);
             });
     }
 
     function onClientChange() {
-        loadUsersForClient(clientSelect.value, null);
+        loadUsersForClient(clientSelect.value, []);
     }
 
     clientSelect.addEventListener('change', onClientChange);
@@ -110,7 +111,7 @@
     }
 
     if (clientSelect.value) {
-        loadUsersForClient(clientSelect.value, selectedUserId || null);
+        loadUsersForClient(clientSelect.value, selectedUserIds);
     } else {
         initUserSelect2();
     }

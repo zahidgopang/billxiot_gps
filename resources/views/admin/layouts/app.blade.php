@@ -131,10 +131,14 @@
         ============================= */
         .admin-sidebar {
             width: var(--admin-sidebar-width);
-            min-height: 100vh;
+            height: 100vh;
+            height: 100dvh;
+            max-height: 100vh;
+            max-height: 100dvh;
             max-width: min(var(--admin-sidebar-width), 100vw);
             position: fixed;
             top: 0;
+            bottom: 0;
             left: 0;
             right: auto;
             background: var(--admin-sidebar);

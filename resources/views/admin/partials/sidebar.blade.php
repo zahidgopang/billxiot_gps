@@ -31,7 +31,7 @@
                 $adminFlowStep = 2;
             } elseif (request()->routeIs($navPanel . '.subscriptions.*')) {
                 $adminFlowStep = 3;
-            } elseif ($canTrackMaps && request()->routeIs($navPanel . '.locations.*', $navPanel . '.device.map')) {
+            } elseif ($canTrackMaps && request()->routeIs($navPanel . '.locations.*', $navPanel . '.device.map', $navPanel . '.tracking.*')) {
                 $adminFlowStep = 4;
             }
         @endphp
@@ -154,6 +154,18 @@
                 @endif
             @endcan
         </div>
+
+        @if($canTrackMaps && Route::has($navPanel . '.tracking.index'))
+        <!-- Tracking hub (opens the dedicated tracking dashboard) -->
+        <div class="nav-group">
+            <div class="nav-group-title">{{ __('app.tracking.hub_nav') }}</div>
+            <a href="{{ route($navPanel . '.tracking.index') }}"
+               class="nav-link-premium {{ request()->routeIs($navPanel . '.tracking.*') ? 'active' : '' }}">
+                <i class="fas fa-satellite-dish"></i>
+                <span>{{ __('app.tracking.hub_nav') }}</span>
+            </a>
+        </div>
+        @endif
 
         <!-- System -->
         <div class="nav-group">

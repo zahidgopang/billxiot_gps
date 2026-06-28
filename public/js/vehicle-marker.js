@@ -117,6 +117,47 @@
         return 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg);
     }
 
+    const pinIconCache = Object.create(null);
+
+    /**
+     * Default teardrop map pin colored by vehicle status (tip-anchored).
+     * Non-breaking addition — existing car-icon builders unchanged.
+     */
+    function pinIconFor(statusColor, googleMaps) {
+        const g = googleMaps || global.google;
+        if (!g?.maps) {
+            return null;
+        }
+
+        const color = statusColor || STATE_COLORS.parked;
+        if (pinIconCache[color]) {
+            return pinIconCache[color];
+        }
+
+        const w = 36;
+        const h = 48;
+        const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 36 48">
+            <defs>
+                <filter id="gtPinShadow" x="-25%" y="-15%" width="150%" height="140%">
+                    <feDropShadow dx="0" dy="2" stdDeviation="2.2" flood-color="#0f172a" flood-opacity="0.38"/>
+                </filter>
+            </defs>
+            <g filter="url(#gtPinShadow)">
+                <path d="M18 2 C10.3 2 4 9.2 4 17.5 C4 28.5 18 46 18 46 C18 46 32 28.5 32 17.5 C32 9.2 25.7 2 18 2 Z"
+                      fill="${color}" stroke="#ffffff" stroke-width="2.2" stroke-linejoin="round"/>
+                <circle cx="18" cy="17.5" r="6.5" fill="#ffffff" opacity="0.96"/>
+            </g>
+        </svg>`;
+
+        const icon = {
+            url: svgDataUrl(svg),
+            scaledSize: new g.maps.Size(w, h),
+            anchor: new g.maps.Point(w / 2, h),
+        };
+        pinIconCache[color] = icon;
+        return icon;
+    }
+
     function labeledVehicleSvg(identity, color, heading, showDirection, vehicleType, options) {
         const opts = { ...DEFAULTS, ...options };
         const title = identity.title || 'Vehicle';
@@ -414,6 +455,7 @@
         DEFAULTS,
         vehicleBodySvgInner,
         labeledVehicleSvg,
+        pinIconFor,
         createIconBuilder,
         getPulseOverlayClass,
         createPulseController,

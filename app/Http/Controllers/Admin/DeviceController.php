@@ -111,8 +111,7 @@ class DeviceController extends Controller
 
         $clientId = $this->resolveClientIdForRequest($request);
 
-        $owner = User::query()->findOrFail($data['user_id']);
-        $this->assertUserBelongsToClient($owner, $clientId);
+        $this->assertUsersBelongToClient($data['user_ids'], $clientId);
 
         $device = DB::transaction(function () use ($data, $clientId) {
             $this->clientStock->assertCanInstall($clientId, $data['device_type']);
@@ -172,8 +171,7 @@ class DeviceController extends Controller
 
         $clientId = $this->resolveClientIdForRequest($request);
 
-        $owner = User::query()->findOrFail($data['user_id']);
-        $this->assertUserBelongsToClient($owner, $clientId);
+        $this->assertUsersBelongToClient($data['user_ids'], $clientId);
 
         $previousClientId = $this->tenantScope()->clientIdForDevice($device);
         $exceptDeviceId = ($previousClientId && (int) $previousClientId === $clientId)
@@ -261,7 +259,8 @@ class DeviceController extends Controller
                 Rule::unique($devicesTable, $imeiColumn)->ignore($exceptId),
             ],
             'name' => 'nullable|string|max:255',
-            'user_id' => 'required|exists:tc_users,id',
+            'user_ids' => 'required|array|min:1',
+            'user_ids.*' => 'integer|exists:tc_users,id',
             'device_type' => ['required', Rule::in(array_keys(Device::DEVICE_TYPES))],
             'status' => 'required|in:active,inactive,blocked',
             'vehicle_name' => 'nullable|string|max:120',
@@ -297,7 +296,20 @@ class DeviceController extends Controller
 
     private function normalizeDeviceInput(Request $request): void
     {
+        // Backward compatibility: accept a single user_id and fold it into user_ids[].
+        $userIds = $request->input('user_ids');
+        if (empty($userIds) && $request->filled('user_id')) {
+            $userIds = [$request->input('user_id')];
+        }
+        $userIds = collect((array) $userIds)
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn (int $id) => $id > 0)
+            ->unique()
+            ->values()
+            ->all();
+
         $request->merge([
+            'user_ids' => $userIds,
             'imei' => Device::normalizeImei($request->input('imei')),
             'vehicle_number' => Device::normalizeVehicleNumber($request->input('vehicle_number')),
             'sim_number' => $request->filled('sim_number')
@@ -313,6 +325,20 @@ class DeviceController extends Controller
     }
 
     /**
+     * Validate that every selected owner belongs to the device's client.
+     *
+     * @param  list<int>  $userIds
+     */
+    private function assertUsersBelongToClient(array $userIds, int $clientId): void
+    {
+        $owners = User::query()->whereIn('id', $userIds)->get();
+
+        foreach ($owners as $owner) {
+            $this->assertUserBelongsToClient($owner, $clientId);
+        }
+    }
+
+    /**
      * @param  array<string, mixed>  $data
      * @return array<string, mixed>
      */
@@ -321,7 +347,7 @@ class DeviceController extends Controller
         return [
             'uniqueid' => $data['imei'],
             'name' => $data['name'] ?: ($data['vehicle_name'] ?? $data['imei']),
-            'user_id' => $data['user_id'],
+            'user_ids' => $data['user_ids'],
             'device_type' => $data['device_type'],
             'status' => $data['status'],
             'vehicle_name' => $data['vehicle_name'] ?? null,

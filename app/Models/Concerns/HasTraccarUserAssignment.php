@@ -57,6 +57,28 @@ trait HasTraccarUserAssignment
             ->value($keys['user']);
     }
 
+    /**
+     * All user IDs linked to this device via tc_user_device (Traccar many-to-many).
+     *
+     * @return list<int>
+     */
+    public function resolveTraccarOwnerUserIds(): array
+    {
+        if (! isset($this->attributes['id'])) {
+            return [];
+        }
+
+        $keys = TraccarSchema::userDevicePivotKeys();
+
+        return DB::table($keys['table'])
+            ->where($keys['device'], $this->attributes['id'])
+            ->pluck($keys['user'])
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values()
+            ->all();
+    }
+
     /** Devices with no row in tc_user_device. */
     public function scopeWithoutTraccarOwner(Builder $query): Builder
     {

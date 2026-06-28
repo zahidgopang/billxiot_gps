@@ -65,11 +65,12 @@
 
                         <dt class="col-sm-5 text-muted">{{ __('app.admin.devices.user') }}</dt>
                         <dd class="col-sm-7">
-                            @if($device->user)
-                                <a href="{{ route($panel . '.users.show', $device->user) }}">{{ $device->user->name }}</a>
-                            @else
+                            @php $assignedUsers = $device->users; @endphp
+                            @forelse($assignedUsers as $assignedUser)
+                                <a href="{{ route($panel . '.users.show', $assignedUser) }}">{{ $assignedUser->name }}</a>@if(! $loop->last), @endif
+                            @empty
                                 —
-                            @endif
+                            @endforelse
                         </dd>
 
                         @if($panel === 'admin' && $client)

@@ -36,7 +36,7 @@
         'panel' => $panel,
         'clients' => $clients ?? collect(),
         'usersByClient' => $usersByClient ?? [],
-        'selectedUserId' => old('user_id'),
+        'selectedUserIds' => collect(old('user_ids', []))->map(fn ($id) => (string) $id)->values()->all(),
     ])
     @include('admin.devices._client-stock-script', [
         'panel' => $panel,

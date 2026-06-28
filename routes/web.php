@@ -5,6 +5,7 @@ use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\UserDevicesController;
 use App\Http\Controllers\GeofenceController;
+use App\Http\Controllers\GlobalTrackingController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\DeviceController as AdminDeviceController;
 use App\Http\Controllers\Admin\UserController as AdminUserController;
@@ -122,6 +123,8 @@ Route::middleware(['auth', 'user.active', 'tracker.access'])->group(function () 
         Route::get('/live-json', [UserDevicesController::class, 'liveJson'])->name('live-json');
     });
 
+    Route::prefix('user/tracking')->name('user.tracking.')->group(require base_path('routes/tracking-modules.php'));
+
     /*
     |--------------------------------------------------------------------------
     | USER PROFILE ROUTES
@@ -215,6 +218,8 @@ Route::middleware(['auth', 'panel:admin', 'can:admin'])
             ->name('contact-messages.update');
 
         Route::middleware('maps.tracking')->group(function () {
+            Route::prefix('tracking')->name('tracking.')->group(require base_path('routes/tracking-modules.php'));
+
             Route::get('locations', [\App\Http\Controllers\Admin\LocationHistoryController::class, 'index'])
                 ->name('locations.index');
 
@@ -319,6 +324,8 @@ Route::middleware(['auth', 'panel:client', 'can:client-panel'])
             ->name('activity-log.index');
 
         Route::middleware('maps.tracking')->group(function () {
+            Route::prefix('tracking')->name('tracking.')->group(require base_path('routes/tracking-modules.php'));
+
             Route::get('locations', [\App\Http\Controllers\Admin\LocationHistoryController::class, 'index'])
                 ->name('locations.index');
 

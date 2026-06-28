@@ -393,6 +393,13 @@
             }
         }
 
+        /* Embedded (inside a tracking popup iframe): hide user chrome. */
+        body.tracking-embed .navbar,
+        body.tracking-embed #filterPanel,
+        body.tracking-embed #sidebarOverlay,
+        body.tracking-embed .gt-hub-nav { display: none !important; }
+        body.tracking-embed .content-wrap { padding: 0.85rem; }
+
         /* =============================
            Custom Button
         ============================= */
@@ -612,7 +619,7 @@
     @endif
 </head>
 
-<body class="user-panel {{ ($htmlDir ?? 'ltr') === 'rtl' ? 'user-panel-rtl' : 'user-panel-ltr' }}" dir="{{ $htmlDir ?? 'ltr' }}" data-map-session-end="{{ route('map.session.end') }}">
+<body class="user-panel {{ ($htmlDir ?? 'ltr') === 'rtl' ? 'user-panel-rtl' : 'user-panel-ltr' }} {{ request()->boolean('embed') ? 'tracking-embed' : '' }}" dir="{{ $htmlDir ?? 'ltr' }}" data-map-session-end="{{ route('map.session.end') }}">
 <!-- Premium Navbar -->
 <nav class="navbar navbar-expand-lg px-3 user-navbar w-100 d-flex align-items-center justify-content-between">
     <div class="nav-start d-flex align-items-center">
@@ -682,6 +689,18 @@
             <a href="{{ route('user.devices.index') }}" class="btn btn-secondary btn-sm w-100">
                 {{ __('app.forms.view_devices') }}
             </a>
+        </div>
+
+        <!-- Global Tracking -->
+        <div class="card p-3 mb-3">
+            <h6 class="mb-2">{{ __('app.tracking.hub_nav') }}</h6>
+            <div class="d-grid gap-1">
+                <a href="{{ route('user.tracking.index') }}" class="btn btn-primary btn-sm">{{ __('app.tracking.live_link') }}</a>
+                <a href="{{ route('user.tracking.history') }}" class="btn btn-outline-primary btn-sm">{{ __('app.tracking.history_link') }}</a>
+                <a href="{{ route('user.tracking.reports.index') }}" class="btn btn-outline-secondary btn-sm">{{ __('app.tracking.reports_nav') }}</a>
+                <a href="{{ route('user.tracking.events.index') }}" class="btn btn-outline-secondary btn-sm">{{ __('app.tracking.events_nav') }}</a>
+                <a href="{{ route('user.tracking.settings.index') }}" class="btn btn-outline-secondary btn-sm">{{ __('app.tracking.settings_nav') }}</a>
+            </div>
         </div>
 
         <!-- Profile -->

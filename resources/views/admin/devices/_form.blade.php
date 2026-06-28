@@ -4,7 +4,11 @@
     $device = $device ?? null;
     $panel = $panel ?? (request()->routeIs('client.*') ? 'client' : 'admin');
     $selectedClient = old('client_id', $formClientId ?? (isset($device) ? app(\App\Services\Authorization\TenantScopeService::class)->clientIdForDevice($device) : null));
-    $selectedUserId = old('user_id', optional($device)->user_id ?? '');
+    $selectedUserIds = collect(old('user_ids', isset($device) ? $device->user_ids : []))
+        ->map(fn ($id) => (string) $id)
+        ->filter()
+        ->values()
+        ->all();
     $usersByClient = $usersByClient ?? [];
     $deviceType = old('device_type', optional($device)->device_type ?? '');
     $simType = old('sim_type', optional($device)->sim_type ?? '');
@@ -49,28 +53,27 @@
     </x-admin.form-col>
 
     <x-admin.form-col>
-        <label class="admin-label" for="device-user-id">{{ __('app.forms.assign_user') }} <span class="text-danger">*</span></label>
-        <select name="user_id" id="device-user-id"
+        <label class="admin-label" for="device-user-id">{{ __('app.forms.assign_users') }} <span class="text-danger">*</span></label>
+        <select name="user_ids[]" id="device-user-id"
             class="form-select form-select-sm"
+            multiple
             required
-            data-placeholder="{{ __('app.forms.assign_user') }}">
-            <option value="">{{ $panel === 'admin' ? __('app.forms.select_client_first') : __('app.forms.select_user') }}</option>
+            data-placeholder="{{ __('app.forms.assign_users') }}">
             @if($panel === 'client')
                 @foreach($users as $u)
-                    <option value="{{ $u->id }}" @selected((string) $selectedUserId === (string) $u->id)>
+                    <option value="{{ $u->id }}" @selected(in_array((string) $u->id, $selectedUserIds, true))>
                         {{ $u->name }} ({{ $u->email }})
                     </option>
                 @endforeach
             @elseif($selectedClient && !empty($usersByClient[(string) $selectedClient]))
                 @foreach($usersByClient[(string) $selectedClient] as $u)
-                    <option value="{{ $u['id'] }}" @selected((string) $selectedUserId === (string) $u['id'])>{{ $u['text'] }}</option>
+                    <option value="{{ $u['id'] }}" @selected(in_array((string) $u['id'], $selectedUserIds, true))>{{ $u['text'] }}</option>
                 @endforeach
             @endif
         </select>
-        @if($panel === 'admin')
-            <p class="admin-hint">{{ __('app.forms.device_client_first_hint') }}</p>
-        @endif
-        @error('user_id') <p class="admin-field__error text-danger">{{ $message }}</p> @enderror
+        <p class="admin-hint">{{ $panel === 'admin' ? __('app.forms.device_client_first_hint') . ' ' . __('app.forms.assign_users_hint') : __('app.forms.assign_users_hint') }}</p>
+        @error('user_ids') <p class="admin-field__error text-danger">{{ $message }}</p> @enderror
+        @error('user_ids.*') <p class="admin-field__error text-danger">{{ $message }}</p> @enderror
     </x-admin.form-col>
 </x-admin.form-section>
 

@@ -3,7 +3,9 @@
 namespace App\Services\Push;
 
 use App\Models\Device;
+use App\Models\User;
 use App\Models\VehicleEvent;
+use App\Services\Tracking\NotificationPreferenceService;
 use App\Support\Push\PushNotificationMapper;
 use App\Support\Push\PushNotificationType;
 
@@ -11,6 +13,7 @@ class PushNotificationDispatcher
 {
     public function __construct(
         private FirebasePushService $fcm,
+        private NotificationPreferenceService $notificationPrefs,
     ) {}
 
     public function forVehicleEvent(
@@ -135,6 +138,11 @@ class PushNotificationDispatcher
         }
 
         $userIds = $this->resolveUserIds($device);
+        $eventType = (string) ($extra['event_type'] ?? $pushType);
+        $userIds = array_values(array_filter(
+            $userIds,
+            fn (int $uid) => $this->userAllowsPush($uid, $eventType)
+        ));
         if ($userIds === []) {
             return;
         }
@@ -211,5 +219,15 @@ class PushNotificationDispatcher
             PushNotificationType::GEOFENCE_EXIT => 'map',
             default => 'device',
         };
+    }
+
+    private function userAllowsPush(int $userId, string $eventType): bool
+    {
+        $user = User::query()->find($userId);
+        if (! $user) {
+            return true;
+        }
+
+        return $this->notificationPrefs->allowsPush($user, $eventType);
     }
 }
