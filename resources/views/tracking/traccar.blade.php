@@ -5,6 +5,41 @@
 @push('styles')
     <link rel="stylesheet" href="{{ asset('css/fleet-map.css') }}?v={{ filemtime(public_path('css/fleet-map.css')) }}">
     <style>
+        /* ===== Design tokens (single source of truth; dark-mode-ready) ===== */
+        .tc-app {
+            --tc-radius-sm: 6px;
+            --tc-radius: 10px;
+            --tc-radius-lg: 14px;
+            --tc-shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.08);
+            --tc-shadow: 0 4px 14px rgba(15, 23, 42, 0.12);
+            --tc-shadow-lg: 0 12px 32px rgba(15, 23, 42, 0.18);
+            --tc-bg: #eef2f6;
+            --tc-surface: #ffffff;
+            --tc-surface-2: #f5f8fa;
+            --tc-border: #d9e1e8;
+            --tc-border-soft: #eef2f7;
+            --tc-text: #1e293b;
+            --tc-text-muted: #64748b;
+            --tc-primary: #1976d2;
+            /* Status palette (spec): running/idle/stopped/offline */
+            --tc-running: #16a34a;
+            --tc-idle: #eab308;
+            --tc-stopped: #f97316;
+            --tc-offline: #ef4444;
+            --tc-alert: #dc2626;
+        }
+
+        /* Dark mode scaffold — flip by adding data-theme="dark" on .tc-app (no logic change needed). */
+        .tc-app[data-theme="dark"] {
+            --tc-bg: #0f172a;
+            --tc-surface: #1e293b;
+            --tc-surface-2: #172033;
+            --tc-border: #334155;
+            --tc-border-soft: #243049;
+            --tc-text: #e2e8f0;
+            --tc-text-muted: #94a3b8;
+        }
+
         @if($panel === 'user')
         body.gt-page-active { overflow: hidden; }
         body.gt-page-active .content-wrap {
@@ -60,7 +95,59 @@
             flex: 1;
             display: flex;
             min-height: 0;
+            position: relative;
         }
+
+        /* Mobile drawer toggle (hidden on desktop) */
+        .tc-panel-toggle {
+            display: none;
+            position: absolute;
+            top: 12px;
+            inset-inline-start: 12px;
+            z-index: 7;
+            width: 42px;
+            height: 42px;
+            border: none;
+            border-radius: 10px;
+            background: var(--tc-surface);
+            color: var(--tc-primary);
+            align-items: center;
+            justify-content: center;
+            font-size: 1.05rem;
+            box-shadow: var(--tc-shadow);
+            cursor: pointer;
+        }
+        .tc-panel-toggle .tc-toggle-badge {
+            position: absolute;
+            top: -5px;
+            inset-inline-end: -5px;
+            min-width: 18px;
+            height: 18px;
+            padding: 0 4px;
+            border-radius: 9px;
+            background: var(--tc-primary);
+            color: #fff;
+            font-size: 0.62rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            line-height: 1;
+        }
+
+        /* Backdrop behind the mobile drawer. Uses visibility (not display) so it is
+           fully inert when closed and never intercepts map taps. */
+        .tc-panel-backdrop {
+            position: absolute;
+            inset: 0;
+            background: rgba(15, 23, 42, 0.45);
+            z-index: 8;
+            opacity: 0;
+            visibility: hidden;
+            pointer-events: none;
+            transition: opacity 0.25s ease, visibility 0.25s ease;
+        }
+        .tc-panel-backdrop.show { opacity: 1; visibility: visible; pointer-events: auto; }
 
         /* ===== Left panel ===== */
         .tc-panel {
@@ -554,9 +641,121 @@
             white-space: nowrap;
         }
 
+        /* ===== Enhanced vehicle list meta (badges/indicators) ===== */
+        .tc-meta-chips { display: flex; flex-wrap: wrap; gap: 0.3rem 0.5rem; align-items: center; margin-top: 0.15rem; }
+        .tc-meta-chip { display: inline-flex; align-items: center; gap: 0.22rem; font-size: 0.72rem; color: var(--tc-text-muted); }
+        .tc-meta-chip i { font-size: 0.72rem; }
+        .tc-ign-on { color: var(--tc-running); }
+        .tc-ign-off { color: var(--tc-text-muted); }
+        .tc-sig-strong { color: var(--tc-running); }
+        .tc-sig-mid { color: var(--tc-idle); }
+        .tc-sig-weak { color: var(--tc-offline); }
+        .tc-batt-ok { color: var(--tc-running); }
+        .tc-batt-mid { color: var(--tc-idle); }
+        .tc-batt-low { color: var(--tc-offline); }
+
+        /* ===== Map layer switcher ===== */
+        .tc-map-controls .tc-layer-wrap { position: relative; }
+        .tc-layer-menu {
+            position: absolute;
+            top: 0;
+            inset-inline-end: calc(100% + 8px);
+            background: var(--tc-surface);
+            border: 1px solid var(--tc-border);
+            border-radius: var(--tc-radius);
+            box-shadow: var(--tc-shadow-lg);
+            padding: 6px;
+            min-width: 150px;
+            display: none;
+        }
+        .tc-layer-menu.open { display: block; }
+        .tc-layer-item {
+            display: flex; align-items: center; gap: 8px;
+            width: 100%; padding: 7px 10px; border: 0; background: transparent;
+            border-radius: var(--tc-radius-sm); cursor: pointer; color: var(--tc-text);
+            font-size: 0.82rem; text-align: start;
+        }
+        .tc-layer-item:hover { background: var(--tc-surface-2); }
+        .tc-layer-item.active { background: color-mix(in srgb, var(--tc-primary) 12%, transparent); color: var(--tc-primary); font-weight: 600; }
+        .tc-layer-item i { width: 16px; text-align: center; }
+
+        /* ===== Skeleton loaders + fade-in ===== */
+        @keyframes tcShimmer { 0% { background-position: -320px 0; } 100% { background-position: 320px 0; } }
+        .tc-skel {
+            background: linear-gradient(90deg, #eef2f7 25%, #e2e8f0 37%, #eef2f7 63%);
+            background-size: 640px 100%;
+            animation: tcShimmer 1.2s infinite linear;
+            border-radius: var(--tc-radius-sm);
+        }
+        .tc-skel-row { display: flex; align-items: center; gap: 0.6rem; padding: 0.55rem 0.7rem; }
+        .tc-skel-dot { width: 26px; height: 26px; border-radius: 50%; flex-shrink: 0; }
+        .tc-skel-lines { flex: 1; display: flex; flex-direction: column; gap: 6px; }
+        .tc-skel-line { height: 10px; }
+        .tc-skel-line.sm { width: 55%; height: 8px; }
+        @keyframes tcFadeIn { from { opacity: 0; transform: translateY(2px); } to { opacity: 1; transform: none; } }
+        .tc-fade-in { animation: tcFadeIn 0.25s ease both; }
+
+        /* ===== Tablet ===== */
+        @media (max-width: 1024px) and (min-width: 769px) {
+            .tc-panel { width: min(320px, 42vw); }
+            .tc-map-controls .btn { width: 40px; height: 40px; }
+        }
+
+        /* ===== Mobile / small tablet: panel becomes an off-canvas drawer ===== */
         @media (max-width: 768px) {
-            .tc-main { flex-direction: column; }
-            .tc-panel { width: 100%; max-height: 44vh; border-inline-end: none; border-bottom: 1px solid #d9e1e8; }
+            /* Toolbar scrolls horizontally instead of wrapping into tall rows */
+            .tc-iconbar {
+                flex-wrap: nowrap;
+                overflow-x: auto;
+                overflow-y: hidden;
+                -webkit-overflow-scrolling: touch;
+                scrollbar-width: none;
+            }
+            .tc-iconbar::-webkit-scrollbar { display: none; }
+            .tc-iconbar a { flex: 0 0 auto; width: 40px; height: 40px; }
+            .tc-iconbar .tc-iconbar-sep { display: none; }
+
+            /* Drawer */
+            .tc-panel {
+                position: absolute;
+                top: 0;
+                bottom: 0;
+                inset-inline-start: 0;
+                width: 86vw;
+                max-width: 340px;
+                border-inline-end: 1px solid var(--tc-border);
+                box-shadow: var(--tc-shadow-lg);
+                transform: translateX(-106%);
+                transition: transform 0.28s ease;
+                z-index: 9;
+                will-change: transform;
+            }
+            [dir="rtl"] .tc-panel { transform: translateX(106%); }
+            .tc-panel.tc-panel--open { transform: none; }
+
+            .tc-panel-toggle { display: inline-flex; }
+
+            /* Map controls a touch smaller and out of the way of the toggle */
+            .tc-map-controls { top: 10px; inset-inline-end: 10px; gap: 6px; z-index: 6; }
+            .tc-map-controls .btn { width: 40px; height: 40px; }
+
+            /* Footer becomes a height-capped bottom sheet */
+            .tc-footer { height: auto; max-height: 58dvh; }
+            .tc-footer-title { display: none; }
+
+            /* Per-vehicle menu fills more of the width for easy tapping */
+            .tc-veh-menu { min-width: min(260px, 80vw); }
+        }
+
+        @media (max-width: 768px) and (orientation: landscape) {
+            .tc-panel { width: 62vw; max-width: 320px; }
+            .tc-footer { max-height: 70dvh; }
+        }
+
+        /* Larger touch targets on touch devices */
+        @media (hover: none) and (pointer: coarse) {
+            .tc-row { padding-top: 0.7rem; padding-bottom: 0.7rem; }
+            .tc-tab { padding: 0.75rem 0.4rem; }
         }
     </style>
 @endpush
@@ -599,7 +798,14 @@
         </div>
 
         <div class="tc-main">
-            <aside class="tc-panel">
+            <button type="button" class="tc-panel-toggle" id="tcPanelToggle"
+                    aria-label="{{ __('app.tracking.panel_toggle') }}" title="{{ __('app.tracking.panel_toggle') }}"
+                    aria-expanded="false" aria-controls="tcPanel">
+                <i class="fas fa-list-ul"></i>
+                <span class="tc-toggle-badge" id="tcToggleBadge" hidden>0</span>
+            </button>
+            <div class="tc-panel-backdrop" id="tcPanelBackdrop"></div>
+            <aside class="tc-panel" id="tcPanel">
                 <div class="tc-tabs" role="tablist">
                     <button type="button" class="tc-tab active" data-tab="objects">{{ __('app.tracking.tab_objects') }}</button>
                     <button type="button" class="tc-tab" data-tab="events">{{ __('app.tracking.events_nav') }}</button>
@@ -726,6 +932,20 @@
                         <button type="button" class="btn btn-light" id="tcRefresh" title="{{ __('app.tracking.refresh') }}">
                             <i class="fas fa-sync-alt"></i>
                         </button>
+                        <button type="button" class="btn btn-light" id="tcTraffic" title="{{ __('app.tracking.layer_traffic') }}" aria-pressed="false">
+                            <i class="fas fa-traffic-light"></i>
+                        </button>
+                        <div class="tc-layer-wrap">
+                            <button type="button" class="btn btn-light" id="tcLayers" title="{{ __('app.tracking.map_layers') }}" aria-haspopup="true" aria-expanded="false">
+                                <i class="fas fa-layer-group"></i>
+                            </button>
+                            <div class="tc-layer-menu" id="tcLayerMenu" role="menu">
+                                <button type="button" class="tc-layer-item active" data-layer="roadmap" role="menuitemradio"><i class="fas fa-map"></i>{{ __('app.tracking.layer_map') }}</button>
+                                <button type="button" class="tc-layer-item" data-layer="satellite" role="menuitemradio"><i class="fas fa-satellite"></i>{{ __('app.tracking.layer_satellite') }}</button>
+                                <button type="button" class="tc-layer-item" data-layer="hybrid" role="menuitemradio"><i class="fas fa-globe"></i>{{ __('app.tracking.layer_hybrid') }}</button>
+                                <button type="button" class="tc-layer-item" data-layer="terrain" role="menuitemradio"><i class="fas fa-mountain"></i>{{ __('app.tracking.layer_terrain') }}</button>
+                            </div>
+                        </div>
                         <button type="button" class="btn btn-light" id="tcCapture" title="{{ __('app.tracking.capture_image') }}">
                             <i class="fas fa-camera"></i>
                         </button>
@@ -877,6 +1097,8 @@
                 shareCopied: @json(__('app.tracking.share_copied')),
                 sharePositionTitle: @json(__('app.tracking.share_position_title')),
                 noPosition: @json(__('app.tracking.no_position')),
+                gpsSignal: @json(__('app.tracking.gps_signal')),
+                satellitesLabel: @json(__('app.tracking.satellites_label')),
             },
         };
     </script>

@@ -350,12 +350,14 @@
             this.map = new google.maps.Map(mapEl, {
                 center: DEFAULT_CENTER,
                 zoom: 11,
-                mapTypeControl: true,
+                mapTypeControl: false,
                 streetViewControl: false,
                 fullscreenControl: false,
                 zoomControl: false,
+                gestureHandling: 'greedy',
             });
             this.legendEl = document.getElementById('tcLegend');
+            this.trafficLayer = new google.maps.TrafficLayer();
 
             this.bindTabs();
             this.bindObjects();
@@ -363,8 +365,11 @@
             this.bindEventsTab();
             this.bindPlacesTab();
             this.bindMapControls();
+            this.bindMapLayers();
             this.bindFooterTabs();
             this.bindModules();
+            this.bindPanelToggle();
+            this.fitAppHeight();
             this.setDefaultDates();
 
             // Show all vehicles by default (Traccar behavior).
@@ -506,12 +511,35 @@
         }
 
         metaHtml(v) {
-            const i18n = this.cfg.i18n || {};
-            const speed = v.speed != null ? `${v.speed} ${i18n.kmhUnit || 'km/h'}` : '—';
-            const updated = escHtml(v.recorded_at_human || '—');
-            const parts = [`<span>${speed}</span>`, `<span>${updated}</span>`];
-            if (v.ignition != null) parts.push(`<span>${v.ignition ? (i18n.ignitionOn || 'Ign ON') : (i18n.ignitionOff || 'Ign OFF')}</span>`);
-            return parts.join(' · ');
+            const i = this.cfg.i18n || {};
+            const kmh = i.kmhUnit || 'km/h';
+            const chips = [];
+            const spd = v.speed != null ? Math.round(parseFloat(v.speed) || 0) : null;
+            chips.push(`<span class="tc-meta-chip" title="${escHtml(i.lblSpeed || 'Speed')}"><i class="fas fa-gauge-high"></i>${spd != null ? spd + ' ' + escHtml(kmh) : '—'}</span>`);
+            chips.push(`<span class="tc-meta-chip" title="${escHtml(i.lblTimePosition || 'Time')}"><i class="fas fa-clock"></i>${escHtml(v.recorded_at_human || '—')}</span>`);
+            if (v.ignition != null) {
+                chips.push(`<span class="tc-meta-chip ${v.ignition ? 'tc-ign-on' : 'tc-ign-off'}" title="${escHtml(i.lblIgnition || 'Ignition')}"><i class="fas fa-key"></i>${v.ignition ? (i.ignitionOn || 'ON') : (i.ignitionOff || 'OFF')}</span>`);
+            }
+            const sat = v.satellites != null ? parseInt(v.satellites, 10) : null;
+            if (sat != null && !Number.isNaN(sat)) {
+                const cls = sat >= 8 ? 'tc-sig-strong' : sat >= 4 ? 'tc-sig-mid' : 'tc-sig-weak';
+                chips.push(`<span class="tc-meta-chip ${cls}" title="${escHtml(i.satellitesLabel || 'Satellites')}"><i class="fas fa-satellite-dish"></i>${sat}</span>`);
+            } else if (v.gsm_signal != null) {
+                const g = parseInt(v.gsm_signal, 10);
+                if (!Number.isNaN(g)) {
+                    const cls = g >= 60 ? 'tc-sig-strong' : g >= 30 ? 'tc-sig-mid' : 'tc-sig-weak';
+                    chips.push(`<span class="tc-meta-chip ${cls}" title="${escHtml(i.gpsSignal || 'Signal')}"><i class="fas fa-signal"></i>${g}%</span>`);
+                }
+            }
+            if (v.battery_level != null) {
+                const b = parseInt(v.battery_level, 10);
+                if (!Number.isNaN(b)) {
+                    const cls = b >= 50 ? 'tc-batt-ok' : b >= 20 ? 'tc-batt-mid' : 'tc-batt-low';
+                    const icon = b >= 75 ? 'fa-battery-full' : b >= 50 ? 'fa-battery-three-quarters' : b >= 25 ? 'fa-battery-half' : b > 10 ? 'fa-battery-quarter' : 'fa-battery-empty';
+                    chips.push(`<span class="tc-meta-chip ${cls}" title="${escHtml(i.lblBattery || 'Battery')}"><i class="fas ${icon}"></i>${b}%</span>`);
+                }
+            }
+            return `<span class="tc-meta-chips">${chips.join('')}</span>`;
         }
 
         updateCounts() {
@@ -522,6 +550,12 @@
             });
             const allLabel = document.getElementById('tcAllCount');
             if (allLabel) allLabel.textContent = `(${this.vehicles.size})`;
+            const badge = document.getElementById('tcToggleBadge');
+            if (badge) {
+                const n = this.vehicles.size;
+                badge.textContent = n > 99 ? '99+' : String(n);
+                badge.hidden = n === 0;
+            }
         }
 
         vehicleState(id) {
@@ -553,6 +587,8 @@
         locateVehicle(id) {
             const v = this.vehicles.get(id);
             if (!this.visible.has(id)) this.toggleVisible(id);
+            // On mobile, close the drawer so the map (and selected vehicle) is visible.
+            this.closePanel();
             if (v?.lat != null && v?.lng != null) {
                 this.map.panTo({ lat: v.lat, lng: v.lng });
                 if (this.map.getZoom() < 14) this.map.setZoom(15);
@@ -1140,6 +1176,115 @@
             }
         }
 
+        /* ---------- Map layers (Map / Satellite / Hybrid / Terrain + Traffic) ---------- */
+        bindMapLayers() {
+            const toggleBtn = document.getElementById('tcLayers');
+            const menu = document.getElementById('tcLayerMenu');
+            const trafficBtn = document.getElementById('tcTraffic');
+
+            if (toggleBtn && menu) {
+                toggleBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const open = menu.classList.toggle('open');
+                    toggleBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+                });
+                document.addEventListener('click', (e) => {
+                    if (!menu.contains(e.target) && e.target !== toggleBtn) {
+                        menu.classList.remove('open');
+                        toggleBtn.setAttribute('aria-expanded', 'false');
+                    }
+                });
+                menu.querySelectorAll('.tc-layer-item').forEach((item) => {
+                    item.addEventListener('click', () => {
+                        const type = item.dataset.layer;
+                        if (this.map && global.google?.maps?.MapTypeId) {
+                            const map = {
+                                roadmap: google.maps.MapTypeId.ROADMAP,
+                                satellite: google.maps.MapTypeId.SATELLITE,
+                                hybrid: google.maps.MapTypeId.HYBRID,
+                                terrain: google.maps.MapTypeId.TERRAIN,
+                            };
+                            this.map.setMapTypeId(map[type] || google.maps.MapTypeId.ROADMAP);
+                        }
+                        menu.querySelectorAll('.tc-layer-item').forEach((b) => b.classList.toggle('active', b === item));
+                        menu.classList.remove('open');
+                        toggleBtn.setAttribute('aria-expanded', 'false');
+                    });
+                });
+            }
+
+            if (trafficBtn) {
+                trafficBtn.addEventListener('click', () => {
+                    if (!this.trafficLayer) return;
+                    const on = this.trafficLayer.getMap() == null;
+                    this.trafficLayer.setMap(on ? this.map : null);
+                    trafficBtn.classList.toggle('active', on);
+                    trafficBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+                });
+            }
+        }
+
+        /* ---------- Responsive drawer + sizing ---------- */
+        isMobile() {
+            return global.matchMedia && global.matchMedia('(max-width: 768px)').matches;
+        }
+
+        bindPanelToggle() {
+            const toggle = document.getElementById('tcPanelToggle');
+            const backdrop = document.getElementById('tcPanelBackdrop');
+            toggle?.addEventListener('click', () => {
+                const panel = document.getElementById('tcPanel');
+                if (panel?.classList.contains('tc-panel--open')) this.closePanel();
+                else this.openPanel();
+            });
+            backdrop?.addEventListener('click', () => this.closePanel());
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') this.closePanel();
+            });
+
+            // Keep the app sized to the viewport (handles mobile address-bar resize).
+            let raf = null;
+            const onResize = () => {
+                if (raf) cancelAnimationFrame(raf);
+                raf = requestAnimationFrame(() => {
+                    this.fitAppHeight();
+                    if (!this.isMobile()) this.closePanel();
+                    this.mapResize();
+                });
+            };
+            global.addEventListener('resize', onResize);
+            global.addEventListener('orientationchange', onResize);
+        }
+
+        openPanel() {
+            if (!this.isMobile()) return;
+            document.getElementById('tcPanel')?.classList.add('tc-panel--open');
+            document.getElementById('tcPanelBackdrop')?.classList.add('show');
+            document.getElementById('tcPanelToggle')?.setAttribute('aria-expanded', 'true');
+        }
+
+        closePanel() {
+            document.getElementById('tcPanel')?.classList.remove('tc-panel--open');
+            document.getElementById('tcPanelBackdrop')?.classList.remove('show');
+            document.getElementById('tcPanelToggle')?.setAttribute('aria-expanded', 'false');
+        }
+
+        fitAppHeight() {
+            const app = document.querySelector('.tc-app');
+            if (!app) return;
+            const top = app.getBoundingClientRect().top + (global.scrollY || global.pageYOffset || 0);
+            const h = Math.max(360, (global.innerHeight || document.documentElement.clientHeight) - top);
+            app.style.height = h + 'px';
+        }
+
+        mapResize() {
+            if (this.map && global.google?.maps?.event) {
+                const c = this.map.getCenter();
+                global.google.maps.event.trigger(this.map, 'resize');
+                if (c) this.map.setCenter(c);
+            }
+        }
+
         fitAll() {
             if (!this.map) return;
             const bounds = new google.maps.LatLngBounds();
@@ -1523,7 +1668,7 @@
             const msgEl = document.getElementById('tcFooterMessages');
             if (dataEl) {
                 dataEl.classList.remove('tc-fbody--hist');
-                dataEl.innerHTML = `<div class="tc-empty">…</div>`;
+                dataEl.innerHTML = this.panelSkeleton();
             }
             if (msgEl) msgEl.innerHTML = '';
             try {
@@ -1538,6 +1683,11 @@
             } catch (err) {
                 if (dataEl) dataEl.innerHTML = `<div class="tc-empty">${escHtml(this.cfg.i18n?.loadFailed || 'Failed')}</div>`;
             }
+        }
+
+        panelSkeleton() {
+            const row = `<div class="tc-skel-row"><div class="tc-skel tc-skel-dot"></div><div class="tc-skel-lines"><div class="tc-skel tc-skel-line"></div><div class="tc-skel tc-skel-line sm"></div></div></div>`;
+            return `<div class="tc-fade-in" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:0.5rem;padding:0.5rem">${row.repeat(6)}</div>`;
         }
 
         renderPanelData(panel) {
@@ -1630,7 +1780,7 @@
                 ? `<img src="${escHtml(panel.photo)}" alt="" class="tc-photo">`
                 : `<div class="tc-empty">${escHtml(i.noPhoto || 'No photo.')}</div>`;
 
-            el.innerHTML = `<div class="tc-data-grid">
+            el.innerHTML = `<div class="tc-data-grid tc-fade-in">
                 <div class="tc-data-col">${colA}</div>
                 <div class="tc-data-col">${colB}</div>
                 <div class="tc-data-col"><h6>${escHtml(i.secObjectControl || 'Object control')}</h6>${control}</div>
