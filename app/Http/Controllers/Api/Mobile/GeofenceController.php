@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Mobile;
 use App\Contracts\Geofences\GeofenceStoreInterface;
 use App\Http\Controllers\Controller;
 use App\Http\Concerns\RespondsWithMobileJson;
+use App\Services\Tracking\GlobalTrackingService;
 use App\Support\Traccar\GeofenceWkt;
 use Illuminate\Http\Request;
 
@@ -17,12 +18,13 @@ class GeofenceController extends Controller
 
     public function __construct(
         private GeofenceStoreInterface $geofenceStore,
+        private GlobalTrackingService $tracking,
     ) {}
 
     public function index(Request $request)
     {
         $user = $request->user();
-        $devices = $user->trackableDevicesQuery()->get()->keyBy('id');
+        $devices = $this->tracking->devicesForActor($user)->keyBy('id');
         $seen = [];
         $items = collect();
 

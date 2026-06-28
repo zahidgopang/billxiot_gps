@@ -58,11 +58,15 @@ class AuthController extends Controller
             return $this->mobileError('Invalid credentials', 401, 'invalid_credentials');
         }
 
-        if (! $this->entitlement->isEndUser($user)) {
-            return $this->mobileError('This API is only available for end-user accounts.', 403, 'invalid_role');
+        if (! $this->entitlement->canAccessMobileApp($user)) {
+            return $this->mobileError('This account is not allowed to use the mobile app.', 403, 'invalid_role');
         }
 
-        $access = $this->entitlement->evaluate($user);
+        if ($this->entitlement->isEndUser($user)) {
+            $access = $this->entitlement->evaluate($user);
+        } else {
+            $access = $this->entitlement->evaluateStaff($user);
+        }
 
         if (! $access['allowed']) {
             $status = match ($access['code']) {

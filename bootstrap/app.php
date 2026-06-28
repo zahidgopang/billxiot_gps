@@ -48,6 +48,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'permission' => \App\Http\Middleware\EnsurePermission::class,
             'panel' => \App\Http\Middleware\EnsurePanelAccess::class,
             'mobile.end_user' => \App\Http\Middleware\EnsureMobileEndUser::class,
+            'mobile.app_user' => \App\Http\Middleware\EnsureMobileAppUser::class,
             'mobile.entitlement' => \App\Http\Middleware\EnsureMobileEntitlement::class,
         ]);
 

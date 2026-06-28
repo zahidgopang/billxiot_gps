@@ -3,6 +3,7 @@
 namespace App\Http\Concerns;
 
 use App\Models\User;
+use App\Services\Authorization\RbacService;
 use App\Services\UserAvatarService;
 
 trait PresentsMobileUser
@@ -20,6 +21,7 @@ trait PresentsMobileUser
             'country_code' => $user->country_code,
             'avatar_url' => app(UserAvatarService::class)->url($user),
             'status' => $user->status ?? 'active',
+            'role' => app(RbacService::class)->roleOf($user)->value,
         ];
     }
 }

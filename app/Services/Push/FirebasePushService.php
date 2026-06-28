@@ -150,6 +150,23 @@ class FirebasePushService
                 ])),
                 'android' => [
                     'priority' => 'HIGH',
+                    'notification' => [
+                        'channel_id' => 'billxiot_alerts',
+                        'sound' => 'default',
+                        'default_sound' => true,
+                        'notification_priority' => 'PRIORITY_HIGH',
+                    ],
+                ],
+                'apns' => [
+                    'payload' => [
+                        'aps' => [
+                            'sound' => 'default',
+                            'alert' => [
+                                'title' => $title,
+                                'body' => $body,
+                            ],
+                        ],
+                    ],
                 ],
             ],
         ];

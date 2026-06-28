@@ -43,6 +43,29 @@ class MobileEntitlementService
         return $this->rbac->isEndUser($user);
     }
 
+    public function canAccessMobileApp(User $user): bool
+    {
+        return $this->isEndUser($user) || $this->rbac->canAccessPanel($user);
+    }
+
+    /**
+     * Staff (admin/client) mobile access — active account only, no subscription gate.
+     *
+     * @return array{allowed: bool, code: string, message: string}
+     */
+    public function evaluateStaff(User $user): array
+    {
+        if (! $this->trackingGate->userIsTrackable($user)) {
+            return $this->deny(self::CODE_ACCOUNT_INACTIVE, 'Account inactive');
+        }
+
+        if (! $this->trackerUsers->hasTrackerAccount($user)) {
+            return $this->deny(self::CODE_ACCOUNT_INACTIVE, 'Account inactive');
+        }
+
+        return ['allowed' => true, 'code' => self::CODE_OK, 'message' => ''];
+    }
+
     /**
      * @return array{allowed: bool, code: string, message: string}
      */

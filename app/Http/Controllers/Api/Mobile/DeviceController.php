@@ -13,6 +13,7 @@ use App\Services\Mobile\MobileDevicePresenter;
 use App\Services\Mobile\MobileRouteAnalyticsService;
 use App\Services\Tracking\DeviceHistoryFetcher;
 use App\Services\Tracking\DevicePositionLoader;
+use App\Services\Tracking\GlobalTrackingService;
 use App\Services\UserDashboardService;
 use App\Services\VehicleEventService;
 use Illuminate\Http\Request;
@@ -31,12 +32,13 @@ class DeviceController extends Controller
         private EventReaderInterface $events,
         private UserDashboardService $dashboard,
         private DeviceHistoryFetcher $historyFetcher,
+        private GlobalTrackingService $tracking,
     ) {}
 
     public function index(Request $request)
     {
         $user = $request->user();
-        $devices = $user->trackableDevicesQuery()->with(['subscription'])->get();
+        $devices = $this->tracking->devicesForActor($user);
         $this->positionLoader->attachLatestToMany($devices);
         $alertIds = $this->dashboard->alertDeviceIds($devices);
 

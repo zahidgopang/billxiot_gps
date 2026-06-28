@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\Mobile\AuthController as MobileAuthController;
 use App\Http\Controllers\Api\Mobile\DashboardController as MobileDashboardController;
 use App\Http\Controllers\Api\Mobile\DeviceController as MobileDeviceController;
 use App\Http\Controllers\Api\Mobile\ExportController as MobileExportController;
+use App\Http\Controllers\Api\Mobile\FleetController as MobileFleetController;
 use App\Http\Controllers\Api\Mobile\GeofenceController as MobileGeofenceController;
 use App\Http\Controllers\Api\Mobile\LiveStreamController as MobileLiveStreamController;
 use App\Http\Controllers\Api\Mobile\MapController as MobileMapController;
@@ -30,7 +31,7 @@ Route::post('/device/data', [DeviceDataController::class, 'receive'])
 Route::post('/login', [MobileAuthController::class, 'login'])
     ->middleware('throttle:mobile-login');
 
-Route::middleware(['auth:sanctum', 'mobile.end_user'])->group(function () {
+Route::middleware(['auth:sanctum', 'mobile.app_user'])->group(function () {
     Route::post('/logout', [MobileAuthController::class, 'logout']);
     Route::post('/push-token', [MobilePushTokenController::class, 'store']);
     Route::delete('/push-token', [MobilePushTokenController::class, 'destroy']);
@@ -39,7 +40,7 @@ Route::middleware(['auth:sanctum', 'mobile.end_user'])->group(function () {
 
 Route::middleware([
     'auth:sanctum',
-    'mobile.end_user',
+    'mobile.app_user',
     'mobile.entitlement',
 ])->group(function () {
     Route::get('/profile', [MobileProfileController::class, 'show']);
@@ -53,6 +54,7 @@ Route::middleware([
     Route::get('/dashboard/recent-vehicles', [MobileDashboardController::class, 'recentVehicles']);
 
     Route::get('/devices', [MobileDeviceController::class, 'index']);
+    Route::get('/fleet/live', [MobileFleetController::class, 'live']);
     Route::get('/devices/{id}', [MobileDeviceController::class, 'show'])->whereNumber('id');
     Route::get('/devices/{id}/live', [MobileDeviceController::class, 'live'])->whereNumber('id');
     Route::get('/devices/{id}/history', [MobileDeviceController::class, 'history'])->whereNumber('id');

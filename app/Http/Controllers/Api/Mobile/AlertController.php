@@ -8,6 +8,7 @@ use App\Http\Concerns\RespondsWithMobileJson;
 use App\Models\Device;
 use App\Models\VehicleEvent;
 use App\Models\VehicleEventRead;
+use App\Services\Tracking\GlobalTrackingService;
 use App\Services\Tracking\NotificationPreferenceService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -21,12 +22,13 @@ class AlertController extends Controller
     public function __construct(
         private EventReaderInterface $events,
         private NotificationPreferenceService $notificationPrefs,
+        private GlobalTrackingService $tracking,
     ) {}
 
     public function index(Request $request)
     {
         $user = $request->user();
-        $devices = $user->trackableDevicesQuery()->get();
+        $devices = $this->tracking->devicesForActor($user);
         $deviceIds = $devices->pluck('id');
 
         if ($deviceIds->isEmpty()) {
@@ -55,7 +57,7 @@ class AlertController extends Controller
     public function unread(Request $request)
     {
         $user = $request->user();
-        $devices = $user->trackableDevicesQuery()->get();
+        $devices = $this->tracking->devicesForActor($user);
         $deviceIds = $devices->pluck('id');
 
         if ($deviceIds->isEmpty()) {
@@ -94,7 +96,7 @@ class AlertController extends Controller
         ]);
 
         $user = $request->user();
-        $deviceIds = $user->trackableDevicesQuery()->pluck('id');
+        $deviceIds = collect($this->tracking->allowedDeviceIds($user));
 
         $validIds = collect($validated['alert_ids'])
             ->unique()

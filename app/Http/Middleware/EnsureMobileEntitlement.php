@@ -24,6 +24,11 @@ class EnsureMobileEntitlement
             ], 401);
         }
 
+        // Staff bypass subscription/payment gates; end-users are checked below.
+        if (! $this->entitlement->isEndUser($user)) {
+            return $next($request);
+        }
+
         $result = $this->entitlement->evaluate($user);
 
         if (! $result['allowed']) {

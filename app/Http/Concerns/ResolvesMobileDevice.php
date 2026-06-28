@@ -5,18 +5,35 @@ namespace App\Http\Concerns;
 use App\Models\Device;
 use App\Models\User;
 use App\Services\DeviceAccessService;
+use App\Services\Mobile\MobileEntitlementService;
+use App\Services\Tracking\GlobalTrackingService;
 use Illuminate\Http\Exceptions\HttpResponseException;
 
 trait ResolvesMobileDevice
 {
     protected function findMobileDevice(User $user, int|string $id): Device
     {
-        $device = $user->trackerDevicesQuery()
-            ->with(['subscription.clientInvoice'])
-            ->whereKey((int) $id)
-            ->firstOrFail();
+        $deviceId = (int) $id;
+        $tracking = app(GlobalTrackingService::class);
 
-        $check = app(DeviceAccessService::class)->evaluate($user, $device);
+        if (! in_array($deviceId, $tracking->filterAllowedIds($user, [$deviceId]), true)) {
+            throw new HttpResponseException(response()->json([
+                'success' => false,
+                'message' => 'Device not found or access denied.',
+                'code' => 'not_found',
+            ], 404));
+        }
+
+        $device = Device::query()
+            ->with(['subscription.clientInvoice'])
+            ->findOrFail($deviceId);
+
+        $entitlement = app(MobileEntitlementService::class);
+        $check = app(DeviceAccessService::class)->evaluate(
+            $user,
+            $device,
+            requireSubscription: $entitlement->isEndUser($user),
+        );
 
         if (! $check['allowed']) {
             throw new HttpResponseException(response()->json([
