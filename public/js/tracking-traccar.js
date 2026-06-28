@@ -928,9 +928,22 @@
             st.marker.setLabel(markerLabel(this.labelFor(merged)));
             st.marker.setTitle(this.labelFor(merged));
 
-            if (!prev || samePosition(prev, merged)) {
-                const moving = MOVING_KEYS.has(key);
-                const spd = Math.max(0, parseFloat(merged.speed) || 0);
+            const moving = MOVING_KEYS.has(key);
+            const spd = Math.max(0, parseFloat(merged.speed) || 0);
+            const isDup = prev && samePosition(prev, merged);
+
+            // Stale duplicate fix for a moving vehicle: the GPS unit reports slower
+            // than we poll, so the server keeps returning the same coordinates.
+            // Keep dead-reckoning forward instead of freezing, so the marker glides
+            // continuously along the road until the next distinct fix arrives.
+            if (isDup && moving && spd > 1) {
+                this.continueCruise(id, merged);
+                return;
+            }
+
+            // First fix, or a duplicate while stopped/idle: snap into place and hold.
+            if (!prev || isDup) {
+                st.dupSince = null;
                 let h = parseFloat(merged.heading);
                 // Keep the last heading when stopped (noisy GPS heading at rest).
                 if (!Number.isFinite(h) || (!moving && spd < 3)) {
@@ -980,6 +993,7 @@
             let catchupMs = interval * 1.15;
             if (segMeters > 400) catchupMs = Math.min(catchupMs, 1200);
 
+            st.dupSince = null;
             st.motion = {
                 from,
                 to: toLL,
@@ -989,11 +1003,61 @@
                 color: colorForPoint(to, this.stateColors),
                 catchupMs: Math.max(250, catchupMs),
                 cruise: moving && speedKmh > 1,
-                maxCruiseSec: Math.min(1.2, (interval * 0.6) / 1000),
+                // Bridge a slightly late/dropped poll so a moving marker keeps
+                // gliding past the target until the next fix instead of stalling.
+                maxCruiseSec: Math.min(3, interval / 1000 + 1),
                 start: performance.now(),
             };
             st.lastPoint = to;
             if (!moving) this.clearTrail(st);
+            this.startMotionLoop();
+        }
+
+        /**
+         * Keep a moving marker gliding forward when the server returns the same
+         * coordinates on consecutive polls (the GPS unit reports slower than we
+         * poll). Dead-reckons from the current rendered position along the latest
+         * heading at the reported speed. Bounded by a safety budget so a stale
+         * "moving" status can't drift the marker far off-road before it holds.
+         */
+        continueCruise(id, to) {
+            const st = this.vehicleState(id);
+            const now = performance.now();
+            const MAX_BRIDGE_SEC = 8;
+            if (st.dupSince == null) st.dupSince = now;
+            const bridged = (now - st.dupSince) / 1000;
+            const speedKmh = Math.max(0, parseFloat(to.speed) || 0);
+
+            // Past the safety budget (or effectively stopped): hold position.
+            if (bridged >= MAX_BRIDGE_SEC || speedKmh <= 1) {
+                st.motion = null;
+                st.lastPoint = to;
+                return;
+            }
+
+            const base = st.renderPos || { lat: to.lat, lng: to.lng };
+            let toH = parseFloat(to.heading);
+            const fromH = st.renderHeading != null
+                ? st.renderHeading
+                : (Number.isFinite(toH) ? toH : 0);
+            if (!Number.isFinite(toH)) toH = fromH;
+
+            const interval = this.cfg.pollIntervalMs || 2000;
+            const remainingSec = Math.max(0, MAX_BRIDGE_SEC - bridged);
+
+            st.motion = {
+                from: base,
+                to: base, // no glide target; cruise straight out from where we are
+                fromH,
+                toH,
+                speedKmh,
+                color: colorForPoint(to, this.stateColors),
+                catchupMs: 200, // brief heading ease only
+                cruise: true,
+                maxCruiseSec: Math.min(remainingSec, interval / 1000 + 1),
+                start: now,
+            };
+            st.lastPoint = to;
             this.startMotionLoop();
         }
 
