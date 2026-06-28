@@ -9,6 +9,7 @@ use App\Services\Tracking\GlobalTrackingService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Route;
 use Illuminate\View\View;
 
 class GlobalTrackingController extends Controller
@@ -32,6 +33,7 @@ class GlobalTrackingController extends Controller
             'stateColors' => VehicleStatusSpec::STATE_COLORS,
             'hubRoutes' => $this->trackingHubRoutes($panel),
             'routes' => $this->liveRouteNames($panel),
+            'deviceEditUrlTemplate' => $this->deviceEditUrlTemplate($panel),
         ]);
     }
 
@@ -179,5 +181,20 @@ class GlobalTrackingController extends Controller
             'deviceMileage' => "{$panel}.tracking.device-mileage",
             'commandsSend' => "{$panel}.tracking.commands.send",
         ];
+    }
+
+    private function deviceEditUrlTemplate(string $panel): ?string
+    {
+        $routeName = "{$panel}.devices.edit";
+
+        if (! Route::has($routeName)) {
+            return null;
+        }
+
+        return str_replace(
+            '/0/',
+            '/__DEVICE_ID__/',
+            route($routeName, ['device' => 0]),
+        );
     }
 }

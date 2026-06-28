@@ -1101,7 +1101,6 @@
             commandsSendUrl: @json(Route::has($routes['commandsSend']) ? route($routes['commandsSend']) : null),
             commandTypes: @json(\App\Services\Tracking\CommandService::typeLabels()),
             liveUrl: @json(route($routes['live'])),
-            @php($deviceEditUrlTemplate = Route::has("{$panel}.devices.edit") ? str_replace('/0/', '/__DEVICE_ID__/', route("{$panel}.devices.edit", ['device' => 0])) : null)
             deviceEditUrl: @json($deviceEditUrlTemplate),
             csrfToken: @json(csrf_token()),
             pollIntervalMs: 2000,
