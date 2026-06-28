@@ -820,6 +820,7 @@ return [
         'time_from' => 'Time from',
         'time_to' => 'Time to',
         'load_history' => 'Load history',
+        'parking_stops' => 'Parking stops',
         'select_vehicle' => 'Select a vehicle to view its route.',
         'object' => 'Object',
         'no_data' => 'No data for the selected period.',
