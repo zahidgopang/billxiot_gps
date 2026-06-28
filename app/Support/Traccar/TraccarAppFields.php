@@ -17,6 +17,9 @@ final class TraccarAppFields
 
     public const KEY_PREFERENCES = 'laravel_preferences';
 
+    /** Per-user web/push toggles for alert types (not shared across users). */
+    public const KEY_NOTIFICATION_PREFERENCES = 'laravel_notification_preferences';
+
     public const KEY_PASSWORD = 'laravel_password';
 
     public const KEY_EMAIL_VERIFIED = 'laravel_email_verified_at';

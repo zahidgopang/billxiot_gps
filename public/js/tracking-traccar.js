@@ -728,13 +728,18 @@
             });
         }
 
+        deviceEditUrlFor(id) {
+            if (!this.cfg.deviceEditUrl || id == null || id === '') return null;
+            return this.cfg.deviceEditUrl.replace('__DEVICE_ID__', encodeURIComponent(String(id)));
+        }
+
         runRowAction(act, id, v) {
             switch (act) {
                 case 'follow':
                     this.setFollow(id, true);
                     break;
                 case 'follow-new':
-                    if (this.cfg.liveUrl) global.open(`${this.cfg.liveUrl}?follow=${id}`, '_blank');
+                    if (this.cfg.liveUrl) global.open(`${this.cfg.liveUrl}?follow=${encodeURIComponent(id)}`, '_blank');
                     break;
                 case 'street':
                     this.openStreetView(v);
@@ -746,11 +751,11 @@
                     this.locateVehicle(id);
                     setTimeout(() => document.getElementById('tcCmdType')?.focus(), 400);
                     break;
-                case 'edit':
-                    if (this.cfg.deviceEditUrl) {
-                        global.open(this.cfg.deviceEditUrl.replace(/\/0(\?|$)/, `/${id}$1`), '_blank');
-                    }
+                case 'edit': {
+                    const url = this.deviceEditUrlFor(id);
+                    if (url) global.open(url, '_blank');
                     break;
+                }
             }
         }
 
