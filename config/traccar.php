@@ -45,6 +45,7 @@ return [
         'groups' => 'tc_groups',
         'drivers' => 'tc_drivers',
         'commands' => 'tc_commands',
+        'commands_queue' => 'tc_commands_queue',
     ],
 
     'protocol' => env('TRACCAR_PROTOCOL', 'laravel'),

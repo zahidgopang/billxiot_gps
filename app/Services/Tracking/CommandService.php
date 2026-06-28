@@ -3,12 +3,30 @@
 namespace App\Services\Tracking;
 
 use App\Models\Device;
-use App\Models\DeviceCommand;
 use App\Models\User;
+use App\Services\Traccar\TraccarIdMap;
 use App\Support\DateTime\AppDateTime;
+use App\Support\Traccar\TraccarSchema;
+use Carbon\Carbon;
+use Illuminate\Support\Facades\DB;
 
+/**
+ * Device command queue backed by Traccar's native `tc_commands_queue` table.
+ *
+ * Traccar stores commands that cannot be delivered immediately (device offline)
+ * in `tc_commands_queue`. We reuse that exact table so the feature stays
+ * compatible with a real Traccar daemon. The base table only has
+ * (id, deviceid, type, textchannel, attributes), so lifecycle metadata
+ * (status / data / requester / timestamps) is kept inside the `attributes` JSON.
+ */
 class CommandService
 {
+    public const STATUS_PENDING = 'pending';
+
+    public const STATUS_SENT = 'sent';
+
+    public const STATUS_CANCELED = 'canceled';
+
     /**
      * Command types we expose. Mirrors common Traccar command types; `custom`
      * lets an operator push a raw command string via the data field.
@@ -27,7 +45,13 @@ class CommandService
 
     public function __construct(
         private GlobalTrackingService $tracking,
+        private TraccarIdMap $idMap,
     ) {}
+
+    private function table(): string
+    {
+        return config('traccar.tables.commands_queue', 'tc_commands_queue');
+    }
 
     /**
      * Type => human label map for the UI.
@@ -53,32 +77,56 @@ class CommandService
     public function historyForActor(User $actor, int $limit = 100): array
     {
         $deviceIds = $this->tracking->allowedDeviceIds($actor);
-        if ($deviceIds === []) {
+        if ($deviceIds === [] || ! TraccarSchema::hasTable($this->table())) {
             return [];
         }
 
-        $rows = DeviceCommand::query()
-            ->with(['device', 'requester'])
-            ->whereIn('device_id', $deviceIds)
+        // Map laravel device ids -> traccar device ids and keep a reverse lookup.
+        $traccarToLaravel = [];
+        foreach ($deviceIds as $laravelId) {
+            $tid = $this->idMap->get(\App\Models\TraccarEntityMap::TYPE_DEVICE, (int) $laravelId);
+            if ($tid) {
+                $traccarToLaravel[(int) $tid] = (int) $laravelId;
+            }
+        }
+
+        if ($traccarToLaravel === []) {
+            return [];
+        }
+
+        $rows = DB::table($this->table())
+            ->whereIn('deviceid', array_keys($traccarToLaravel))
             ->orderByDesc('id')
             ->limit($limit)
             ->get();
 
+        if ($rows->isEmpty()) {
+            return [];
+        }
+
         $labels = self::typeLabels();
 
-        return $rows->map(function (DeviceCommand $cmd) use ($labels) {
-            $at = $cmd->sent_at ?? $cmd->queued_at ?? $cmd->created_at;
+        $deviceNames = Device::query()
+            ->whereIn('id', array_values($traccarToLaravel))
+            ->get()
+            ->mapWithKeys(fn (Device $d) => [(int) $d->id => $d->mapMarkerTitle()])
+            ->all();
+
+        return $rows->map(function ($row) use ($labels, $traccarToLaravel, $deviceNames) {
+            $attrs = $this->decodeAttributes($row->attributes ?? null);
+            $laravelDeviceId = $traccarToLaravel[(int) $row->deviceid] ?? 0;
+            $at = $this->timestampFrom($attrs);
 
             return [
-                'id' => $cmd->id,
-                'device_id' => $cmd->device_id,
-                'device' => $cmd->device?->mapMarkerTitle() ?? ('#' . $cmd->device_id),
-                'type' => $cmd->type,
-                'type_label' => $labels[$cmd->type] ?? $cmd->type,
-                'data' => (string) ($cmd->data ?? ''),
-                'status' => $cmd->status,
-                'requested_by' => $cmd->requester?->name,
-                'result' => (string) ($cmd->result ?? ''),
+                'id' => (int) $row->id,
+                'device_id' => $laravelDeviceId,
+                'device' => $deviceNames[$laravelDeviceId] ?? ('#' . $laravelDeviceId),
+                'type' => (string) $row->type,
+                'type_label' => $labels[$row->type] ?? (string) $row->type,
+                'data' => (string) ($attrs['data'] ?? ''),
+                'status' => (string) ($attrs['status'] ?? self::STATUS_PENDING),
+                'requested_by' => $attrs['requested_by_name'] ?? null,
+                'result' => (string) ($attrs['result'] ?? ''),
                 'time' => $at ? AppDateTime::format($at, 'display') : '',
                 ...($at ? AppDateTime::apiFields($at) : []),
             ];
@@ -113,25 +161,32 @@ class CommandService
             return ['success' => false, 'message' => (string) __('app.tracking.command_custom_required')];
         }
 
-        $command = DeviceCommand::create([
-            'device_id' => $deviceId,
-            'type' => $type,
-            'data' => $raw !== '' ? $raw : null,
-            'attributes' => [
-                'command' => $type,
-                'data' => $raw,
-                'requested_by' => $actor->id,
-                'requested_at' => now()->toIso8601String(),
-            ],
-            'status' => DeviceCommand::STATUS_PENDING,
+        $traccarDeviceId = $this->idMap->get(\App\Models\TraccarEntityMap::TYPE_DEVICE, $deviceId);
+        if (! $traccarDeviceId) {
+            return ['success' => false, 'message' => (string) __('app.tracking.command_device_inaccessible')];
+        }
+
+        $attributes = [
+            'data' => $raw,
+            'status' => self::STATUS_PENDING,
             'requested_by' => $actor->id,
-            'queued_at' => now(),
+            'requested_by_name' => $actor->name,
+            'requested_at' => now()->toIso8601String(),
+        ];
+
+        $payload = TraccarSchema::filterColumns($this->table(), [
+            'deviceid' => $traccarDeviceId,
+            'type' => $type,
+            'textchannel' => false,
+            'attributes' => json_encode($attributes),
         ]);
+
+        $id = DB::table($this->table())->insertGetId($payload);
 
         return [
             'success' => true,
             'message' => (string) __('app.tracking.command_queued_ok'),
-            'id' => $command->id,
+            'id' => (int) $id,
         ];
     }
 
@@ -140,23 +195,29 @@ class CommandService
      */
     public function cancel(User $actor, int $commandId): bool
     {
-        $command = DeviceCommand::query()
+        $row = DB::table($this->table())->where('id', $commandId)->first();
+        if (! $row) {
+            return false;
+        }
+
+        $laravelDeviceId = $this->idMap->laravelId(\App\Models\TraccarEntityMap::TYPE_DEVICE, (int) $row->deviceid);
+        if (! $laravelDeviceId
+            || ! in_array((int) $laravelDeviceId, $this->tracking->filterAllowedIds($actor, [(int) $laravelDeviceId]), true)) {
+            return false;
+        }
+
+        $attrs = $this->decodeAttributes($row->attributes ?? null);
+        if (($attrs['status'] ?? self::STATUS_PENDING) !== self::STATUS_PENDING) {
+            return false;
+        }
+
+        $attrs['status'] = self::STATUS_CANCELED;
+        $attrs['result'] = (string) __('app.tracking.command_canceled_by', ['user' => $actor->name]);
+        $attrs['canceled_at'] = now()->toIso8601String();
+
+        DB::table($this->table())
             ->where('id', $commandId)
-            ->where('status', DeviceCommand::STATUS_PENDING)
-            ->first();
-
-        if (! $command) {
-            return false;
-        }
-
-        if (! in_array((int) $command->device_id, $this->tracking->filterAllowedIds($actor, [(int) $command->device_id]), true)) {
-            return false;
-        }
-
-        $command->update([
-            'status' => DeviceCommand::STATUS_CANCELED,
-            'result' => (string) __('app.tracking.command_canceled_by', ['user' => $actor->name]),
-        ]);
+            ->update(['attributes' => json_encode($attrs)]);
 
         return true;
     }
@@ -169,33 +230,83 @@ class CommandService
      */
     public function deliverPendingForDevice(Device $device): array
     {
-        $pending = DeviceCommand::query()
-            ->where('device_id', $device->id)
-            ->where('status', DeviceCommand::STATUS_PENDING)
+        if (! TraccarSchema::hasTable($this->table())) {
+            return [];
+        }
+
+        $traccarDeviceId = $this->idMap->get(\App\Models\TraccarEntityMap::TYPE_DEVICE, (int) $device->id);
+        if (! $traccarDeviceId) {
+            return [];
+        }
+
+        $rows = DB::table($this->table())
+            ->where('deviceid', $traccarDeviceId)
             ->orderBy('id')
             ->get();
 
-        if ($pending->isEmpty()) {
+        if ($rows->isEmpty()) {
             return [];
         }
 
         $payload = [];
-        $now = now();
+        $now = now()->toIso8601String();
 
-        foreach ($pending as $command) {
+        foreach ($rows as $row) {
+            $attrs = $this->decodeAttributes($row->attributes ?? null);
+            if (($attrs['status'] ?? self::STATUS_PENDING) !== self::STATUS_PENDING) {
+                continue;
+            }
+
             $payload[] = [
-                'id' => $command->id,
-                'type' => $command->type,
-                'data' => (string) ($command->data ?? ''),
-                'attributes' => $command->attributes ?? [],
+                'id' => (int) $row->id,
+                'type' => (string) $row->type,
+                'data' => (string) ($attrs['data'] ?? ''),
             ];
 
-            $command->update([
-                'status' => DeviceCommand::STATUS_SENT,
-                'sent_at' => $now,
-            ]);
+            $attrs['status'] = self::STATUS_SENT;
+            $attrs['sent_at'] = $now;
+
+            DB::table($this->table())
+                ->where('id', $row->id)
+                ->update(['attributes' => json_encode($attrs)]);
         }
 
         return $payload;
+    }
+
+    /**
+     * @param  mixed  $raw
+     * @return array<string, mixed>
+     */
+    private function decodeAttributes($raw): array
+    {
+        if (is_array($raw)) {
+            return $raw;
+        }
+
+        if (! is_string($raw) || $raw === '') {
+            return [];
+        }
+
+        $decoded = json_decode($raw, true);
+
+        return is_array($decoded) ? $decoded : [];
+    }
+
+    /**
+     * @param  array<string, mixed>  $attrs
+     */
+    private function timestampFrom(array $attrs): ?Carbon
+    {
+        $value = $attrs['sent_at'] ?? $attrs['canceled_at'] ?? $attrs['requested_at'] ?? null;
+        if (! is_string($value) || $value === '') {
+            return null;
+        }
+
+        try {
+            return Carbon::parse($value);
+        } catch (\Throwable) {
+            return null;
+        }
     }
 }
