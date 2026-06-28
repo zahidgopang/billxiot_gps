@@ -307,6 +307,7 @@
                 mapTypeControl: true,
                 streetViewControl: false,
                 fullscreenControl: false,
+                zoomControl: false,
             });
             this.legendEl = document.getElementById('tcLegend');
 
@@ -805,9 +806,67 @@
 
         /* ---------- Map controls ---------- */
         bindMapControls() {
+            document.getElementById('tcZoomIn')?.addEventListener('click', () => {
+                if (this.map) this.map.setZoom((this.map.getZoom() || 11) + 1);
+            });
+            document.getElementById('tcZoomOut')?.addEventListener('click', () => {
+                if (this.map) this.map.setZoom((this.map.getZoom() || 11) - 1);
+            });
             document.getElementById('tcFit')?.addEventListener('click', () => this.fitAll());
             document.getElementById('tcFollow')?.addEventListener('click', () => this.toggleFollow());
             document.getElementById('tcRefresh')?.addEventListener('click', () => this.pollLive(true));
+            document.getElementById('tcCapture')?.addEventListener('click', () => this.captureMap());
+        }
+
+        /**
+         * Capture the current map view as a PNG via the Google Static Maps API
+         * (reliable for Google tiles; html2canvas can't capture WebGL map layers).
+         * Falls back to opening the image in a new tab if a direct download fails.
+         */
+        async captureMap() {
+            if (!this.map || !this.cfg.googleMapsKey) return;
+            const center = this.map.getCenter();
+            if (!center) return;
+
+            const btn = document.getElementById('tcCapture');
+            btn?.classList.add('active');
+
+            const params = new URLSearchParams();
+            params.set('center', `${center.lat()},${center.lng()}`);
+            params.set('zoom', String(this.map.getZoom() || 14));
+            params.set('size', '640x640');
+            params.set('scale', '2');
+            params.set('maptype', this.map.getMapTypeId() || 'roadmap');
+            params.set('key', this.cfg.googleMapsKey);
+
+            let markerCount = 0;
+            this.visible.forEach((id) => {
+                if (markerCount >= 40) return;
+                const v = this.vehicles.get(id);
+                if (v?.lat != null && v?.lng != null) {
+                    params.append('markers', `color:red|${v.lat},${v.lng}`);
+                    markerCount++;
+                }
+            });
+
+            const url = `https://maps.googleapis.com/maps/api/staticmap?${params.toString()}`;
+            try {
+                const res = await fetch(url);
+                if (!res.ok) throw new Error('static map failed');
+                const blob = await res.blob();
+                const objUrl = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = objUrl;
+                a.download = `tracking-map-${Date.now()}.png`;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                setTimeout(() => URL.revokeObjectURL(objUrl), 5000);
+            } catch (err) {
+                global.open(url, '_blank');
+            } finally {
+                btn?.classList.remove('active');
+            }
         }
 
         fitAll() {

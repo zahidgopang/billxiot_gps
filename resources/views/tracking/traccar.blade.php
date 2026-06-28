@@ -330,6 +330,18 @@
             box-shadow: 0 4px 14px rgba(15, 23, 42, 0.15);
         }
         .tc-map-controls .btn.active { background: #1976d2; color: #fff; }
+        .tc-map-controls .tc-ctrl-group {
+            display: flex;
+            flex-direction: column;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 4px 14px rgba(15, 23, 42, 0.15);
+        }
+        .tc-map-controls .tc-ctrl-group .btn {
+            box-shadow: none;
+            border-radius: 0;
+        }
+        .tc-map-controls .tc-ctrl-group .btn + .btn { border-top: 1px solid #e2e8f0; }
 
         .tc-legend {
             position: absolute;
@@ -647,6 +659,14 @@
                         </div>
                     </div>
                     <div class="tc-map-controls">
+                        <div class="tc-ctrl-group">
+                            <button type="button" class="btn btn-light" id="tcZoomIn" title="{{ __('app.tracking.zoom_in') }}">
+                                <i class="fas fa-plus"></i>
+                            </button>
+                            <button type="button" class="btn btn-light" id="tcZoomOut" title="{{ __('app.tracking.zoom_out') }}">
+                                <i class="fas fa-minus"></i>
+                            </button>
+                        </div>
                         <button type="button" class="btn btn-light" id="tcFit" title="{{ __('app.tracking.fit_all') }}">
                             <i class="fas fa-compress-arrows-alt"></i>
                         </button>
@@ -655,6 +675,9 @@
                         </button>
                         <button type="button" class="btn btn-light" id="tcRefresh" title="{{ __('app.tracking.refresh') }}">
                             <i class="fas fa-sync-alt"></i>
+                        </button>
+                        <button type="button" class="btn btn-light" id="tcCapture" title="{{ __('app.tracking.capture_image') }}">
+                            <i class="fas fa-camera"></i>
                         </button>
                     </div>
                 </div>
