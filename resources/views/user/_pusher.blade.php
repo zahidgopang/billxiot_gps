@@ -2,11 +2,15 @@
     window.Pusher = Pusher;
 
     (function () {
-        const key = @json((string) config('broadcasting.connections.pusher.key'));
-        const cluster = @json((string) (config('broadcasting.connections.pusher.options.cluster') ?: 'mt1'));
+        // Laravel Reverb (Pusher-protocol compatible). Driven by config/broadcasting.php -> reverb.
+        const key = @json((string) config('broadcasting.connections.reverb.key'));
+        const host = @json((string) config('broadcasting.connections.reverb.options.host'));
+        const port = @json((int) config('broadcasting.connections.reverb.options.port', 443));
+        const scheme = @json((string) config('broadcasting.connections.reverb.options.scheme', 'https'));
+        const forceTLS = scheme === 'https';
 
-        if (!key) {
-            console.info('[realtime] Pusher key missing — disabling Echo (polling only).');
+        if (!key || !host) {
+            console.info('[realtime] Reverb key/host missing — disabling Echo (polling only).');
             window.Echo = null;
             return;
         }
@@ -15,8 +19,13 @@
             window.Echo = new Echo({
                 broadcaster: "pusher",
                 key: key,
-                cluster: cluster,
-                forceTLS: true,
+                wsHost: host,
+                wsPort: port,
+                wssPort: port,
+                forceTLS: forceTLS,
+                enabledTransports: ["ws", "wss"],
+                disableStats: true,
+                cluster: "",
                 authEndpoint: @json(url('/broadcasting/auth')),
                 auth: {
                     headers: {

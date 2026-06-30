@@ -134,6 +134,60 @@ class CommandService
     }
 
     /**
+     * Command history for a single device the actor can access (newest first).
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function historyForDevice(User $actor, int $deviceId, int $limit = 50): array
+    {
+        if (! in_array($deviceId, $this->tracking->filterAllowedIds($actor, [$deviceId]), true)) {
+            return [];
+        }
+
+        if (! TraccarSchema::hasTable($this->table())) {
+            return [];
+        }
+
+        $traccarDeviceId = $this->idMap->get(\App\Models\TraccarEntityMap::TYPE_DEVICE, $deviceId);
+        if (! $traccarDeviceId) {
+            return [];
+        }
+
+        $rows = DB::table($this->table())
+            ->where('deviceid', $traccarDeviceId)
+            ->orderByDesc('id')
+            ->limit($limit)
+            ->get();
+
+        if ($rows->isEmpty()) {
+            return [];
+        }
+
+        $labels = self::typeLabels();
+        $device = Device::find($deviceId);
+        $deviceName = $device ? $device->mapMarkerTitle() : ('#' . $deviceId);
+
+        return $rows->map(function ($row) use ($labels, $deviceId, $deviceName) {
+            $attrs = $this->decodeAttributes($row->attributes ?? null);
+            $at = $this->timestampFrom($attrs);
+
+            return [
+                'id' => (int) $row->id,
+                'device_id' => $deviceId,
+                'device' => $deviceName,
+                'type' => (string) $row->type,
+                'type_label' => $labels[$row->type] ?? (string) $row->type,
+                'data' => (string) ($attrs['data'] ?? ''),
+                'status' => (string) ($attrs['status'] ?? self::STATUS_PENDING),
+                'requested_by' => $attrs['requested_by_name'] ?? null,
+                'result' => (string) ($attrs['result'] ?? ''),
+                'time' => $at ? AppDateTime::format($at, 'display') : '',
+                ...($at ? AppDateTime::apiFields($at) : []),
+            ];
+        })->all();
+    }
+
+    /**
      * Queue a command for delivery to a device.
      *
      * @param  array<string, mixed>  $data

@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\DeviceDataController;
 use App\Http\Controllers\Api\Mobile\AlertController as MobileAlertController;
 use App\Http\Controllers\Api\Mobile\AuthController as MobileAuthController;
+use App\Http\Controllers\Api\Mobile\CommandController as MobileCommandController;
 use App\Http\Controllers\Api\Mobile\DashboardController as MobileDashboardController;
 use App\Http\Controllers\Api\Mobile\DeviceController as MobileDeviceController;
 use App\Http\Controllers\Api\Mobile\ExportController as MobileExportController;
@@ -36,6 +37,16 @@ Route::middleware(['auth:sanctum', 'mobile.app_user'])->group(function () {
     Route::post('/push-token', [MobilePushTokenController::class, 'store']);
     Route::delete('/push-token', [MobilePushTokenController::class, 'destroy']);
     Route::post('/push-test', [\App\Http\Controllers\Api\Mobile\PushTestController::class, 'send']);
+
+    // Private channel authorization for the mobile app (Sanctum bearer token).
+    // The web app uses the session-guarded /broadcasting/auth; the mobile app
+    // authenticates with a token, so it needs this token-guarded endpoint for
+    // Reverb private-channel subscriptions (device.{id}) to authorize. Channel
+    // rules live in routes/channels.php.
+    Route::post('/broadcasting/auth', [
+        \Illuminate\Broadcasting\BroadcastController::class,
+        'authenticate',
+    ]);
 });
 
 Route::middleware([
@@ -61,6 +72,12 @@ Route::middleware([
     Route::get('/devices/{id}/route-summary', [MobileDeviceController::class, 'routeSummary'])->whereNumber('id');
     Route::get('/devices/{id}/events', [MobileDeviceController::class, 'events'])->whereNumber('id');
     Route::get('/devices/{id}/live-stream', [MobileLiveStreamController::class, 'show'])->whereNumber('id');
+
+    Route::get('/devices/{id}/commands', [MobileCommandController::class, 'index'])->whereNumber('id');
+    Route::post('/devices/{id}/commands', [MobileCommandController::class, 'store'])->whereNumber('id');
+    Route::delete('/devices/{id}/commands/{command}', [MobileCommandController::class, 'destroy'])
+        ->whereNumber('id')
+        ->whereNumber('command');
 
     Route::get('/geofences', [MobileGeofenceController::class, 'index']);
 
