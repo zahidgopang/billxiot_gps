@@ -2028,6 +2028,7 @@
     </script>
     <script src="{{ protected_js('app-datetime.js') }}"></script>
     <script src="{{ protected_js('vehicle-marker.js') }}"></script>
+    <script src="{{ protected_js('fleet-map-cluster.js') }}"></script>
     <script src="{{ protected_js('history-analytics.js') }}"></script>
     <script src="{{ protected_js('route-trip-progress.js') }}"></script>
     <script src="{{ protected_js('vehicle-map-popup.js') }}"></script>

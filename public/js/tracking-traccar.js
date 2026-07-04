@@ -69,6 +69,25 @@
         return { text, color: '#1f2937', fontSize: '12px', fontWeight: '600', className: 'tc-mk-label' };
     }
 
+    function svgDataUrl(svg) {
+        return 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg);
+    }
+
+    function liveClusterIcon(count) {
+        const g = global.google;
+        if (!g?.maps) return null;
+        const size = 44;
+        const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+            <circle cx="22" cy="22" r="20" fill="#1976D2" stroke="#fff" stroke-width="3"/>
+            <text x="22" y="27" text-anchor="middle" fill="#fff" font-family="system-ui,sans-serif" font-size="14" font-weight="700">${count}</text>
+        </svg>`;
+        return {
+            url: svgDataUrl(svg),
+            scaledSize: new g.maps.Size(size, size),
+            anchor: new g.maps.Point(size / 2, size / 2),
+        };
+    }
+
     function applyMarkerIcon(marker, icon) {
         if (global.VehicleMarker?.applyMarkerIcon) {
             global.VehicleMarker.applyMarkerIcon(marker, icon);
@@ -357,9 +376,13 @@
             this.cfg = cfg;
             this.stateColors = cfg.stateColors || {};
             this.map = null;
+            this.mapZoom = 11;
             this.vehicles = new Map();
             this.visible = new Set();
             this.states = new Map();
+            this.clusterMarkers = new Map();
+            this.clusterIconCache = new Map();
+            this.clusteredDeviceIds = new Set();
             this.followId = null;
             this.activeFilter = 'all';
             this.activeTab = 'objects';
@@ -497,6 +520,11 @@
                 zoomControl: false,
                 gestureHandling: 'greedy',
             });
+            this.mapZoom = this.map.getZoom() || 11;
+            this.map.addListener('idle', () => {
+                this.mapZoom = this.map.getZoom() || this.mapZoom || 11;
+                this.renderLiveClusters();
+            });
             this.legendEl = document.getElementById('tcLegend');
             this.trafficLayer = new google.maps.TrafficLayer();
 
@@ -594,6 +622,7 @@
                 this.updateCounts();
             }
             this.visible.forEach((id) => { this.ensureMarker(id); this.subscribePusher(id); });
+            this.renderLiveClusters();
 
             // "Follow (new window)" deep-link: ?follow=<deviceId>
             const followId = parseInt(new URLSearchParams(global.location.search).get('follow'), 10);
@@ -608,6 +637,7 @@
             this.syncVisibleVehicleRoutePolylines();
             if (!this._routeTripDeviceId) {
                 this.fitAll();
+                this.renderLiveClusters();
             }
             this.initCompanyMapCard();
             this.initDriverMapCard();
@@ -996,6 +1026,7 @@
             }
             this.renderList();
             this.syncVisibleVehicleRoutePolylines();
+            this.renderLiveClusters();
             this.startPolling();
         }
 
@@ -1005,6 +1036,7 @@
             this.closeNavigationOnVehicleSelect();
             this._routeBoundsFitted = false;
             this.selectRouteTripVehicle(id);
+            this.renderLiveClusters();
             const rt = this.vehicles.get(id)?.route_trip;
             if (rt?.route) {
                 this.applyRouteTrip(id, rt);
@@ -1026,6 +1058,7 @@
                 this.startPolling();
             }
             this.selectRouteTripVehicle(id);
+            this.renderLiveClusters();
             this.closeNavigationOnVehicleSelect();
             this.vehiclePopup.open({ ...v, id }, st.marker);
         }
@@ -1087,6 +1120,7 @@
             }
             this.updateFollowBtn();
             this.renderList();
+            this.renderLiveClusters();
         }
 
         /* ---------- Per-vehicle action menu (Traccar-style kebab) ---------- */
@@ -1292,6 +1326,99 @@
             applyMarkerIcon(st.marker, icon || arrowIcon(color, h));
         }
 
+        activeClusterBreakId() {
+            const candidates = [this._panelDeviceId, this.followId, this._routeTripDeviceId];
+            for (const raw of candidates) {
+                const id = raw == null ? null : Number(raw);
+                if (id != null && this.visible.has(id)) return id;
+            }
+            return null;
+        }
+
+        livePositionMap(skipId = null) {
+            const positions = {};
+            this.visible.forEach((id) => {
+                if (skipId != null && Number(id) === Number(skipId)) return;
+                const v = this.vehicles.get(id);
+                if (!hasGeo(v?.lat, v?.lng)) return;
+                positions[id] = { lat: parseFloat(v.lat), lng: parseFloat(v.lng) };
+            });
+            return positions;
+        }
+
+        clearLiveClusters() {
+            this.clusterMarkers.forEach((marker) => marker.setMap(null));
+            this.clusterMarkers.clear();
+            this.clusteredDeviceIds.clear();
+        }
+
+        showAllLiveMarkers() {
+            if (!this.map || this.historyActive) return;
+            this.visible.forEach((id) => {
+                const st = this.states.get(id);
+                if (!st?.marker || !st.lastPoint) return;
+                st.marker.setMap(this.map);
+                st.trailPolylines.forEach((line) => line.setMap(this.map));
+            });
+        }
+
+        renderLiveClusters() {
+            if (!this.map) return;
+            this.clearLiveClusters();
+
+            if (this.historyActive || !global.FleetMapCluster) {
+                this.showAllLiveMarkers();
+                return;
+            }
+
+            const breakId = this.activeClusterBreakId();
+            const positions = this.livePositionMap();
+            const clusterPositions = this.livePositionMap(breakId);
+            const items = global.FleetMapCluster.group(clusterPositions, this.mapZoom || this.map.getZoom() || 11);
+            const clusteredIds = new Set();
+
+            items.forEach((item) => {
+                if (!item.isCluster) return;
+                item.memberIds.forEach((id) => clusteredIds.add(Number(id)));
+                const count = item.count || item.memberIds.length;
+                let icon = this.clusterIconCache.get(count);
+                if (!icon) {
+                    icon = liveClusterIcon(count);
+                    this.clusterIconCache.set(count, icon);
+                }
+                const marker = new google.maps.Marker({
+                    map: this.map,
+                    position: item.position,
+                    icon: icon || undefined,
+                    zIndex: 900,
+                    title: `${count} vehicles`,
+                });
+                marker.addListener('click', () => {
+                    const bounds = global.FleetMapCluster.boundsFor(item, positions);
+                    if (bounds) {
+                        this.map.fitBounds(new google.maps.LatLngBounds(
+                            { lat: bounds.minLat, lng: bounds.minLng },
+                            { lat: bounds.maxLat, lng: bounds.maxLng },
+                        ), 64);
+                    } else {
+                        this.map.setCenter(item.position);
+                        this.map.setZoom(global.FleetMapCluster.expandZoom(this.mapZoom || this.map.getZoom() || 11));
+                    }
+                });
+                this.clusterMarkers.set(global.FleetMapCluster.stableMarkerId(item), marker);
+            });
+
+            this.visible.forEach((id) => {
+                const st = this.states.get(id);
+                const hasPosition = !!positions[id];
+                const clustered = clusteredIds.has(Number(id));
+                const shouldShow = hasPosition && (!clustered || Number(id) === Number(breakId));
+                if (st?.marker) st.marker.setMap(shouldShow ? this.map : null);
+                st?.trailPolylines?.forEach((line) => line.setMap(shouldShow ? this.map : null));
+            });
+            this.clusteredDeviceIds = clusteredIds;
+        }
+
         ensureMarker(id) {
             const v = this.vehicles.get(id);
             const st = this.vehicleState(id);
@@ -1433,6 +1560,7 @@
             // continuously along the road until the next distinct fix arrives.
             if (isDup && moving && spd > 1) {
                 this.continueCruise(id, merged);
+                this.renderLiveClusters();
                 return;
             }
 
@@ -1451,10 +1579,12 @@
                 st.renderHeading = h;
                 st.lastPoint = merged;
                 st.motion = null;
-                if (moving) this.appendTrail(st, merged.lat, merged.lng, color);
+                if (moving) this.appendTrail(st, merged.lat, merged.lng, liveColor);
+                this.renderLiveClusters();
                 return;
             }
             this.startMotion(id, merged);
+            this.renderLiveClusters();
         }
 
         /**
@@ -1607,7 +1737,6 @@
 
                 st.renderPos = { lat, lng };
                 st.renderHeading = heading;
-                st.marker.setMap(this.map);
                 st.marker.setPosition({ lat, lng });
                 const vehicle = this.vehicles.get(id);
                 if (vehicle) {
@@ -1615,7 +1744,9 @@
                 } else {
                     st.marker.setIcon(arrowIcon(m.color, heading));
                 }
-                if (MOVING_KEYS.has(st.lastPoint?.status_key || '')) this.appendTrail(st, lat, lng, m.color);
+                const clustered = this.clusteredDeviceIds?.has(Number(id));
+                st.marker.setMap(clustered ? null : this.map);
+                if (!clustered && MOVING_KEYS.has(st.lastPoint?.status_key || '')) this.appendTrail(st, lat, lng, m.color);
 
                 if (done) { st.motion = null; } else { active = true; }
             });
@@ -1634,6 +1765,8 @@
                     st.trailPolylines.forEach((l) => l.setMap(null));
                 }
             });
+            if (show && !this.historyActive) this.renderLiveClusters();
+            else this.clearLiveClusters();
         }
 
         /* ---------- Polling + realtime ---------- */
@@ -1656,6 +1789,7 @@
                 const data = await res.json();
                 (data.devices || []).forEach((d) => this.applyPoint(d.id, d));
                 this.syncVisibleVehicleRoutePolylines();
+                this.renderLiveClusters();
             } catch (err) {
                 console.warn('[traccar-ui] poll failed', err);
             } finally {
