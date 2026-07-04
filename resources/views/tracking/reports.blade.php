@@ -34,6 +34,9 @@
     }
     .gt-report-empty[hidden] { display: none !important; }
     #gtReportTable td, #gtReportTable th { white-space: nowrap; }
+    #gtReportTable { direction: inherit; }
+    .gt-report-num { display: inline-block; direction: ltr; unicode-bidi: embed; }
+    html[dir="rtl"] .gt-report-pager { flex-direction: row-reverse; }
 </style>
 @endpush
 @section('content')
@@ -51,6 +54,11 @@
                     <option value="events">{{ __('app.tracking.report_events') }}</option>
                     <option value="route">{{ __('app.tracking.report_route') }}</option>
                 </select>
+                <label class="form-label small mt-2">{{ __('app.tracking.report_language') }}</label>
+                <select id="gtReportLang" class="form-select form-select-sm">
+                    <option value="en" @selected(app()->getLocale() === 'en')>{{ __('app.tracking.report_lang_en') }}</option>
+                    <option value="ar" @selected(app()->getLocale() === 'ar')>{{ __('app.tracking.report_lang_ar') }}</option>
+                </select>
                 <label class="form-label small mt-2">{{ __('app.tracking.date_from') }}</label>
                 <input type="date" id="gtReportFrom" class="form-control form-control-sm admin-ltr" dir="ltr">
                 <label class="form-label small mt-2">{{ __('app.tracking.date_to') }}</label>
@@ -63,9 +71,9 @@
                 </div>
                 <div class="d-flex flex-wrap gap-2 mt-3">
                     <button type="button" class="btn btn-primary btn-sm" id="gtReportRun">{{ __('app.tracking.load_history') }}</button>
-                    <button type="button" class="btn btn-outline-secondary btn-sm" id="gtReportCsv">CSV</button>
-                    <button type="button" class="btn btn-outline-secondary btn-sm" id="gtReportXlsx">XLS</button>
-                    <button type="button" class="btn btn-outline-secondary btn-sm" id="gtReportPdf">PDF</button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm" id="gtReportCsv">{{ __('app.tracking.export_csv') }}</button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm" id="gtReportXlsx">{{ __('app.tracking.export_xls') }}</button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm" id="gtReportPdf">{{ __('app.tracking.export_pdf') }}</button>
                 </div>
             </div>
             <div class="col-lg-9">
@@ -76,7 +84,7 @@
                 </div>
                 <div class="gt-report-tablewrap">
                     <div class="table-responsive">
-                        <table class="table table-sm table-hover" id="gtReportTable">
+                        <table class="table table-sm table-hover" id="gtReportTable" dir="{{ $htmlDir ?? 'ltr' }}">
                             <thead><tr id="gtReportHead"></tr></thead>
                             <tbody id="gtReportBody"></tbody>
                         </table>
@@ -97,6 +105,17 @@ window.TRACKING_REPORTS_CONFIG = {
     generateUrl: @json($generateUrl),
     exportUrl: @json($exportUrl),
     googleMapsKey: @json(config('services.google.maps_key')),
+    currentLang: @json(app()->getLocale()),
+    i18n: @json(array_merge(\App\Services\Tracking\Reports\ReportLabels::jsBundle(), [
+        'hourSuffix' => __('app.tracking.report_duration_hours'),
+        'minSuffix' => __('app.tracking.report_duration_minutes'),
+        'secSuffix' => __('app.tracking.report_duration_seconds'),
+        'pagerRange' => __('app.tracking.report_pager_range'),
+        'pageOf' => __('app.tracking.report_page_of'),
+        'rowsPerPage' => __('app.tracking.report_rows_per_page'),
+        'noData' => __('app.tracking.report_no_data'),
+        'loadFailed' => __('app.tracking.report_load_failed'),
+    ])),
 };
 </script>
 <script src="{{ protected_js('fleet-map-renderer.js') }}"></script>

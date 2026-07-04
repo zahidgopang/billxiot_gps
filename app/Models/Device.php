@@ -9,6 +9,7 @@ use App\Services\Traccar\TraccarDeviceAccessService;
 use App\Support\Traccar\TraccarAppFields;
 use App\Support\Traccar\TraccarAttributes;
 use App\Support\Traccar\TraccarSchema;
+use App\Support\VehicleIcons\VehicleIconLibrary;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -79,18 +80,53 @@ class Device extends Model
         'private_transfer' => 'Private Transfer',
     ];
 
-    /** Vehicle using the tracker (separate from GPS hardware device type). */
+    /** Vehicle using the tracker (separate from GPS hardware device type). @deprecated use VehicleIconLibrary::defaultTypes() */
     public const VEHICLE_TYPES = [
         'car' => 'Car',
         'suv' => 'SUV',
         'truck' => 'Truck',
         'van' => 'Van',
         'bus' => 'Bus',
-        'pickup' => 'Pickup',
         'motorcycle' => 'Motorcycle',
+        'taxi' => 'Taxi',
+        'ambulance' => 'Ambulance',
+        'police' => 'Police',
+        'fire_truck' => 'Fire Truck',
+        'tractor' => 'Tractor',
+        'crane' => 'Crane',
+        'boat' => 'Boat',
+        'bicycle' => 'Bicycle',
+        'pickup' => 'Pickup',
         'trailer' => 'Trailer',
         'other' => 'Other',
     ];
+
+    public const MAP_ICON_SOURCES = [
+        'default' => 'Default library icon',
+        'custom' => 'Custom uploaded icon',
+    ];
+
+    public const MAP_MARKER_STYLES = [
+        'labeled' => 'Labeled vehicle',
+        'body' => 'Vehicle body',
+        'pin' => 'Status pin',
+    ];
+
+    /** @deprecated Prefer VehicleIconLibrary::sizeScales() keys (percentage presets). */
+    public const MAP_MARKER_SIZES = [
+        '50' => '50%',
+        '75' => '75%',
+        '100' => '100%',
+        '125' => '125%',
+        '150' => '150%',
+        '200' => '200%',
+    ];
+
+    public const DEFAULT_MAP_MARKER_SIZE = '100';
+
+    public const DEFAULT_MAP_MARKER_STYLE = 'pin';
+
+    public const DEFAULT_MAP_ICON_SOURCE = 'default';
 
     protected $guarded = [];
 
@@ -313,6 +349,143 @@ class Device extends Model
         $this->patchTraccarAppAttributes([TraccarAppFields::KEY_VEHICLE_TYPE => $value ?: null]);
     }
 
+    public function getMapMarkerStyleAttribute(): string
+    {
+        $value = TraccarAppFields::get(
+            $this->getTraccarAttributesJson(),
+            TraccarAppFields::KEY_MAP_MARKER_STYLE
+        );
+
+        return is_string($value) && isset(self::MAP_MARKER_STYLES[$value])
+            ? $value
+            : self::DEFAULT_MAP_MARKER_STYLE;
+    }
+
+    public function setMapMarkerStyleAttribute(?string $value): void
+    {
+        $this->patchTraccarAppAttributes([
+            TraccarAppFields::KEY_MAP_MARKER_STYLE => isset(self::MAP_MARKER_STYLES[(string) $value])
+                ? $value
+                : null,
+        ]);
+    }
+
+    public function getMapMarkerSizeAttribute(): string
+    {
+        $value = TraccarAppFields::get(
+            $this->getTraccarAttributesJson(),
+            TraccarAppFields::KEY_MAP_MARKER_SIZE
+        );
+
+        return VehicleIconLibrary::normalizeSizeKey(is_string($value) ? $value : null);
+    }
+
+    public function setMapMarkerSizeAttribute(?string $value): void
+    {
+        $normalized = VehicleIconLibrary::normalizeSizeKey($value);
+        $this->patchTraccarAppAttributes([
+            TraccarAppFields::KEY_MAP_MARKER_SIZE => $normalized,
+        ]);
+    }
+
+    public function getMapIconSourceAttribute(): string
+    {
+        $value = TraccarAppFields::get(
+            $this->getTraccarAttributesJson(),
+            TraccarAppFields::KEY_MAP_ICON_SOURCE
+        );
+
+        return is_string($value) && isset(self::MAP_ICON_SOURCES[$value])
+            ? $value
+            : self::DEFAULT_MAP_ICON_SOURCE;
+    }
+
+    public function setMapIconSourceAttribute(?string $value): void
+    {
+        $this->patchTraccarAppAttributes([
+            TraccarAppFields::KEY_MAP_ICON_SOURCE => isset(self::MAP_ICON_SOURCES[(string) $value])
+                ? $value
+                : null,
+        ]);
+    }
+
+    public function getMapCustomIconAttribute(): ?string
+    {
+        $path = TraccarAppFields::get(
+            $this->getTraccarAttributesJson(),
+            TraccarAppFields::KEY_MAP_CUSTOM_ICON
+        );
+
+        return is_string($path) && $path !== '' ? $path : null;
+    }
+
+    public function setMapCustomIconAttribute(?string $value): void
+    {
+        $this->patchTraccarAppAttributes([
+            TraccarAppFields::KEY_MAP_CUSTOM_ICON => is_string($value) && $value !== '' ? $value : null,
+        ]);
+    }
+
+    public function getMapIconRotationEnabledAttribute(): bool
+    {
+        $value = TraccarAppFields::get(
+            $this->getTraccarAttributesJson(),
+            TraccarAppFields::KEY_MAP_ICON_ROTATION
+        );
+
+        if ($value === null || $value === '') {
+            return true;
+        }
+
+        return filter_var($value, FILTER_VALIDATE_BOOLEAN);
+    }
+
+    public function setMapIconRotationEnabledAttribute(mixed $value): void
+    {
+        $this->patchTraccarAppAttributes([
+            TraccarAppFields::KEY_MAP_ICON_ROTATION => filter_var($value, FILTER_VALIDATE_BOOLEAN) ? '1' : '0',
+        ]);
+    }
+
+    public function mapMarkerSizeScale(): float
+    {
+        return VehicleIconLibrary::scaleForSize($this->map_marker_size);
+    }
+
+    public function defaultMapIconName(): string
+    {
+        $type = $this->vehicle_type;
+
+        return VehicleIconLibrary::isValidDefaultType($type) ? $type : 'car';
+    }
+
+    public function usesCustomMapIcon(): bool
+    {
+        return $this->map_icon_source === 'custom'
+            && is_string($this->map_custom_icon)
+            && $this->map_custom_icon !== '';
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function mapAppearancePayload(): array
+    {
+        $iconService = app(\App\Services\Tracking\DeviceVehicleIconService::class);
+
+        $usesCustom = $this->usesCustomMapIcon();
+
+        return [
+            'vehicle_type' => $this->defaultMapIconName(),
+            'map_icon_source' => $usesCustom ? 'custom' : 'default',
+            'map_custom_icon_url' => $usesCustom ? $iconService->url($this) : null,
+            'map_marker_style' => $usesCustom ? 'body' : 'pin',
+            'map_marker_size' => $this->map_marker_size,
+            'map_marker_size_scale' => $this->mapMarkerSizeScale(),
+            'map_icon_rotation_enabled' => $this->map_icon_rotation_enabled,
+        ];
+    }
+
     public function getDriverNameAttribute(): ?string
     {
         return TraccarAppFields::get($this->getTraccarAttributesJson(), TraccarAppFields::KEY_DRIVER_NAME);
@@ -325,7 +498,9 @@ class Device extends Model
 
     public function getDriverContactAttribute(): ?string
     {
-        return TraccarAppFields::get($this->getTraccarAttributesJson(), TraccarAppFields::KEY_DRIVER_CONTACT);
+        $raw = TraccarAppFields::get($this->getTraccarAttributesJson(), TraccarAppFields::KEY_DRIVER_CONTACT);
+
+        return self::normalizeDriverContact($raw);
     }
 
     public function setDriverContactAttribute(?string $value): void
@@ -390,6 +565,11 @@ class Device extends Model
             TraccarAppFields::KEY_VEHICLE_NUMBER => $this->vehicle_number,
             TraccarAppFields::KEY_VEHICLE_MODEL => $this->vehicle_model,
             TraccarAppFields::KEY_VEHICLE_TYPE => $this->vehicle_type,
+            TraccarAppFields::KEY_MAP_MARKER_STYLE => $this->map_marker_style,
+            TraccarAppFields::KEY_MAP_MARKER_SIZE => $this->map_marker_size,
+            TraccarAppFields::KEY_MAP_ICON_SOURCE => $this->map_icon_source,
+            TraccarAppFields::KEY_MAP_CUSTOM_ICON => $this->map_custom_icon,
+            TraccarAppFields::KEY_MAP_ICON_ROTATION => $this->map_icon_rotation_enabled ? '1' : '0',
             TraccarAppFields::KEY_DRIVER_NAME => $this->driver_name,
             TraccarAppFields::KEY_DRIVER_CONTACT => $this->driver_contact,
             TraccarAppFields::KEY_SIM_TYPE => $this->sim_type,
@@ -438,9 +618,35 @@ class Device extends Model
     /** Driver contact number for display, or null when unset. */
     public function driverContactNumber(): ?string
     {
-        $contact = trim((string) ($this->driver_contact ?? ''));
+        $contact = $this->driver_contact;
 
-        return $contact !== '' ? $contact : null;
+        return $contact !== null && $contact !== '' ? $contact : null;
+    }
+
+    /**
+     * Normalize driver contact from plain text or Traccar driver attributes JSON.
+     */
+    public static function normalizeDriverContact(mixed $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        $contact = trim((string) $value);
+        if ($contact === '') {
+            return null;
+        }
+
+        if (str_starts_with($contact, '{') || str_starts_with($contact, '[')) {
+            $decoded = json_decode($contact, true);
+            if (is_array($decoded)) {
+                $phone = trim((string) ($decoded['phone'] ?? $decoded['contact'] ?? $decoded['mobile'] ?? ''));
+
+                return $phone !== '' ? $phone : null;
+            }
+        }
+
+        return $contact;
     }
 
     /** Sanitized phone for tel: links (keeps leading + and digits only). */

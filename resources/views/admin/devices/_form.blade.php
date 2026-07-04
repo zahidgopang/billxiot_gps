@@ -18,13 +18,15 @@
     $vehicleModel = old('vehicle_model', optional($device)->vehicle_model ?? '');
     $vehicleType = old('vehicle_type', optional($device)->vehicle_type ?? '');
     $driverName = old('driver_name', optional($device)->driver_name ?? '');
-    $driverContact = old('driver_contact', optional($device)->driver_contact ?? '');
+    $driverContact = old('driver_contact', optional($device)->driverContactNumber() ?? '');
     $plateType = old('plate_type', optional($device)->plate_type ?? '');
     $allowedDeviceTypes = $allowedDeviceTypes ?? array_keys(Device::DEVICE_TYPES);
     $formClientId = $formClientId ?? ($panel === 'client' ? $selectedClient : ($selectedClient ?: null));
     $needsClient = $panel === 'admin' && ! $formClientId;
     $noClientStock = $formClientId && count($allowedDeviceTypes) === 0;
     $clientStockBalance = $clientStockBalance ?? null;
+    $activeRoutes = $activeRoutes ?? collect();
+    $assignedRouteId = old('route_id', $assignedRouteId ?? null);
 @endphp
 
 <x-admin.form-section
@@ -185,6 +187,20 @@
         </select>
         <p class="admin-hint">{{ __('app.forms.vehicle_type_hint') }}</p>
         @error('vehicle_type') <p class="admin-field__error text-danger">{{ $message }}</p> @enderror
+    </x-admin.form-col>
+
+    <x-admin.form-col>
+        <label class="admin-label" for="assigned-route">{{ __('app.routes.assigned_route') }}</label>
+        <select name="route_id" id="assigned-route" class="form-select form-select-sm">
+            <option value="">{{ __('app.routes.no_route') }}</option>
+            @foreach($activeRoutes as $routeOption)
+                <option value="{{ $routeOption->id }}" @selected((string) $assignedRouteId === (string) $routeOption->id)>
+                    {{ $routeOption->name }} ({{ $routeOption->start_city }} → {{ $routeOption->destination_city }})
+                </option>
+            @endforeach
+        </select>
+        <p class="admin-hint">{{ __('app.routes.assigned_route_hint') }}</p>
+        @error('route_id') <p class="admin-field__error text-danger">{{ $message }}</p> @enderror
     </x-admin.form-col>
 
     <x-admin.form-col>

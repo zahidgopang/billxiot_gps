@@ -18,7 +18,7 @@
     const OVER_SPEED = 80;
     const STOP_MIN_SEC = 120;
     const MOVING_KEYS = new Set(['running', 'moving']);
-    const STOPPED_KEYS = new Set(['stopped', 'idle', 'parked', 'ignition_off']);
+    const STOPPED_KEYS = new Set(['stopped', 'idle', 'parked', 'parking', 'ignition_off']);
     const OFFLINE_KEYS = new Set(['offline', 'stale', 'delayed', 'blocked']);
 
     function escHtml(s) {
@@ -30,7 +30,8 @@
 
     function colorForPoint(point, stateColors) {
         const key = point?.status_key || 'offline';
-        return point?.color || stateColors[key] || stateColors.offline || '#94a3b8';
+        const normalized = key === 'parking' ? 'parked' : key;
+        return point?.color || stateColors[key] || stateColors[normalized] || stateColors.offline || '#94a3b8';
     }
 
     function speedToColor(speed) {
@@ -68,6 +69,15 @@
         return { text, color: '#1f2937', fontSize: '12px', fontWeight: '600', className: 'tc-mk-label' };
     }
 
+    function applyMarkerIcon(marker, icon) {
+        if (global.VehicleMarker?.applyMarkerIcon) {
+            global.VehicleMarker.applyMarkerIcon(marker, icon);
+            return;
+        }
+        if (!marker || !icon || typeof marker.setIcon !== 'function') return;
+        marker.setIcon(icon);
+    }
+
     function fmtTime(point) {
         if (!point) return '—';
         if (point.timestamp) return String(point.timestamp);
@@ -76,7 +86,7 @@
     }
 
     function formatDuration(sec) {
-        sec = Math.round(sec || 0);
+        sec = Math.max(0, Math.round(sec || 0));
         const h = Math.floor(sec / 3600);
         const m = Math.floor((sec % 3600) / 60);
         const s = sec % 60;
@@ -124,8 +134,27 @@
     }
 
     function computeHistoryStats(points, stops) {
+        if (window.HistoryAnalytics?.analyze) {
+            const stats = window.HistoryAnalytics.analyze(points || []);
+            return {
+                distance_km: Math.round(stats.dist * 10) / 10,
+                move_seconds: Math.round(stats.movingSec),
+                stop_seconds: Math.round(stats.stoppedSec),
+                idle_seconds: Math.round(stats.idleSec),
+                parking_seconds: Math.round(stats.parkingSec),
+                top_speed: Math.round(stats.maxSpeed),
+                avg_speed: stats.movingSec > 0
+                    ? Math.round(stats.dist / (stats.movingSec / 3600))
+                    : 0,
+                stop_count: (stops || []).length,
+                point_count: (points || []).length,
+            };
+        }
+
         let distKm = 0;
         let moveSec = 0;
+        let idleSec = 0;
+        let parkingSec = 0;
         let topSpeed = 0;
         let speedSum = 0;
         let speedCount = 0;
@@ -136,24 +165,69 @@
             if (a.lat != null && a.lng != null && b.lat != null && b.lng != null) {
                 distKm += haversineKm(a.lat, a.lng, b.lat, b.lng);
             }
-            const spd = parseFloat(b.speed || 0);
-            if (spd > topSpeed) topSpeed = spd;
-            if (spd > 2) { speedSum += spd; speedCount++; }
             const t0 = a.recorded_at ? new Date(a.recorded_at).getTime() : null;
             const t1 = b.recorded_at ? new Date(b.recorded_at).getTime() : null;
-            if (t0 && t1 && spd > 2) moveSec += (t1 - t0) / 1000;
+            if (!t0 || !t1 || t1 <= t0) continue;
+
+            const dt = (t1 - t0) / 1000;
+            const spd = parseFloat(b.speed || 0);
+            const ignition = b.ignition === true || b.ignition === 1 || b.ignition === '1';
+            if (spd > topSpeed) topSpeed = spd;
+
+            if (ignition) {
+                if (spd > 1) {
+                    moveSec += dt;
+                    speedSum += spd;
+                    speedCount++;
+                } else {
+                    idleSec += dt;
+                }
+            } else if (spd > 1) {
+                moveSec += dt;
+                speedSum += spd;
+                speedCount++;
+            } else {
+                parkingSec += dt;
+            }
         }
 
-        const stopSec = (stops || []).reduce((s, x) => s + (x.durationSec || 0), 0);
+        const stopSec = Math.max(
+            (stops || []).reduce((s, x) => s + Math.max(0, x.durationSec || 0), 0),
+            idleSec + parkingSec,
+        );
         const avgSpeed = speedCount ? speedSum / speedCount : 0;
 
         return {
             distance_km: Math.round(distKm * 10) / 10,
-            move_seconds: Math.round(moveSec),
-            stop_seconds: Math.round(stopSec),
+            move_seconds: Math.round(Math.max(0, moveSec)),
+            stop_seconds: Math.round(Math.max(0, stopSec)),
+            idle_seconds: Math.round(Math.max(0, idleSec)),
+            parking_seconds: Math.round(Math.max(0, parkingSec)),
             top_speed: Math.round(topSpeed),
             avg_speed: Math.round(avgSpeed),
             stop_count: (stops || []).length,
+            point_count: (points || []).length,
+        };
+    }
+
+    function normalizeHistoryStats(stats, points, stops) {
+        if (!stats || typeof stats !== 'object') {
+            return computeHistoryStats(points, stops);
+        }
+
+        const distance = parseFloat(stats.total_distance_km ?? stats.distance_km ?? 0);
+        const maxSpeed = parseFloat(stats.max_speed_kmh ?? stats.top_speed ?? 0);
+        const avgSpeed = parseFloat(stats.average_speed_kmh ?? stats.avg_speed ?? 0);
+        return {
+            distance_km: Math.round((Number.isFinite(distance) ? distance : 0) * 10) / 10,
+            move_seconds: Math.max(0, parseInt(stats.moving_time_seconds ?? stats.move_seconds ?? 0, 10) || 0),
+            stop_seconds: Math.max(0, parseInt(stats.stopped_time_seconds ?? stats.stop_seconds ?? 0, 10) || 0),
+            idle_seconds: Math.max(0, parseInt(stats.idle_time_seconds ?? stats.idle_seconds ?? 0, 10) || 0),
+            parking_seconds: Math.max(0, parseInt(stats.parking_time_seconds ?? stats.parking_seconds ?? 0, 10) || 0),
+            offline_seconds: Math.max(0, parseInt(stats.offline_time_seconds ?? stats.offline_seconds ?? 0, 10) || 0),
+            top_speed: Math.round(Number.isFinite(maxSpeed) ? maxSpeed : 0),
+            avg_speed: Math.round(Number.isFinite(avgSpeed) ? avgSpeed : 0),
+            stop_count: parseInt(stats.stop_count ?? (stops || []).length, 10) || 0,
             point_count: (points || []).length,
         };
     }
@@ -306,6 +380,67 @@
 
             // events
             this.eventMarker = null;
+            this.iconBuilder = null;
+
+            // Planned route trip overlay (fallback if RouteTripProgress fails).
+            this._assignedRoutePolyline = null;
+            /** @type {Map<number, google.maps.Polyline>} */
+            this._vehicleRoutePolylines = new Map();
+            this.routeTripKit = null;
+            this._routeTripDeviceId = null;
+            this._routeBoundsFitted = false;
+
+            // vehicle marker popup
+            this.vehiclePopup = null;
+            this.ui = cfg.trackingUi || {};
+            this.companyMapCard = cfg.companyMapCard || { enabled: false };
+            this._companyCardOpen = true;
+            this._driverCardOpen = true;
+        }
+
+        uiOn(flag) {
+            return this.ui[flag] !== false && this.ui[flag] !== undefined ? !!this.ui[flag] : true;
+        }
+
+        /** Route-level "Show polyline on map" (admin → Routes edit). */
+        routeAllowsPolyline(route) {
+            return !!route && route.show_polyline !== false;
+        }
+
+        /** Strip route geometry from payloads when the user cannot view polylines. */
+        sanitizeRouteTrip(raw) {
+            if (!raw || this.uiOn('polyline')) {
+                return raw;
+            }
+            const trip = raw.route_trip ?? raw;
+            if (!trip?.route || typeof trip.route !== 'object') {
+                return raw;
+            }
+            const polylineKeys = [
+                'assigned_polyline', 'guided_polyline', 'polyline', 'admin_polyline',
+                'actual_polyline', 'navigation_polyline', 'join_polyline',
+                'dynamic_polyline', 'display_polyline', 'encoded_polyline',
+            ];
+            const route = { ...trip.route };
+            polylineKeys.forEach((key) => { delete route[key]; });
+            route.has_stored_polyline = false;
+            route.is_road_polyline = false;
+            const nextTrip = { ...trip, route };
+            return raw.route_trip !== undefined ? { ...raw, route_trip: nextTrip } : nextTrip;
+        }
+
+        clearSelectedRouteOverlays() {
+            this._assignedRoutePolyline?.setMap(null);
+            this.routeTripKit?.clearPolylines?.();
+            if (this.routeTripKit && typeof this.routeTripKit.clearPolylines !== 'function') {
+                this.routeTripKit.clear();
+            }
+        }
+
+        clearAllRouteMapOverlays() {
+            this.clearSelectedRouteOverlays();
+            this._vehicleRoutePolylines.forEach((line) => line.setMap(null));
+            this._vehicleRoutePolylines.clear();
         }
 
         showError(message) {
@@ -323,7 +458,13 @@
                 this.showError(cfg.i18n?.mapApiKeyMissing || 'Google Maps API key is missing.');
                 return;
             }
-            (cfg.vehicles || []).forEach((v) => this.vehicles.set(v.id, { ...v }));
+            (cfg.vehicles || []).forEach((v) => {
+                const clean = { ...v };
+                if (clean.route_trip) {
+                    clean.route_trip = this.sanitizeRouteTrip(clean.route_trip);
+                }
+                this.vehicles.set(v.id, clean);
+            });
 
             const cbName = '__traccarUiReady';
             global[cbName] = () => {
@@ -359,34 +500,293 @@
             this.legendEl = document.getElementById('tcLegend');
             this.trafficLayer = new google.maps.TrafficLayer();
 
-            this.bindTabs();
-            this.bindObjects();
-            this.bindHistory();
-            this.bindEventsTab();
-            this.bindPlacesTab();
+            const VM = global.VehicleMarker;
+            if (VM) {
+                this.iconBuilder = VM.createIconBuilder({
+                    googleMaps: google,
+                    getIdentity: (p) => ({ title: p.title || p.name || '', plate: p.plate || '' }),
+                    getState: (p) => p.status_key || 'offline',
+                    getColor: (state) => this.stateColors[state] || this.stateColors.offline || '#94a3b8',
+                    getVehicleType: (p) => p.vehicle_type || 'car',
+                    getMarkerStyle: (p) => {
+                        if (VM.resolveCustomIconUrl(p)) return 'body';
+                        return VM.resolveMarkerStyle(p);
+                    },
+                    getMarkerSizeScale: (p) => VM.resolveMarkerSizeScale(p),
+                    getCustomIconUrl: (p) => VM.resolveCustomIconUrl(p),
+                    getRotationEnabled: (p) => VM.resolveRotationEnabled(p),
+                    shouldShowDirection: (_, state) => MOVING_KEYS.has(state),
+                });
+            }
+
+            if (global.VehicleMapPopup) {
+                const i = this.cfg.i18n || {};
+                this.vehiclePopup = new global.VehicleMapPopup({
+                    getMap: () => this.map,
+                    googleMaps: google,
+                    stateColors: this.stateColors,
+                    commandsSendUrl: this.ui.hub?.commands ? this.cfg.commandsSendUrl : null,
+                    commandTypes: this.cfg.commandTypes,
+                    csrfToken: this.cfg.csrfToken,
+                    i18n: {
+                        dash: '—',
+                        plate: i.lblPlate || 'Plate',
+                        odometer: i.lblOdometer || 'Odometer',
+                        status: i.lblStatus || 'Status',
+                        altitude: i.lblAltitude || 'Altitude',
+                        angle: i.lblAngle || 'Angle',
+                        position: i.lblPosition || 'Position',
+                        engine: i.lblEngine || 'Engine',
+                        statusFor: i.lblStatusDuration || 'for',
+                        ignitionOn: i.ignitionOn || 'On',
+                        ignitionOff: i.ignitionOff || 'Off',
+                        sendCommand: i.cmdSend || 'Send',
+                        cmdSent: i.cmdSent || 'Command queued',
+                        cmdFailed: i.loadFailed || 'Failed',
+                        close: i.hide || 'Close',
+                    },
+                    onSendCommand: (deviceId, type, _data, btn) => {
+                        this.sendCommandFromPopup(deviceId, type, btn);
+                    },
+                });
+                this.map.addListener('click', () => this.vehiclePopup?.close());
+            }
+
+            if (document.querySelector('.tc-tab')) {
+                this.bindTabs();
+            }
+            if (document.getElementById('tcVehicleList')) {
+                this.bindObjects();
+            }
+            if (document.querySelector('[data-tab-body="history"]')) {
+                this.bindHistory();
+            }
+            if (document.querySelector('[data-tab-body="events"]')) {
+                this.bindEventsTab();
+            }
+            if (document.querySelector('[data-tab-body="places"]')) {
+                this.bindPlacesTab();
+            }
             this.bindMapControls();
-            this.bindMapLayers();
-            this.bindFooterTabs();
+            if (document.getElementById('tcLayerMenu')) {
+                this.bindMapLayers();
+            }
+            if (document.getElementById('tcFooter')) {
+                this.bindFooterTabs();
+            }
             this.bindModules();
-            this.bindPanelToggle();
+            if (document.getElementById('tcPanelToggle')) {
+                this.bindPanelToggle();
+            }
+            if (document.getElementById('tcTopbarToggle')) {
+                this.bindTopbarToggle();
+            }
             this.fitAppHeight();
-            this.initAlerts();
+            if (this.ui.alert_controls || this.ui.sidebar_tabs?.events) {
+                this.initAlerts();
+            }
             this.setDefaultDates();
 
             // Show all vehicles by default (Traccar behavior).
             this.vehicles.forEach((_, id) => this.visible.add(id));
-            this.renderList();
-            this.updateCounts();
+            if (document.getElementById('tcVehicleList')) {
+                this.renderList();
+                this.updateCounts();
+            }
             this.visible.forEach((id) => { this.ensureMarker(id); this.subscribePusher(id); });
 
             // "Follow (new window)" deep-link: ?follow=<deviceId>
             const followId = parseInt(new URLSearchParams(global.location.search).get('follow'), 10);
             if (followId && this.vehicles.has(followId)) {
                 this.setFollow(followId, true);
+            }
+            if (this.uiOn('polyline') || this.uiOn('route_progress')) {
+                this.pickRouteTripVehicle();
             } else {
+                this.clearAllRouteMapOverlays();
+            }
+            this.syncVisibleVehicleRoutePolylines();
+            if (!this._routeTripDeviceId) {
                 this.fitAll();
             }
+            this.initCompanyMapCard();
+            this.initDriverMapCard();
             this.startPolling();
+        }
+
+        initCompanyMapCard() {
+            const card = document.getElementById('tcCompanyMapCard');
+            if (!card || !this.companyMapCard?.enabled) {
+                card?.setAttribute('hidden', '');
+                return;
+            }
+            card.removeAttribute('hidden');
+            card.classList.toggle('is-open', this._companyCardOpen);
+            const btn = document.getElementById('tcCompanyMapCardToggle');
+            btn?.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.toggleCompanyMapCard();
+            });
+            this.syncCompanyMapCard();
+        }
+
+        toggleCompanyMapCard() {
+            const card = document.getElementById('tcCompanyMapCard');
+            if (!card) return;
+            this._companyCardOpen = !this._companyCardOpen;
+            card.classList.toggle('is-open', this._companyCardOpen);
+            const btn = document.getElementById('tcCompanyMapCardToggle');
+            const icon = btn?.querySelector('i');
+            if (btn) {
+                btn.setAttribute('aria-expanded', this._companyCardOpen ? 'true' : 'false');
+                btn.setAttribute('aria-label', this._companyCardOpen
+                    ? (this.cfg.i18n?.companyMapCollapse || 'Hide details')
+                    : (this.cfg.i18n?.companyMapExpand || 'Show details'));
+            }
+            if (icon) icon.className = this._companyCardOpen ? 'fas fa-chevron-down' : 'fas fa-chevron-up';
+        }
+
+        resolveActiveVehicleId() {
+            if (this._panelDeviceId != null && this.visible.has(this._panelDeviceId)) {
+                return this._panelDeviceId;
+            }
+            if (this.followId != null && this.visible.has(this.followId)) {
+                return this.followId;
+            }
+            if (this._routeTripDeviceId != null && this.visible.has(this._routeTripDeviceId)) {
+                return this._routeTripDeviceId;
+            }
+            const first = [...this.visible][0];
+            return first != null ? first : null;
+        }
+
+        syncCompanyMapCard() {
+            const card = document.getElementById('tcCompanyMapCard');
+            if (!card || !this.companyMapCard?.enabled) {
+                card?.setAttribute('hidden', '');
+                return;
+            }
+            card.removeAttribute('hidden');
+            const data = this.companyMapCard;
+            ['company_name', 'company_number', 'operation_card', 'support'].forEach((key) => {
+                const val = (data[key] || '').trim();
+                const cell = card.querySelector(`[data-company-value="${key}"]`);
+                const row = card.querySelector(`[data-company-row="${key}"]`);
+                if (cell) cell.textContent = val || '—';
+                if (row) row.hidden = val === '';
+            });
+            const id = this.resolveActiveVehicleId();
+            const vehicle = id != null ? this.vehicles.get(id) : null;
+            const busNameCell = card.querySelector('[data-company-value="bus_name"]');
+            const busPlateCell = card.querySelector('[data-company-value="bus_plate"]');
+            if (busNameCell) {
+                busNameCell.textContent = vehicle?.title?.trim() || vehicle?.plate?.trim() || '—';
+            }
+            if (busPlateCell) {
+                busPlateCell.textContent = vehicle?.plate?.trim() || '—';
+            }
+        }
+
+        initDriverMapCard() {
+            const card = document.getElementById('tcDriverMapCard');
+            if (!card || !this.uiOn('driver')) {
+                card?.setAttribute('hidden', '');
+                return;
+            }
+            card.classList.toggle('is-open', this._driverCardOpen);
+            const btn = document.getElementById('tcDriverMapCardToggle');
+            btn?.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.toggleDriverMapCard();
+            });
+            this.syncDriverMapCard();
+        }
+
+        toggleDriverMapCard() {
+            const card = document.getElementById('tcDriverMapCard');
+            if (!card) return;
+            this._driverCardOpen = !this._driverCardOpen;
+            card.classList.toggle('is-open', this._driverCardOpen);
+            const btn = document.getElementById('tcDriverMapCardToggle');
+            const icon = btn?.querySelector('i');
+            if (btn) {
+                btn.setAttribute('aria-expanded', this._driverCardOpen ? 'true' : 'false');
+                btn.setAttribute('aria-label', this._driverCardOpen
+                    ? (this.cfg.i18n?.driverMapCollapse || 'Hide details')
+                    : (this.cfg.i18n?.driverMapExpand || 'Show details'));
+            }
+            if (icon) icon.className = this._driverCardOpen ? 'fas fa-chevron-down' : 'fas fa-chevron-up';
+        }
+
+        syncDriverMapCard() {
+            const card = document.getElementById('tcDriverMapCard');
+            if (!card || !this.uiOn('driver')) {
+                card?.setAttribute('hidden', '');
+                return;
+            }
+            const id = this.resolveActiveVehicleId();
+            const driver = id != null ? this.vehicles.get(id)?.driver : null;
+            const hasDriver = driver && (
+                (driver.name && driver.name !== '—')
+                || driver.phone
+                || driver.email
+            );
+            const layoutEl = document.getElementById('tcDriverLayout');
+            const emptyEl = document.getElementById('tcDriverEmpty');
+            card.removeAttribute('hidden');
+            if (!hasDriver) {
+                if (layoutEl) layoutEl.hidden = true;
+                if (emptyEl) emptyEl.hidden = false;
+                return;
+            }
+            if (layoutEl) layoutEl.hidden = false;
+            if (emptyEl) emptyEl.hidden = true;
+
+            const nameEl = document.getElementById('tcDriverName');
+            if (nameEl) nameEl.textContent = driver.name || '—';
+
+            const photoEl = document.getElementById('tcDriverPhoto');
+            const photoDefault = document.getElementById('tcDriverPhotoDefault');
+            const photo = (driver.photo || '').trim();
+            if (photoEl && photoDefault) {
+                if (photo) {
+                    photoEl.src = photo;
+                    photoEl.alt = driver.name || '';
+                    photoEl.hidden = false;
+                    photoDefault.hidden = true;
+                } else {
+                    photoEl.removeAttribute('src');
+                    photoEl.hidden = true;
+                    photoDefault.hidden = false;
+                }
+            }
+
+            const phoneRow = document.getElementById('tcDriverPhoneRow');
+            const phoneEl = document.getElementById('tcDriverPhone');
+            const phone = (driver.phone || '').trim();
+            if (phoneRow && phoneEl) {
+                if (phone) {
+                    phoneRow.hidden = false;
+                    phoneEl.textContent = phone;
+                    phoneEl.href = driver.phone_tel ? `tel:${driver.phone_tel}` : '#';
+                    phoneEl.title = this.cfg.i18n?.callDriver || 'Call driver';
+                } else {
+                    phoneRow.hidden = true;
+                }
+            }
+
+            const emailRow = document.getElementById('tcDriverEmailRow');
+            const emailEl = document.getElementById('tcDriverEmail');
+            const email = (driver.email || '').trim();
+            if (emailRow && emailEl) {
+                if (email) {
+                    emailRow.hidden = false;
+                    emailEl.textContent = email;
+                    emailEl.href = `mailto:${email}`;
+                } else {
+                    emailRow.hidden = true;
+                }
+            }
         }
 
         /* ---------- Tabs ---------- */
@@ -397,6 +797,7 @@
         }
 
         switchTab(tab) {
+            if (!document.querySelector(`[data-tab="${tab}"]`)) return;
             this.activeTab = tab;
             document.querySelectorAll('.tc-tab').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
             document.querySelectorAll('.tc-tab-body').forEach((b) => b.classList.toggle('active', b.dataset.tabBody === tab));
@@ -430,10 +831,12 @@
                     this.vehicles.forEach((_, id) => {
                         if (!this.visible.has(id)) { this.visible.add(id); this.ensureMarker(id); this.subscribePusher(id); }
                     });
+                    this.pickRouteTripVehicle();
                 } else {
                     [...this.visible].forEach((id) => { this.visible.delete(id); this.teardownVehicle(id); });
                     this.followId = null;
                     this.updateFollowBtn();
+                    this.clearRouteTripSelection();
                 }
                 this.renderList();
                 this.startPolling();
@@ -576,28 +979,88 @@
                 this.visible.delete(id);
                 this.teardownVehicle(id);
                 if (this.followId === id) { this.followId = null; this.updateFollowBtn(); }
+                if (Number(this._routeTripDeviceId) === Number(id)) {
+                    if (this.followId) {
+                        this.selectRouteTripVehicle(this.followId);
+                    } else if (this._panelDeviceId) {
+                        this.selectRouteTripVehicle(this._panelDeviceId);
+                    } else {
+                        this.clearRouteTripSelection();
+                    }
+                }
             } else {
                 this.visible.add(id);
                 this.ensureMarker(id);
                 this.subscribePusher(id);
+                this.selectRouteTripVehicle(id);
             }
             this.renderList();
+            this.syncVisibleVehicleRoutePolylines();
             this.startPolling();
         }
 
         locateVehicle(id) {
             const v = this.vehicles.get(id);
             if (!this.visible.has(id)) this.toggleVisible(id);
-            // On mobile, close the drawer so the map (and selected vehicle) is visible.
-            this.closePanel();
-            if (v?.lat != null && v?.lng != null) {
+            this.closeNavigationOnVehicleSelect();
+            this._routeBoundsFitted = false;
+            this.selectRouteTripVehicle(id);
+            const rt = this.vehicles.get(id)?.route_trip;
+            if (rt?.route) {
+                this.applyRouteTrip(id, rt);
+            } else if (v?.lat != null && v?.lng != null) {
                 this.map.panTo({ lat: v.lat, lng: v.lng });
                 if (this.map.getZoom() < 14) this.map.setZoom(15);
             }
             this.openDevicePanel(id);
         }
 
-        // Footprints column: follow + zoom exactly to one vehicle (single-select).
+        openVehiclePopup(id) {
+            const v = this.vehicles.get(id);
+            const st = this.vehicleState(id);
+            if (!v || v.lat == null || v.lng == null || !this.vehiclePopup) return;
+            if (!this.visible.has(id)) {
+                this.visible.add(id);
+                this.ensureMarker(id);
+                this.subscribePusher(id);
+                this.startPolling();
+            }
+            this.selectRouteTripVehicle(id);
+            this.closeNavigationOnVehicleSelect();
+            this.vehiclePopup.open({ ...v, id }, st.marker);
+        }
+
+        async sendCommandFromPopup(deviceId, type, btn) {
+            if (!this.cfg.commandsSendUrl || !type) return;
+            btn?.setAttribute('disabled', 'disabled');
+            try {
+                const res = await fetch(this.cfg.commandsSendUrl, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        Accept: 'application/json',
+                        'X-CSRF-TOKEN': this.cfg.csrfToken || '',
+                    },
+                    body: JSON.stringify({ device_id: deviceId, type, data: '' }),
+                });
+                const out = await res.json().catch(() => ({}));
+                const ok = res.ok && out.success;
+                const msg = out.message || (ok ? (this.cfg.i18n?.cmdSent || 'Command queued') : (this.cfg.i18n?.loadFailed || 'Failed'));
+                if (global.Swal) {
+                    global.Swal.fire({ icon: ok ? 'success' : 'error', title: msg, timer: ok ? 2200 : undefined, showConfirmButton: !ok });
+                } else {
+                    alert(msg);
+                }
+            } catch (err) {
+                if (global.Swal) global.Swal.fire({ icon: 'error', title: this.cfg.i18n?.loadFailed || 'Failed' });
+                else alert(this.cfg.i18n?.loadFailed || 'Failed');
+            } finally {
+                btn?.removeAttribute('disabled');
+            }
+        }
+
+        // Footprints column: one-shot zoom to vehicle (no continuous map follow).
         setFollow(id, on) {
             if (on) {
                 if (!this.visible.has(id)) {
@@ -607,6 +1070,8 @@
                     this.startPolling();
                 }
                 this.followId = id;
+                this.closeNavigationOnVehicleSelect();
+                this.selectRouteTripVehicle(id);
                 const v = this.vehicles.get(id);
                 if (v?.lat != null && v?.lng != null) {
                     this.map.panTo({ lat: v.lat, lng: v.lng });
@@ -614,6 +1079,11 @@
                 }
             } else if (this.followId === id) {
                 this.followId = null;
+                if (this._panelDeviceId) {
+                    this.selectRouteTripVehicle(this._panelDeviceId);
+                } else {
+                    this.clearRouteTripSelection();
+                }
             }
             this.updateFollowBtn();
             this.renderList();
@@ -811,22 +1281,31 @@
             this.loadHistory();
         }
 
+        setVehicleMarkerIcon(st, v, heading) {
+            const VM = global.VehicleMarker;
+            const color = colorForPoint(v, this.stateColors);
+            const h = heading != null ? heading : parseFloat(v.heading || 0);
+            const point = { ...v, heading: h };
+            const hasCustom = VM?.resolveCustomIconUrl?.(point);
+            st.marker.setLabel(null);
+            const icon = this.iconBuilder?.iconFor(point);
+            applyMarkerIcon(st.marker, icon || arrowIcon(color, h));
+        }
+
         ensureMarker(id) {
             const v = this.vehicles.get(id);
             const st = this.vehicleState(id);
             if (!this.map || !v || st.marker) return;
-            const color = colorForPoint(v, this.stateColors);
             const pos = v.lat != null && v.lng != null ? { lat: v.lat, lng: v.lng } : null;
             st.marker = new google.maps.Marker({
                 map: pos && !this.historyActive ? this.map : null,
                 position: pos || DEFAULT_CENTER,
-                icon: arrowIcon(color, v.heading || 0),
-                label: markerLabel(this.labelFor(v)),
                 title: this.labelFor(v),
                 zIndex: 500 + id,
                 optimized: false,
             });
-            st.marker.addListener('click', () => this.locateVehicle(id));
+            this.setVehicleMarkerIcon(st, v, v.heading || 0);
+            st.marker.addListener('click', () => this.openVehiclePopup(id));
             if (pos) {
                 st.lastPoint = { ...v };
                 st.renderPos = pos;
@@ -840,6 +1319,11 @@
             st.motion = null;
             st.marker?.setMap(null);
             this.clearTrail(st);
+            const routeLine = this._vehicleRoutePolylines.get(id);
+            if (routeLine) {
+                routeLine.setMap(null);
+                this._vehicleRoutePolylines.delete(id);
+            }
             st.marker = null; st.lastPoint = null; st.renderPos = null;
             this.unsubscribePusher(id);
         }
@@ -892,6 +1376,9 @@
             const st = this.vehicleState(id);
             this.ensureMarker(id);
             const merged = { ...this.vehicles.get(id), ...point, id };
+            if (merged.route_trip) {
+                merged.route_trip = this.sanitizeRouteTrip(merged.route_trip);
+            }
             // Live payload carries the label as `status` (not `status_label`) and a
             // fresh `color` / `status_key`. Normalize so the list badge, marker icon
             // and footer all read the up-to-date status text — not the stale initial one.
@@ -917,6 +1404,16 @@
             }
             this.updateCounts();
             this.updatePanelLive(merged);
+            if (this.vehiclePopup?.isOpenFor(id)) {
+                this.vehiclePopup.update({ ...merged, id });
+            }
+            if (this._routeTripDeviceId != null
+                && Number(this._routeTripDeviceId) === Number(id)
+                && merged.route_trip) {
+                this.applyRouteTrip(id, merged.route_trip);
+            }
+            this.syncCompanyMapCard();
+            this.syncDriverMapCard();
 
             const prev = st.lastPoint;
             const key = merged.status_key || 'offline';
@@ -924,8 +1421,6 @@
 
             if (this.historyActive) { st.lastPoint = merged; return; }
 
-            const color = colorForPoint(merged, this.stateColors);
-            st.marker.setLabel(markerLabel(this.labelFor(merged)));
             st.marker.setTitle(this.labelFor(merged));
 
             const moving = MOVING_KEYS.has(key);
@@ -951,13 +1446,12 @@
                 }
                 st.marker.setMap(this.map);
                 st.marker.setPosition({ lat: merged.lat, lng: merged.lng });
-                st.marker.setIcon(arrowIcon(color, h));
+                this.setVehicleMarkerIcon(st, merged, h);
                 st.renderPos = { lat: merged.lat, lng: merged.lng };
                 st.renderHeading = h;
                 st.lastPoint = merged;
                 st.motion = null;
                 if (moving) this.appendTrail(st, merged.lat, merged.lng, color);
-                if (this.followId === id) this.map.panTo({ lat: merged.lat, lng: merged.lng });
                 return;
             }
             this.startMotion(id, merged);
@@ -1115,9 +1609,13 @@
                 st.renderHeading = heading;
                 st.marker.setMap(this.map);
                 st.marker.setPosition({ lat, lng });
-                st.marker.setIcon(arrowIcon(m.color, heading));
+                const vehicle = this.vehicles.get(id);
+                if (vehicle) {
+                    this.setVehicleMarkerIcon(st, { ...vehicle, color: m.color }, heading);
+                } else {
+                    st.marker.setIcon(arrowIcon(m.color, heading));
+                }
                 if (MOVING_KEYS.has(st.lastPoint?.status_key || '')) this.appendTrail(st, lat, lng, m.color);
-                if (this.followId === id) this.map.panTo({ lat, lng });
 
                 if (done) { st.motion = null; } else { active = true; }
             });
@@ -1157,6 +1655,7 @@
                 if (!res.ok) return;
                 const data = await res.json();
                 (data.devices || []).forEach((d) => this.applyPoint(d.id, d));
+                this.syncVisibleVehicleRoutePolylines();
             } catch (err) {
                 console.warn('[traccar-ui] poll failed', err);
             } finally {
@@ -1301,6 +1800,35 @@
             return global.matchMedia && global.matchMedia('(max-width: 768px)').matches;
         }
 
+        closeNavigationOnVehicleSelect() {
+            this.closePanel();
+            this.closeTopbar();
+        }
+
+        bindTopbarToggle() {
+            const toggle = document.getElementById('tcTopbarToggle');
+            const app = document.querySelector('.tc-app');
+            toggle?.addEventListener('click', () => {
+                const open = !app?.classList.contains('tc-app--topnav-open');
+                this.setTopbarOpen(open);
+            });
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') this.closeTopbar();
+            });
+        }
+
+        setTopbarOpen(open) {
+            const app = document.querySelector('.tc-app');
+            if (!app) return;
+            app.classList.toggle('tc-app--topnav-open', !!open);
+            document.getElementById('tcTopbarToggle')?.setAttribute('aria-expanded', open ? 'true' : 'false');
+            this.mapResize();
+        }
+
+        closeTopbar() {
+            this.setTopbarOpen(false);
+        }
+
         bindPanelToggle() {
             const toggle = document.getElementById('tcPanelToggle');
             const backdrop = document.getElementById('tcPanelBackdrop');
@@ -1311,16 +1839,14 @@
             });
             backdrop?.addEventListener('click', () => this.closePanel());
             document.addEventListener('keydown', (e) => {
-                if (e.key === 'Escape') this.closePanel();
+                if (e.key === 'Escape') this.closeNavigationOnVehicleSelect();
             });
 
-            // Keep the app sized to the viewport (handles mobile address-bar resize).
             let raf = null;
             const onResize = () => {
                 if (raf) cancelAnimationFrame(raf);
                 raf = requestAnimationFrame(() => {
                     this.fitAppHeight();
-                    if (!this.isMobile()) this.closePanel();
                     this.mapResize();
                 });
             };
@@ -1329,8 +1855,9 @@
         }
 
         openPanel() {
-            if (!this.isMobile()) return;
-            document.getElementById('tcPanel')?.classList.add('tc-panel--open');
+            const panel = document.getElementById('tcPanel');
+            if (!panel) return;
+            panel.classList.add('tc-panel--open');
             document.getElementById('tcPanelBackdrop')?.classList.add('show');
             document.getElementById('tcPanelToggle')?.setAttribute('aria-expanded', 'true');
         }
@@ -1374,7 +1901,14 @@
             const ids = [...this.visible];
             if (ids.length === 0) return;
             if (this.followId && this.visible.has(this.followId)) this.followId = null;
-            else { this.followId = ids[0]; const v = this.vehicles.get(this.followId); if (v?.lat != null) this.map.panTo({ lat: v.lat, lng: v.lng }); }
+            else {
+                this.followId = ids[0];
+                const v = this.vehicles.get(this.followId);
+                if (v?.lat != null && v?.lng != null) {
+                    this.map.panTo({ lat: v.lat, lng: v.lng });
+                    this.map.setZoom(17);
+                }
+            }
             this.updateFollowBtn();
             this.renderList();
         }
@@ -1424,6 +1958,11 @@
                 if (f) f.hidden = true;
                 this._footerMode = null;
                 this._panelDeviceId = null;
+                if (this.followId) {
+                    this.selectRouteTripVehicle(this.followId);
+                } else {
+                    this.clearRouteTripSelection();
+                }
                 this.resizeMapSoon();
             });
         }
@@ -1524,10 +2063,11 @@
             const name = vehicle.name || '';
             this._historyName = name;
             const stops = computeStops(points);
+            const stats = normalizeHistoryStats(vehicle.stats, points, stops);
             stops.forEach((stop) => this.addStop(stop, name));
-            this.renderStopList(stops, name, computeHistoryStats(points, stops));
+            this.renderStopList(stops, name, stats);
             this.renderSpeedLegend(name);
-            this.renderHistoryFooter(vehicle, points, stops);
+            this.renderHistoryFooter(vehicle, points, stops, stats);
             this.renderGraph(points);
             this.fitLayers(this.historyLayers);
         }
@@ -1572,6 +2112,8 @@
                     <span>${escHtml(i.statRouteLength || 'Route')}: <strong>${stats.distance_km} km</strong></span>
                     <span>${escHtml(i.statMoveDuration || 'Move')}: <strong>${escHtml(formatDuration(stats.move_seconds))}</strong></span>
                     <span>${escHtml(i.statStopDuration || 'Stop')}: <strong>${escHtml(formatDuration(stats.stop_seconds))}</strong></span>
+                    <span>${escHtml(i.totalIdleTime || 'Idle')}: <strong>${escHtml(formatDuration(stats.idle_seconds))}</strong></span>
+                    <span>${escHtml(i.parkingTime || 'Parking')}: <strong>${escHtml(formatDuration(stats.parking_seconds))}</strong></span>
                     <span>${escHtml(i.statTopSpeed || 'Top')}: <strong>${stats.top_speed} ${escHtml(kmh)}</strong></span>
                     <span>${escHtml(i.statAvgSpeed || 'Avg')}: <strong>${stats.avg_speed} ${escHtml(kmh)}</strong></span>
                 </div>`;
@@ -1600,14 +2142,14 @@
             });
         }
 
-        renderHistoryFooter(vehicle, points, stops) {
+        renderHistoryFooter(vehicle, points, stops, historyStats = null) {
             const dataEl = document.getElementById('tcFooterData');
             const msgEl = document.getElementById('tcFooterMessages');
             if (!dataEl) return;
 
             const i = this.cfg.i18n || {};
             const kmh = i.kmhUnit || 'km/h';
-            const stats = computeHistoryStats(points, stops);
+            const stats = historyStats || normalizeHistoryStats(vehicle?.stats, points, stops);
             const events = vehicle?.events || [];
 
             dataEl.classList.add('tc-fbody--hist');
@@ -1618,6 +2160,8 @@
                 ${statCard(i.statRouteLength || 'Route length', `${stats.distance_km} km`)}
                 ${statCard(i.statMoveDuration || 'Move duration', escHtml(formatDuration(stats.move_seconds)))}
                 ${statCard(i.statStopDuration || 'Stop duration', escHtml(formatDuration(stats.stop_seconds)))}
+                ${statCard(i.totalIdleTime || 'Idle time', escHtml(formatDuration(stats.idle_seconds)))}
+                ${statCard(i.parkingTime || 'Parking time', escHtml(formatDuration(stats.parking_seconds)))}
                 ${statCard(i.statTopSpeed || 'Top speed', `${stats.top_speed} ${escHtml(kmh)}`)}
                 ${statCard(i.statAvgSpeed || 'Average speed', `${stats.avg_speed} ${escHtml(kmh)}`)}
                 ${statCard(i.parkingStops || 'Stops', String(stats.stop_count))}
@@ -1730,10 +2274,12 @@
         }
 
         async openDevicePanel(id) {
-            if (!this.cfg.devicePanelUrl) return;
+            if (!this.cfg.devicePanelUrl || !document.getElementById('tcFooter')) return;
             const v = this.vehicles.get(id);
             this._footerMode = 'panel';
             this._panelDeviceId = id;
+            this.closeNavigationOnVehicleSelect();
+            this.selectRouteTripVehicle(id);
             this.showFooter(this.labelFor(v) || ('#' + id));
             this.switchFooterTab('data');
             const dataEl = document.getElementById('tcFooterData');
@@ -1752,14 +2298,413 @@
                 this._panelGraphRows = (data.panel.positions || []).map((p) => ({ label: String(p.time || '').slice(11, 16), speed: Math.round(p.speed || 0) }));
                 this.renderPanelData(data.panel);
                 this.renderPanelMessages(data.panel.positions || []);
+                if (data.panel?.route_trip) {
+                    const sanitized = this.sanitizeRouteTrip(data.panel.route_trip);
+                    const cur = this.vehicles.get(id);
+                    if (cur) {
+                        this.vehicles.set(id, { ...cur, route_trip: sanitized });
+                    }
+                    if (Number(this._routeTripDeviceId) === Number(id)) {
+                        this.applyRouteTrip(id, sanitized);
+                    }
+                }
+                if (data.panel?.driver) {
+                    const cur = this.vehicles.get(id);
+                    if (cur) {
+                        this.vehicles.set(id, { ...cur, driver: data.panel.driver });
+                    }
+                }
+                this.syncDriverMapCard();
             } catch (err) {
-                if (dataEl) dataEl.innerHTML = `<div class="tc-empty">${escHtml(this.cfg.i18n?.loadFailed || 'Failed')}</div>`;
+                if (dataEl) dataEl.innerHTML = `<div class="tc-empty">${escHtml(this.cfg.i18n?.panelLoadFailed || this.cfg.i18n?.loadFailed || 'Failed')}</div>`;
             }
         }
 
         panelSkeleton() {
             const row = `<div class="tc-skel-row"><div class="tc-skel tc-skel-dot"></div><div class="tc-skel-lines"><div class="tc-skel tc-skel-line"></div><div class="tc-skel tc-skel-line sm"></div></div></div>`;
             return `<div class="tc-fade-in" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:0.5rem;padding:0.5rem">${row.repeat(6)}</div>`;
+        }
+
+        ensureRouteTripProgress() {
+            if (!this.uiOn('route_progress')) return null;
+            if (this.routeTripKit || !global.RouteTripProgress) return this.routeTripKit;
+            if (!document.getElementById('routeTripProgressBar')) return null;
+            const i = this.cfg.i18n || {};
+            this.routeTripKit = new global.RouteTripProgress({
+                containerId: 'routeTripProgressBar',
+                compactFooter: true,
+                showPolyline: () => this.uiOn('polyline'),
+                getMap: () => this.map,
+                googleMaps: global.google,
+                shouldFitRouteBounds: () => !this._routeBoundsFitted,
+                onRouteBoundsFitted: () => { this._routeBoundsFitted = true; },
+                getVehiclePosition: () => {
+                    const v = this.vehicles.get(this._routeTripDeviceId);
+                    if (!v || v.lat == null || v.lng == null) return null;
+                    return { lat: parseFloat(v.lat), lng: parseFloat(v.lng) };
+                },
+                manageRoutesUrl: this.cfg.manageRoutesUrl || null,
+                routeGuidanceUrl: this.uiOn('polyline') ? (this.cfg.routeGuidanceUrl || null) : null,
+                getDeviceId: () => this._routeTripDeviceId,
+                i18n: {
+                    remaining: i.routeRemaining || 'Remaining',
+                    eta: i.routeEta || 'ETA',
+                    duration: i.routeDuration || 'Duration',
+                    complete: i.routeComplete || 'Mark trip completed',
+                    startNew: i.routeStartNew || 'Start new trip',
+                    offRoute: i.routeOffRoute || 'You are not on the assigned route',
+                    elapsed: i.routeElapsed || 'Elapsed',
+                    planned: i.routePlanned || 'Planned total',
+                    checkpointTotal: i.routeCheckpointTotal || 'Checkpoint legs',
+                    minAbbr: i.routeMinAbbr || 'min',
+                    pending: i.routePending || '—',
+                    toggleDetails: i.routeToggleDetails || 'Show trip details',
+                    progressOffRoute: i.routeProgressOffRoute || 'On route only',
+                    progressFrozen: i.routeProgressFrozen || 'Last on-route',
+                    progressStale: i.routeProgressStale || 'Last known position',
+                    waitingForStart: i.routeWaitingForStart || 'Waiting for start area',
+                    waitingForStartHint: i.routeWaitingForStartHint || 'Progress will start automatically when the vehicle enters the start area.',
+                    manageRoutes: i.routeManage || 'Manage routes',
+                    assignedHint: i.routeAssignedHint || '',
+                    progressTitle: i.routeProgressTitle || 'Route progress',
+                    reachedStart: i.routeReachedStart || 'Trip started — departed from {city}',
+                    reachedCheckpoint: i.routeReachedCheckpoint || 'Reached checkpoint: {city}',
+                    reachedDestination: i.routeReachedDestination || 'Reached destination: {city}',
+                    traveled: i.routeTraveled || 'Traveled',
+                    currentSpeed: i.routeCurrentSpeed || 'Speed',
+                    currentCheckpoint: i.routeCurrentCheckpoint || 'Current',
+                    nextCheckpoint: i.routeNextCheckpoint || 'Next',
+                    currentCity: i.routeCurrentCity || 'Current city',
+                    nextCity: i.routeNextCity || 'Next city',
+                    arrivalTime: i.routeArrivalTime || 'Arrival',
+                    navOnAssigned: i.routeNavOnAssigned || 'On assigned route',
+                    suggestedRoute: i.routeSuggestedRoute || 'Suggested route to destination',
+                    navJoining: i.routeNavJoining || 'Joining route',
+                    navRecalculated: i.routeNavRecalculated || 'Route recalculated',
+                    navSlightDeviation: i.routeNavSlightDeviation || 'Slight deviation',
+                    navDestinationReached: i.routeNavDestinationReached || 'Destination reached',
+                    offRouteBadge: i.routeOffRouteBadge || 'Off route',
+                    kmhUnit: i.kmhUnit || 'km/h',
+                },
+                onMilestoneReached: (_milestone, message) => this.toast(message, 'success'),
+                onComplete: () => this.completeAssignedTrip(),
+                onStartNew: () => this.startNewAssignedTrip(),
+                onRestart: () => this.restartAssignedTrip(),
+            });
+            return this.routeTripKit;
+        }
+
+        /** Pick which vehicle's assigned route to show on the map. */
+        pickRouteTripVehicle() {
+            if (this._panelDeviceId != null && this.visible.has(this._panelDeviceId)) {
+                this.selectRouteTripVehicle(this._panelDeviceId);
+                return;
+            }
+            if (this.followId != null && this.visible.has(this.followId)) {
+                this.selectRouteTripVehicle(this.followId);
+                return;
+            }
+            for (const id of this.visible) {
+                if (this.vehicles.get(id)?.route_trip?.route) {
+                    this.selectRouteTripVehicle(id);
+                    return;
+                }
+            }
+            const first = [...this.visible][0];
+            if (first != null) {
+                this.selectRouteTripVehicle(first);
+            }
+        }
+
+        routePathPoints(route) {
+            if (!this.routeAllowsPolyline(route)) return [];
+            return (route.assigned_polyline || route.guided_polyline || route.polyline || route.admin_polyline || [])
+                .map((p) => ({ lat: parseFloat(p.lat), lng: parseFloat(p.lng) }))
+                .filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng));
+        }
+
+        drawAssignedRouteOverlay(payload) {
+            if (!this.uiOn('polyline') || !this.routeAllowsPolyline(payload?.route)) return;
+            const map = this.map;
+            const google = global.google;
+            if (!map || !google?.maps || !payload?.route) return;
+
+            const pts = this.routePathPoints(payload.route);
+            if (pts.length < 2) return;
+
+            if (!this._assignedRoutePolyline) {
+                this._assignedRoutePolyline = new google.maps.Polyline({
+                    map,
+                    strokeColor: '#0ea5e9',
+                    strokeOpacity: 0.95,
+                    strokeWeight: 6,
+                    zIndex: 250,
+                    clickable: false,
+                });
+            }
+            this._assignedRoutePolyline.setPath(pts);
+            this._assignedRoutePolyline.setMap(map);
+        }
+
+        /**
+         * Draw assigned-route polylines for every visible vehicle that has a route.
+         * The selected vehicle is handled by applyRouteTrip / RouteTripProgress.
+         */
+        syncVisibleVehicleRoutePolylines() {
+            const google = global.google;
+            if (!this.map || !google?.maps) return;
+
+            for (const [id, line] of this._vehicleRoutePolylines) {
+                if (!this.visible.has(id)) {
+                    line.setMap(null);
+                    this._vehicleRoutePolylines.delete(id);
+                }
+            }
+
+            if (!this.uiOn('polyline')) {
+                this._vehicleRoutePolylines.forEach((line) => line.setMap(null));
+                this._vehicleRoutePolylines.clear();
+                this._assignedRoutePolyline?.setMap(null);
+                return;
+            }
+
+            const selectedId = this._routeTripDeviceId != null ? Number(this._routeTripDeviceId) : null;
+
+            this.visible.forEach((id) => {
+                const numId = Number(id);
+                if (selectedId != null && numId === selectedId) {
+                    const existing = this._vehicleRoutePolylines.get(id);
+                    if (existing) {
+                        existing.setMap(null);
+                        this._vehicleRoutePolylines.delete(id);
+                    }
+                    return;
+                }
+
+                const pts = this.routePathPoints(this.vehicles.get(id)?.route_trip?.route);
+                if (pts.length < 2 || !this.routeAllowsPolyline(this.vehicles.get(id)?.route_trip?.route)) {
+                    const existing = this._vehicleRoutePolylines.get(id);
+                    if (existing) {
+                        existing.setMap(null);
+                        this._vehicleRoutePolylines.delete(id);
+                    }
+                    return;
+                }
+
+                let line = this._vehicleRoutePolylines.get(id);
+                if (!line) {
+                    line = new google.maps.Polyline({
+                        map: this.map,
+                        strokeColor: '#0ea5e9',
+                        strokeOpacity: 0.55,
+                        strokeWeight: 4,
+                        zIndex: 200,
+                        clickable: false,
+                    });
+                    this._vehicleRoutePolylines.set(id, line);
+                }
+                line.setPath(pts);
+                line.setMap(this.map);
+            });
+        }
+
+        /** Show route progress only for the vehicle the user explicitly selected. */
+        selectRouteTripVehicle(id) {
+            if (this.uiOn('polyline') || this.uiOn('route_progress')) {
+                if (Number(this._routeTripDeviceId) !== Number(id)) {
+                    this._routeBoundsFitted = false;
+                    this.clearSelectedRouteOverlays();
+                }
+                this._routeTripDeviceId = id;
+                const cached = this.vehicles.get(id)?.route_trip;
+                if (cached?.route) {
+                    this.applyRouteTrip(id, this.sanitizeRouteTrip(cached), { forceFitBounds: true });
+                } else {
+                    this.clearSelectedRouteOverlays();
+                    this.routeTripKit?.clear();
+                }
+                this.syncVisibleVehicleRoutePolylines();
+                this.loadRouteTripForDevice(id);
+            }
+            this.syncCompanyMapCard();
+            this.syncDriverMapCard();
+        }
+
+        async loadRouteTripForDevice(id) {
+            const url = this.cfg.devicePanelUrl;
+            if (!url || Number(this._routeTripDeviceId) !== Number(id)) return;
+            try {
+                const res = await fetch(`${url}?device_id=${encodeURIComponent(id)}&_=${Date.now()}`, {
+                    credentials: 'same-origin',
+                    cache: 'no-store',
+                    headers: { Accept: 'application/json' },
+                });
+                const data = await res.json().catch(() => ({}));
+                const routeTrip = data.panel?.route_trip || data.route_trip;
+                if (routeTrip?.route && Number(this._routeTripDeviceId) === Number(id)) {
+                    const cur = this.vehicles.get(id) || { id };
+                    const sanitized = this.sanitizeRouteTrip(routeTrip);
+                    this.vehicles.set(id, { ...cur, route_trip: sanitized });
+                    this.applyRouteTrip(id, sanitized, { forceFitBounds: !this._routeBoundsFitted });
+                }
+            } catch (_) { /* ignore */ }
+        }
+
+        clearRouteTripSelection() {
+            this._routeTripDeviceId = null;
+            this._routeBoundsFitted = false;
+            this.clearAllRouteMapOverlays();
+            this.routeTripKit?.clear();
+            this.syncVisibleVehicleRoutePolylines();
+        }
+
+        fitMapToAssignedRoute(payload) {
+            const map = this.map;
+            const google = global.google;
+            if (!map || !google?.maps || !payload?.route) return;
+
+            const pts = this.routePathPoints(payload.route);
+            if (pts.length < 2) return;
+
+            const bounds = new google.maps.LatLngBounds();
+            pts.forEach((p) => bounds.extend(p));
+
+            const v = this.vehicles.get(this._routeTripDeviceId);
+            if (v?.lat != null && v?.lng != null) {
+                bounds.extend({ lat: parseFloat(v.lat), lng: parseFloat(v.lng) });
+            }
+
+            map.fitBounds(bounds, { top: 72, right: 40, bottom: 140, left: 40 });
+            this._routeBoundsFitted = true;
+        }
+
+        applyRouteTrip(id, payload, options = {}) {
+            if (!this.uiOn('polyline') && !this.uiOn('route_progress')) return;
+            if (this._routeTripDeviceId == null || Number(this._routeTripDeviceId) !== Number(id)) {
+                return;
+            }
+            payload = this.sanitizeRouteTrip(payload);
+            if (!payload?.route) {
+                this.clearRouteTripSelection();
+                return;
+            }
+            const kit = this.ensureRouteTripProgress();
+            if (this.uiOn('polyline') && this.routeAllowsPolyline(payload.route)) {
+                if (kit) {
+                    this._assignedRoutePolyline?.setMap(null);
+                } else {
+                    this.drawAssignedRouteOverlay(payload);
+                }
+            } else {
+                this._assignedRoutePolyline?.setMap(null);
+            }
+            if (kit) {
+                kit.update({ route_trip: payload });
+            } else if (!this.uiOn('polyline')) {
+                this.routeTripKit?.clear();
+            }
+            this.syncVisibleVehicleRoutePolylines();
+            if (this.uiOn('polyline') && this.routeAllowsPolyline(payload.route)
+                && (options.forceFitBounds || !this._routeBoundsFitted)) {
+                this.fitMapToAssignedRoute(payload);
+            }
+        }
+
+        async completeAssignedTrip() {
+            const url = this.cfg.completeTripUrl;
+            const id = this._routeTripDeviceId;
+            if (!url || !id) return;
+            try {
+                const res = await fetch(url, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: {
+                        Accept: 'application/json',
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': this.cfg.csrfToken || '',
+                    },
+                    body: JSON.stringify({ device_id: id }),
+                });
+                const data = await res.json().catch(() => ({}));
+                if (data.success) {
+                    if (data.route_trip) this.applyRouteTrip(id, data.route_trip);
+                    await this.pollLive(true);
+                }
+            } catch (_) { /* ignore */ }
+        }
+
+        async startNewAssignedTrip() {
+            const url = this.cfg.startNewTripUrl;
+            const id = this._routeTripDeviceId;
+            if (!url || !id) return;
+            try {
+                const res = await fetch(url, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: {
+                        Accept: 'application/json',
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': this.cfg.csrfToken || '',
+                    },
+                    body: JSON.stringify({ device_id: id }),
+                });
+                const data = await res.json().catch(() => ({}));
+                if (data.success) {
+                    if (data.route_trip) this.applyRouteTrip(id, data.route_trip);
+                    await this.pollLive(true);
+                } else if (data.message && global.Swal) {
+                    global.Swal.fire({ icon: 'error', title: data.message });
+                }
+            } catch (_) { /* ignore */ }
+        }
+
+        async restartAssignedTrip() {
+            const url = this.cfg.restartTripUrl;
+            const id = this._routeTripDeviceId;
+            if (!url || !id) return;
+            if (global.Swal) {
+                const confirm = await global.Swal.fire({
+                    icon: 'warning',
+                    title: this.cfg.i18n?.restartTripConfirm || 'Restart trip?',
+                    text: this.cfg.i18n?.restartTripConfirmText || 'This clears current trip progress and starts again from the vehicle position.',
+                    showCancelButton: true,
+                    confirmButtonText: this.cfg.i18n?.restartTrip || 'Restart trip',
+                });
+                if (!confirm.isConfirmed) return;
+            }
+            try {
+                const res = await fetch(url, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: {
+                        Accept: 'application/json',
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': this.cfg.csrfToken || '',
+                    },
+                    body: JSON.stringify({ device_id: id }),
+                });
+                const data = await res.json().catch(() => ({}));
+                if (data.success) {
+                    if (data.route_trip) this.applyRouteTrip(id, data.route_trip);
+                    await this.pollLive(true);
+                } else if (data.message && global.Swal) {
+                    global.Swal.fire({ icon: 'error', title: data.message });
+                }
+            } catch (_) { /* ignore */ }
+        }
+
+        /** Connectivity-aware status label; last-known motion when delayed/stale/offline. */
+        panelStatusHtml(item, i) {
+            const dash = '—';
+            const statusLabel = item.status || item.status_label || dash;
+            const tier = item.connectivity_tier || 'live';
+            const lastKnown = item.last_known_status;
+            let html = escHtml(statusLabel);
+            if (tier !== 'live' && lastKnown && lastKnown !== statusLabel) {
+                const lastLbl = i.lblLastKnown || 'last known';
+                html += ` <span class="tc-muted">(${escHtml(lastLbl)}: ${escHtml(lastKnown)})</span>`;
+            }
+            return html;
         }
 
         renderPanelData(panel) {
@@ -1772,12 +2717,16 @@
             const pos = (panel.lat != null && panel.lng != null)
                 ? `<a href="#" data-tc-locate="${panel.lat},${panel.lng}">${Number(panel.lat).toFixed(6)}, ${Number(panel.lng).toFixed(6)}</a>`
                 : dash;
+            const statusLabelHtml = this.panelStatusHtml(panel, i);
+            const statusDuration = panel.status_duration_seconds != null
+                ? ` <span id="tcPanelStatusDuration" class="tc-muted">${escHtml(i.lblStatusDuration || 'for')} ${formatDuration(panel.status_duration_seconds)}</span>`
+                : '';
             const colA = [
                 kv(i.lblObject || 'Object', escHtml(panel.name || dash), panel.icon),
                 kv(i.lblPlate || 'Plate', escHtml(panel.plate || dash), 'fa-id-card'),
-                kv(i.lblStatus || 'Status', `<span id="tcPanelStatus" style="color:${escHtml(panel.color || '#475569')}">${escHtml(panel.status || dash)}</span>`, 'fa-circle-info'),
-                kv(i.lblOdometer || 'Odometer', panel.odometer != null ? `${Math.round(panel.odometer)} km` : dash, 'fa-gauge'),
-                kv(i.lblAltitude || 'Altitude', panel.altitude != null ? `${panel.altitude} m` : dash, 'fa-mountain'),
+                kv(i.lblStatus || 'Status', `<span id="tcPanelStatus" style="color:${escHtml(panel.color || '#475569')}">${statusLabelHtml}</span>${statusDuration}`, 'fa-circle-info'),
+                kv(i.lblOdometer || 'Odometer', panel.odometer != null ? `${panel.odometer} km` : dash, 'fa-gauge', 'tcPanelOdometer'),
+                kv(i.lblAltitude || 'Altitude', panel.altitude != null ? `${panel.altitude} m` : dash, 'fa-mountain', 'tcPanelAltitude'),
                 kv(i.lblAngle || 'Angle', panel.angle != null ? `${panel.angle}\u00b0` : dash, 'fa-compass', 'tcPanelAngle'),
             ].join('');
             const colB = [
@@ -1785,7 +2734,7 @@
                 kv(i.lblSpeed || 'Speed', `${panel.speed != null ? Math.round(panel.speed) : 0} ${escHtml(kmh)}`, 'fa-gauge-high', 'tcPanelSpeed'),
                 kv(i.lblTimePosition || 'Time (position)', escHtml(panel.time_position || dash), 'fa-clock', 'tcPanelTimePos'),
                 kv(i.lblTimeServer || 'Time (server)', escHtml(panel.time_server || dash), 'fa-server', 'tcPanelTimeServer'),
-                kv(i.lblIgnition || 'Ignition', panel.ignition == null ? dash : (panel.ignition ? (i.ignitionOn || 'On') : (i.ignitionOff || 'Off')), 'fa-key', 'tcPanelIgnition'),
+                kv(i.lblEngine || 'Engine', panel.ignition == null ? dash : (panel.ignition ? (i.ignitionOn || 'On') : (i.ignitionOff || 'Off')), 'fa-key', 'tcPanelIgnition'),
             ].join('');
 
             const cmdTypes = this.cfg.commandTypes || {};
@@ -1921,12 +2870,33 @@
 
             const statusEl = document.getElementById('tcPanelStatus');
             if (statusEl) {
-                statusEl.textContent = v.status_label || v.status || v.status_key || dash;
+                statusEl.innerHTML = this.panelStatusHtml(v, i);
                 statusEl.style.color = colorForPoint(v, this.stateColors);
+            }
+
+            const statusDurEl = document.getElementById('tcPanelStatusDuration');
+            if (statusDurEl) {
+                if (v.status_duration_seconds != null) {
+                    statusDurEl.textContent = `${i.lblStatusDuration || 'for'} ${formatDuration(v.status_duration_seconds)}`;
+                    statusDurEl.style.display = '';
+                } else {
+                    statusDurEl.style.display = 'none';
+                }
             }
 
             const ignEl = document.getElementById('tcPanelIgnition');
             if (ignEl) ignEl.textContent = v.ignition == null ? dash : (v.ignition ? (i.ignitionOn || 'On') : (i.ignitionOff || 'Off'));
+
+            const odoKm = v.odometer_km != null
+                ? v.odometer_km
+                : (v.odometer != null ? Math.round((parseFloat(v.odometer) || 0) / 1000) : null);
+            const odoEl = document.getElementById('tcPanelOdometer');
+            if (odoEl) odoEl.textContent = odoKm != null ? `${odoKm} km` : dash;
+
+            const altEl = document.getElementById('tcPanelAltitude');
+            if (altEl && v.altitude != null) {
+                altEl.textContent = `${Math.round(parseFloat(v.altitude) || 0)} m`;
+            }
 
             if (v.heading != null) {
                 const angleEl = document.getElementById('tcPanelAngle');
@@ -2038,6 +3008,7 @@
                     const titleEl = document.getElementById('tcModuleTitle');
                     if (titleEl) titleEl.innerHTML = `<i class="fas ${escHtml(icon)} me-2"></i>${escHtml(title)}`;
                     frame.title = title;
+                    this.closeTopbar();
                     if (loader) loader.hidden = false;
                     frame.src = url + (url.includes('?') ? '&' : '?') + 'embed=1';
                     this._moduleModal.show();

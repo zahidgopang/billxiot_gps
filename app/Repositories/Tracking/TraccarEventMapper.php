@@ -137,6 +137,7 @@ class TraccarEventMapper
             VehicleEvent::TYPE_STOPPED => ['Vehicle stopped', sprintf('%s has stopped.', $deviceName)],
             VehicleEvent::TYPE_RUNNING => ['Vehicle running', sprintf('%s is moving.', $deviceName)],
             VehicleEvent::TYPE_MAINTENANCE => ['Maintenance due', sprintf('%s is due for scheduled maintenance.', $deviceName)],
+            VehicleEvent::TYPE_TRIP_COMPLETED => ['Trip completed', sprintf('%s completed a planned route.', $deviceName)],
             default => [
                 ucfirst(str_replace('_', ' ', $laravelType)),
                 sprintf('%s event recorded.', $deviceName),

@@ -20,6 +20,7 @@ use App\Http\Controllers\AndroidAppController;
 use App\Http\Controllers\PageController;
 use App\Http\Controllers\MapController;
 use App\Http\Controllers\MapAccessController;
+use App\Http\Controllers\DeviceMapIconController;
 use App\Http\Controllers\VehicleAlertController;
 /*
 |--------------------------------------------------------------------------
@@ -36,6 +37,10 @@ Route::get('/robots.txt', \App\Http\Controllers\RobotsController::class)->name('
 Route::get('/locale/{locale}', [\App\Http\Controllers\LocaleController::class, 'switch'])
     ->whereIn('locale', ['en', 'ar'])
     ->name('locale.switch');
+
+Route::get('/device-map-icons/{device}', [DeviceMapIconController::class, 'show'])
+    ->name('device-map-icons.show')
+    ->whereNumber('device');
 
 /*
 |--------------------------------------------------------------------------
@@ -84,6 +89,12 @@ Route::middleware(['auth', 'user.active', 'tracker.access'])->group(function () 
         Route::get('/user/device/{token}/live-json', [MapController::class, 'liveJson'])
             ->where('token', '[A-Za-z0-9_-]+')
             ->name('user.device.live.json');
+        Route::post('/user/device/{token}/complete-trip', [MapController::class, 'completeTrip'])
+            ->where('token', '[A-Za-z0-9_-]+')
+            ->name('user.device.complete.trip');
+        Route::post('/user/device/{token}/start-new-trip', [MapController::class, 'startNewTrip'])
+            ->where('token', '[A-Za-z0-9_-]+')
+            ->name('user.device.start.new.trip');
         Route::get('/user/device/{token}/summary-json', [MapController::class, 'summaryJson'])
             ->where('token', '[A-Za-z0-9_-]+')
             ->name('user.device.summary.json');
@@ -120,6 +131,9 @@ Route::middleware(['auth', 'user.active', 'tracker.access'])->group(function () 
         Route::get('/', [UserDevicesController::class, 'index'])->name('index');
         Route::get('/fleet-map', [UserDevicesController::class, 'fleetMap'])->name('fleet-map');
         Route::get('/fleet-map/live-json', [UserDevicesController::class, 'fleetMapLiveJson'])->name('fleet-map.live-json');
+        Route::post('/{device}/map-appearance', [UserDevicesController::class, 'updateMapAppearance'])->name('map-appearance');
+        Route::post('/{device}/map-custom-icon', [UserDevicesController::class, 'uploadMapCustomIcon'])->name('map-custom-icon');
+        Route::delete('/{device}/map-custom-icon', [UserDevicesController::class, 'deleteMapCustomIcon'])->name('map-custom-icon.delete');
         Route::get('/live-json', [UserDevicesController::class, 'liveJson'])->name('live-json');
     });
 
@@ -192,7 +206,16 @@ Route::middleware(['auth', 'panel:admin', 'can:admin'])
             ->name('reports.profit-loss');
         Route::patch('devices/{device}/toggle-status', [AdminDeviceController::class, 'toggleStatus'])
             ->name('devices.toggle-status');
+        Route::post('devices/{device}/map-appearance', [UserDevicesController::class, 'updateMapAppearance'])
+            ->name('devices.map-appearance');
+        Route::post('devices/{device}/map-custom-icon', [UserDevicesController::class, 'uploadMapCustomIcon'])
+            ->name('devices.map-custom-icon');
+        Route::delete('devices/{device}/map-custom-icon', [UserDevicesController::class, 'deleteMapCustomIcon'])
+            ->name('devices.map-custom-icon.delete');
         Route::resource('devices', AdminDeviceController::class);
+        Route::post('routes/directions-preview', [\App\Http\Controllers\Admin\RouteController::class, 'directionsPreview'])
+            ->name('routes.directions-preview');
+        Route::resource('routes', \App\Http\Controllers\Admin\RouteController::class);
         Route::get('device-stock/repairs', [DeviceStockController::class, 'repairs'])
             ->name('device-stock.repairs');
         Route::resource('device-stock', DeviceStockController::class);
@@ -201,6 +224,23 @@ Route::middleware(['auth', 'panel:admin', 'can:admin'])
 
         Route::get('activity-log', [ActivityLogController::class, 'index'])
             ->name('activity-log.index');
+
+        Route::middleware('can:super-admin')->group(function () {
+            Route::get('company-map-settings', [\App\Http\Controllers\Admin\CompanyMapSettingsController::class, 'index'])
+                ->name('company-map-settings.index');
+            Route::post('company-map-settings', [\App\Http\Controllers\Admin\CompanyMapSettingsController::class, 'update'])
+                ->name('company-map-settings.update');
+            Route::get('permissions', [\App\Http\Controllers\Admin\PermissionManagementController::class, 'index'])
+                ->name('permissions.index');
+            Route::get('permissions/users', [\App\Http\Controllers\Admin\PermissionManagementController::class, 'users'])
+                ->name('permissions.users');
+            Route::put('permissions', [\App\Http\Controllers\Admin\PermissionManagementController::class, 'update'])
+                ->name('permissions.update');
+            Route::put('permissions/user/{user}', [\App\Http\Controllers\Admin\PermissionManagementController::class, 'updateUser'])
+                ->name('permissions.user.update');
+            Route::get('permissions/templates/{slug}', [\App\Http\Controllers\Admin\PermissionManagementController::class, 'templateKeys'])
+                ->name('permissions.template');
+        });
 
         Route::get('usage', [\App\Http\Controllers\Admin\UsageGuideController::class, 'index'])
             ->middleware('can:super-admin')
@@ -245,6 +285,12 @@ Route::middleware(['auth', 'panel:admin', 'can:admin'])
         Route::get('device/{token}/live-json', [MapController::class, 'liveJson'])
             ->where('token', '[A-Za-z0-9_-]+')
             ->name('device.live.json');
+        Route::post('device/{token}/complete-trip', [MapController::class, 'completeTrip'])
+            ->where('token', '[A-Za-z0-9_-]+')
+            ->name('device.complete.trip');
+        Route::post('device/{token}/start-new-trip', [MapController::class, 'startNewTrip'])
+            ->where('token', '[A-Za-z0-9_-]+')
+            ->name('device.start.new.trip');
         Route::get('device/{token}/summary-json', [MapController::class, 'summaryJson'])
             ->where('token', '[A-Za-z0-9_-]+')
             ->name('device.summary.json');
@@ -293,7 +339,16 @@ Route::middleware(['auth', 'panel:client', 'can:client-panel'])
 
         Route::patch('devices/{device}/toggle-status', [AdminDeviceController::class, 'toggleStatus'])
             ->name('devices.toggle-status');
+        Route::post('devices/{device}/map-appearance', [UserDevicesController::class, 'updateMapAppearance'])
+            ->name('devices.map-appearance');
+        Route::post('devices/{device}/map-custom-icon', [UserDevicesController::class, 'uploadMapCustomIcon'])
+            ->name('devices.map-custom-icon');
+        Route::delete('devices/{device}/map-custom-icon', [UserDevicesController::class, 'deleteMapCustomIcon'])
+            ->name('devices.map-custom-icon.delete');
         Route::resource('devices', AdminDeviceController::class)->except(['destroy']);
+        Route::post('routes/directions-preview', [\App\Http\Controllers\Admin\RouteController::class, 'directionsPreview'])
+            ->name('routes.directions-preview');
+        Route::resource('routes', \App\Http\Controllers\Admin\RouteController::class);
         Route::get('stock-balance', [ClientStockBalanceController::class, 'show'])
             ->name('stock-balance');
 
@@ -351,6 +406,12 @@ Route::middleware(['auth', 'panel:client', 'can:client-panel'])
             Route::get('device/{token}/live-json', [MapController::class, 'liveJson'])
                 ->where('token', '[A-Za-z0-9_-]+')
                 ->name('device.live.json');
+            Route::post('device/{token}/complete-trip', [MapController::class, 'completeTrip'])
+                ->where('token', '[A-Za-z0-9_-]+')
+                ->name('device.complete.trip');
+            Route::post('device/{token}/start-new-trip', [MapController::class, 'startNewTrip'])
+                ->where('token', '[A-Za-z0-9_-]+')
+                ->name('device.start.new.trip');
             Route::get('device/{token}/summary-json', [MapController::class, 'summaryJson'])
                 ->where('token', '[A-Za-z0-9_-]+')
                 ->name('device.summary.json');

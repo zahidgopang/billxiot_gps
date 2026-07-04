@@ -19,7 +19,7 @@ class NotificationPreferenceService
     {
         return array_values(array_unique(array_merge(
             VehicleEvent::dashboardAlertTypes(),
-            ['geofence_enter', 'geofence_exit', 'stopped', 'running', 'slow_speed'],
+            ['geofence_enter', 'geofence_exit', 'stopped', 'running', 'slow_speed', VehicleEvent::TYPE_TRIP_COMPLETED],
         )));
     }
 
@@ -38,6 +38,8 @@ class NotificationPreferenceService
                 'label' => $this->labelForType($type),
                 'web' => (bool) ($pref['web'] ?? true),
                 'push' => (bool) ($pref['push'] ?? true),
+                'email' => (bool) ($pref['email'] ?? true),
+                'whatsapp' => (bool) ($pref['whatsapp'] ?? false),
             ];
         })->values()->all();
     }
@@ -60,6 +62,16 @@ class NotificationPreferenceService
     public function allowsWeb(User $user, string $eventType): bool
     {
         return $this->channelEnabled($user, $eventType, 'web');
+    }
+
+    public function allowsEmail(User $user, string $eventType): bool
+    {
+        return $this->channelEnabled($user, $eventType, 'email');
+    }
+
+    public function allowsWhatsApp(User $user, string $eventType): bool
+    {
+        return $this->channelEnabled($user, $eventType, 'whatsapp');
     }
 
     public function isWebSuppressed(User $user, string $eventType): bool
@@ -89,7 +101,7 @@ class NotificationPreferenceService
     /**
      * Per-user channel prefs — primary source of truth lives in tc_users.attributes JSON.
      *
-     * @return array<string, array{web: bool, push: bool}>
+     * @return array<string, array{web: bool, push: bool, email: bool, whatsapp: bool}>
      */
     private function loadStored(User $user): array
     {
@@ -106,7 +118,7 @@ class NotificationPreferenceService
     }
 
     /**
-     * @return array<string, array{web: bool, push: bool}>
+     * @return array<string, array{web: bool, push: bool, email: bool, whatsapp: bool}>
      */
     private function loadStoredFromTraccarLinks(User $user): array
     {
@@ -136,6 +148,8 @@ class NotificationPreferenceService
             $out[(string) $row->type] = [
                 'web' => $web,
                 'push' => (bool) ($attrs['push'] ?? true),
+                'email' => (bool) ($attrs['email'] ?? true),
+                'whatsapp' => (bool) ($attrs['whatsapp'] ?? false),
             ];
         }
 
@@ -143,8 +157,8 @@ class NotificationPreferenceService
     }
 
     /**
-     * @param  list<array{type: string, web?: bool, push?: bool}>  $items
-     * @return array<string, array{web: bool, push: bool}>
+     * @param  list<array{type: string, web?: bool, push?: bool, email?: bool, whatsapp?: bool}>  $items
+     * @return array<string, array{web: bool, push: bool, email: bool, whatsapp: bool}>
      */
     private function normalizePrefsFromItems(array $items): array
     {
@@ -154,18 +168,15 @@ class NotificationPreferenceService
             if ($type === '') {
                 continue;
             }
-            $prefs[$type] = [
-                'web' => (bool) ($item['web'] ?? true),
-                'push' => (bool) ($item['push'] ?? true),
-            ];
+            $prefs[$type] = $this->normalizeChannelPref($item);
         }
 
         return $prefs;
     }
 
     /**
-     * @param  array<string, array{web?: bool, push?: bool}>  $prefs
-     * @return array<string, array{web: bool, push: bool}>
+     * @param  array<string, array{web?: bool, push?: bool, email?: bool, whatsapp?: bool}>  $prefs
+     * @return array<string, array{web: bool, push: bool, email: bool, whatsapp: bool}>
      */
     private function normalizePrefsMap(array $prefs): array
     {
@@ -174,17 +185,28 @@ class NotificationPreferenceService
             if (! is_string($type) || ! is_array($pref)) {
                 continue;
             }
-            $out[$type] = [
-                'web' => (bool) ($pref['web'] ?? true),
-                'push' => (bool) ($pref['push'] ?? true),
-            ];
+            $out[$type] = $this->normalizeChannelPref($pref);
         }
 
         return $out;
     }
 
     /**
-     * @param  array<string, array{web: bool, push: bool}>  $prefs
+     * @param  array{web?: bool, push?: bool, email?: bool, whatsapp?: bool}  $pref
+     * @return array{web: bool, push: bool, email: bool, whatsapp: bool}
+     */
+    private function normalizeChannelPref(array $pref): array
+    {
+        return [
+            'web' => (bool) ($pref['web'] ?? true),
+            'push' => (bool) ($pref['push'] ?? true),
+            'email' => (bool) ($pref['email'] ?? true),
+            'whatsapp' => (bool) ($pref['whatsapp'] ?? false),
+        ];
+    }
+
+    /**
+     * @param  array<string, array{web: bool, push: bool, email: bool, whatsapp: bool}>  $prefs
      */
     private function storeUserChannelPrefs(User $user, array $prefs): void
     {
@@ -198,7 +220,7 @@ class NotificationPreferenceService
      * Keep Traccar tc_user_notification links in sync without overwriting shared
      * tc_notifications rows (those are type templates, not per-user channel prefs).
      *
-     * @param  array<string, array{web: bool, push: bool}>  $prefs
+     * @param  array<string, array{web: bool, push: bool, email: bool, whatsapp: bool}>  $prefs
      */
     private function syncTraccarNotificationLinks(User $user, array $prefs): void
     {
@@ -208,7 +230,10 @@ class NotificationPreferenceService
 
         foreach (self::controllableTypes() as $type) {
             $pref = $this->resolvePref($prefs, $type);
-            $subscribed = ($pref['web'] ?? true) || ($pref['push'] ?? true);
+            $subscribed = ($pref['web'] ?? true)
+                || ($pref['push'] ?? true)
+                || ($pref['email'] ?? true)
+                || ($pref['whatsapp'] ?? false);
             $notificationId = $this->ensureNotificationTemplateId($type);
             if ($notificationId === null) {
                 continue;
@@ -242,7 +267,7 @@ class NotificationPreferenceService
             'mail' => false,
             'sms' => false,
             'notificators' => 'web,firebase',
-            'attributes' => json_encode(['web' => true, 'push' => true]),
+            'attributes' => json_encode(['web' => true, 'push' => true, 'email' => true, 'whatsapp' => false]),
         ]);
 
         return (int) DB::table('tc_notifications')->insertGetId($columns);
@@ -258,7 +283,7 @@ class NotificationPreferenceService
 
     /**
      * @param  array<string, array{web?: bool, push?: bool}>  $stored
-     * @return array{web?: bool, push?: bool}
+     * @return array{web?: bool, push?: bool, email?: bool, whatsapp?: bool}
      */
     private function resolvePref(array $stored, string $type): array
     {
@@ -268,7 +293,7 @@ class NotificationPreferenceService
             }
         }
 
-        return ['web' => true, 'push' => true];
+        return ['web' => true, 'push' => true, 'email' => true, 'whatsapp' => false];
     }
 
     private function channelEnabled(User $user, string $eventType, string $channel): bool
@@ -281,7 +306,7 @@ class NotificationPreferenceService
             }
         }
 
-        return true;
+        return $channel !== 'whatsapp';
     }
 
     /**

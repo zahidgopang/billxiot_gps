@@ -59,7 +59,12 @@ class RbacService
         }
 
         $role = $this->roleOf($user)->value;
-        $rolePermissions = config("rbac.roles.{$role}.permissions", []);
+        $rolePermissions = $this->rolePermissionKeys($role);
+        $overrides = $this->permissionOverrides($user);
+
+        if (array_key_exists($permission, $overrides)) {
+            return (bool) $overrides[$permission];
+        }
 
         if (in_array('*', $rolePermissions, true)) {
             return true;
@@ -69,13 +74,45 @@ class RbacService
             return true;
         }
 
-        $overrides = $this->permissionOverrides($user);
+        return false;
+    }
 
-        if (array_key_exists($permission, $overrides)) {
-            return (bool) $overrides[$permission];
+    /**
+     * @return list<string>
+     */
+    public function rolePermissionKeys(string $role): array
+    {
+        try {
+            return app(PermissionCatalogService::class)->rolePermissionKeys($role);
+        } catch (\Throwable) {
+            return config("rbac.roles.{$role}.permissions", []);
+        }
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function grantedPermissionsFor(User $user): array
+    {
+        if ($this->isSuperAdmin($user)) {
+            return ['*'];
         }
 
-        return false;
+        $role = $this->roleOf($user)->value;
+        $base = $this->rolePermissionKeys($role);
+        $overrides = $this->permissionOverrides($user);
+
+        $granted = array_filter($base, fn ($p) => $p !== '*');
+
+        foreach ($overrides as $key => $enabled) {
+            if ($enabled) {
+                $granted[] = $key;
+            } else {
+                $granted = array_values(array_filter($granted, fn ($k) => $k !== $key));
+            }
+        }
+
+        return array_values(array_unique($granted));
     }
 
     /**
@@ -117,6 +154,49 @@ class RbacService
     public function syncMapsViewPermission(User $user, bool $enabled): void
     {
         $this->setPermissionOverride($user, 'maps.view', $enabled);
+    }
+
+    public function roleGrantsPermission(string $role, string $permission): bool
+    {
+        $keys = $this->rolePermissionKeys($role);
+
+        if (in_array('*', $keys, true)) {
+            return true;
+        }
+
+        return in_array($permission, $keys, true);
+    }
+
+    /**
+     * @param  array<string, mixed>  $submitted  key => ''|null (inherit), '1'|true (grant), '0'|false (deny)
+     */
+    public function syncPermissionOverrides(User $user, array $submitted, ?array $validKeys = null): void
+    {
+        $validKeys ??= app(PermissionCatalogService::class)->allActiveKeys();
+        $validSet = array_flip($validKeys);
+        $overrides = $this->permissionOverrides($user);
+
+        foreach ($submitted as $key => $value) {
+            if (! is_string($key) || ! isset($validSet[$key])) {
+                continue;
+            }
+
+            if ($value === '' || $value === null) {
+                unset($overrides[$key]);
+            } elseif ($value === '1' || $value === 1 || $value === true) {
+                $overrides[$key] = true;
+            } elseif ($value === '0' || $value === 0 || $value === false) {
+                $overrides[$key] = false;
+            }
+        }
+
+        $user->patchTraccarAppAttributes([
+            TraccarAppFields::KEY_PERMISSIONS => $overrides !== [] ? $overrides : null,
+        ]);
+
+        if ($user->exists) {
+            $user->save();
+        }
     }
 
     public function setPermissionOverride(User $user, string $permission, ?bool $value): void

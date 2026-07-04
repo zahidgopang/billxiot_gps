@@ -34,7 +34,7 @@
         constructor(options) {
             this.opts = options;
             this.map = null;
-            this.followVehicle = true;
+            this.followVehicle = false;
             this.playbackActive = false;
             this.showLiveBadge = true;
 
@@ -77,8 +77,15 @@
                     getState: (p) => this.opts.getState(p),
                     getColor: (s) => this.opts.getColor(s),
                     getVehicleType: (p) => this.opts.getVehicleType(p),
+                    getMarkerStyle: (p) => this.opts.getMarkerStyle?.(p) || 'labeled',
+                    getMarkerSizeScale: (p) => this.opts.getMarkerSizeScale?.(p) ?? 1,
+                    getCustomIconUrl: (p) => this.opts.getCustomIconUrl?.(p) ?? null,
+                    getRotationEnabled: (p) => this.opts.getRotationEnabled?.(p) !== false,
                     shouldShowDirection: (p, s) => this.opts.shouldShowDirection(p, s),
                     getShowLiveBadge: () => this.showLiveBadge && !this.playbackActive,
+                    vehicleBodyPx: this.opts.mapRendering?.vehicle_body_px,
+                    displayScale: this.opts.mapRendering?.display_scale,
+                    maxIconWidth: this.opts.mapRendering?.max_icon_width,
                 });
             }
             if (!this.pulse) {
@@ -91,6 +98,12 @@
             if (this.map) {
                 this.pulse.attachMap(this.map);
             }
+        }
+
+        refreshIconKit() {
+            this.iconBuilder?.clearCache?.();
+            this.iconBuilder = null;
+            this._initKit();
         }
 
         getMarker() {
@@ -121,6 +134,27 @@
             return this.iconBuilder?.iconFor(point, {
                 showLiveBadge: this.showLiveBadge && !this.playbackActive,
             }) || null;
+        }
+
+        _applyIconRotation(icon) {
+            if (!this.vehicleMarker) {
+                return;
+            }
+            if (global.VehicleMarker?.applyMarkerIcon && icon) {
+                global.VehicleMarker.applyMarkerIcon(this.vehicleMarker, icon);
+                return;
+            }
+            if (!icon?.meta) {
+                this.vehicleMarker.setFlat?.(false);
+                this.vehicleMarker.setRotation?.(0);
+                return;
+            }
+            if (typeof this.vehicleMarker.setFlat === 'function') {
+                this.vehicleMarker.setFlat(!!icon.meta.flat);
+            }
+            if (typeof this.vehicleMarker.setRotation === 'function') {
+                this.vehicleMarker.setRotation(Number(icon.meta.rotation) || 0);
+            }
         }
 
         _updatePulse(point) {
@@ -159,6 +193,7 @@
                     zIndex: MARKER_Z,
                     optimized: false,
                 });
+                this._applyIconRotation(icon);
                 this.vehicleMarker.addListener('click', () => {
                     this.opts.onVehicleClick?.(point);
                 });
@@ -172,6 +207,7 @@
             if (skipAnimation) {
                 this.vehicleMarker.setPosition(position);
                 this.vehicleMarker.setIcon(icon);
+                this._applyIconRotation(icon);
                 this.vehicleMarker.setTitle(title);
                 this._updatePulse(point);
                 if (this.followVehicle) {

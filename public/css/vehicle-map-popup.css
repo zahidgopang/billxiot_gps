@@ -1,0 +1,113 @@
+/* Shared Google Maps vehicle marker popup */
+.vehicle-map-popup {
+    padding: 0;
+    min-width: 260px;
+    max-width: 320px;
+    font-family: system-ui, -apple-system, sans-serif;
+    overflow: hidden;
+}
+.vehicle-map-popup__head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 12px 14px 10px;
+    background: linear-gradient(135deg, #f8fafc, #fff);
+    border-bottom: 1px solid #e2e8f0;
+}
+.vehicle-map-popup__title {
+    font-weight: 800;
+    font-size: 0.95rem;
+    color: #0f172a;
+    line-height: 1.25;
+}
+.vehicle-map-popup__close {
+    border: none;
+    background: #f1f5f9;
+    color: #64748b;
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 1.1rem;
+    line-height: 1;
+    flex-shrink: 0;
+}
+.vehicle-map-popup__close:hover {
+    background: #e2e8f0;
+    color: #334155;
+}
+.vehicle-map-popup__body {
+    padding: 10px 14px 12px;
+    display: grid;
+    gap: 8px;
+}
+.vehicle-map-popup__row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+    font-size: 0.78rem;
+    color: #334155;
+}
+.vehicle-map-popup__row strong {
+    color: #64748b;
+    font-weight: 600;
+    flex-shrink: 0;
+}
+.vehicle-map-popup__row span:last-child,
+.vehicle-map-popup__row a.vmp-pos-link {
+    font-weight: 700;
+    color: #0f172a;
+    text-align: end;
+    word-break: break-word;
+}
+.vehicle-map-popup__status {
+    font-weight: 700;
+    text-align: end;
+}
+.vehicle-map-popup__commands {
+    display: flex;
+    gap: 6px;
+    margin-top: 4px;
+    padding-top: 8px;
+    border-top: 1px solid #e2e8f0;
+}
+.vehicle-map-popup__commands select {
+    flex: 1;
+    min-width: 0;
+    font-size: 0.75rem;
+    padding: 4px 6px;
+    border-radius: 6px;
+    border: 1px solid #cbd5e1;
+}
+.vehicle-map-popup__commands button {
+    font-size: 0.75rem;
+    padding: 4px 10px;
+    border-radius: 6px;
+    border: none;
+    background: #2563eb;
+    color: #fff;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.vehicle-map-popup__commands button:disabled {
+    opacity: 0.6;
+    cursor: wait;
+}
+.vehicle-map-popup__footer-link {
+    display: block;
+    margin-top: 6px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #2563eb;
+    text-decoration: none;
+    text-align: center;
+}
+.vehicle-map-popup__footer-link:hover {
+    text-decoration: underline;
+}
+.gm-style-iw-chr { display: none !important; }
+.gm-style-iw-d { overflow: hidden !important; padding: 0 !important; }
+.gm-style-iw-c { padding: 0 !important; border-radius: 14px !important; box-shadow: 0 12px 40px rgba(15,23,42,0.18) !important; }

@@ -20,6 +20,7 @@ class SubscriptionBillingService
         private BillingInvoiceService $invoices,
         private DeviceCostResolver $deviceCosts,
         private InventoryService $inventory,
+        private \App\Support\Billing\SubscriptionNotificationConfig $notificationConfig,
     ) {}
 
     /**
@@ -158,6 +159,18 @@ class SubscriptionBillingService
                 'reference_type' => Device::class,
                 'reference_id' => $subscription->device_id,
             ];
+        }
+
+        if ($subscription->notification_email_enabled) {
+            foreach ($this->notificationConfig->invoiceLines($subscription, 'email') as $line) {
+                $lines[] = $line;
+            }
+        }
+
+        if ($subscription->notification_whatsapp_enabled) {
+            foreach ($this->notificationConfig->invoiceLines($subscription, 'whatsapp') as $line) {
+                $lines[] = $line;
+            }
         }
 
         return $lines;

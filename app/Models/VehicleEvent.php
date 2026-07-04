@@ -43,6 +43,8 @@ class VehicleEvent extends Model
 
     public const TYPE_MAINTENANCE = 'maintenance_due';
 
+    public const TYPE_TRIP_COMPLETED = 'trip_completed';
+
     /** @return list<string> */
     public static function criticalTypes(): array
     {
@@ -72,11 +74,20 @@ class VehicleEvent extends Model
     }
 
     /** @return list<string> */
+    public static function infoTypes(): array
+    {
+        return [
+            self::TYPE_TRIP_COMPLETED,
+        ];
+    }
+
+    /** @return list<string> */
     public static function dashboardAlertTypes(): array
     {
         return array_values(array_unique(array_merge(
             self::criticalTypes(),
             self::warningTypes(),
+            self::infoTypes(),
         )));
     }
 

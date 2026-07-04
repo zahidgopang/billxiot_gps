@@ -6,6 +6,8 @@ use App\Http\Controllers\Concerns\InteractsWithTenantAuthorization;
 use App\Http\Controllers\Controller;
 use App\Models\Client;
 use App\Models\Device;
+use App\Models\DeviceRouteAssignment;
+use App\Models\RoutePlan;
 use App\Models\User;
 use App\Services\AdminAuditService;
 use App\Services\Inventory\InventoryService;
@@ -98,6 +100,7 @@ class DeviceController extends Controller
             'formClientId' => $formClientId,
             'allowedDeviceTypes' => $allowedDeviceTypes,
             'clientStockBalance' => $formClientId ? $this->clientStock->balanceForClient($formClientId) : null,
+            'activeRoutes' => $this->activeRoutesForForm(),
         ]);
     }
 
@@ -119,6 +122,7 @@ class DeviceController extends Controller
             $device = Device::create($this->devicePayloadFromValidated($data));
 
             $this->tenantScope()->assignDeviceToClient($device, $clientId);
+            $this->syncRouteAssignment($device, $data['route_id'] ?? null);
 
             return $device;
         });
@@ -157,6 +161,8 @@ class DeviceController extends Controller
             'formClientId' => $formClientId,
             'allowedDeviceTypes' => $allowedDeviceTypes,
             'clientStockBalance' => $formClientId ? $this->clientStock->balanceForClient($formClientId) : null,
+            'activeRoutes' => $this->activeRoutesForForm(),
+            'assignedRouteId' => DeviceRouteAssignment::query()->where('device_id', $device->id)->value('route_id'),
         ]);
     }
 
@@ -184,6 +190,7 @@ class DeviceController extends Controller
             $device->update($this->devicePayloadFromValidated($data));
 
             $this->tenantScope()->assignDeviceToClient($device, $clientId);
+            $this->syncRouteAssignment($device, $data['route_id'] ?? null);
         });
 
         $this->audit->logUpdated($device, "device {$device->imei}", array_merge($data, ['client_id' => $clientId]));
@@ -280,6 +287,7 @@ class DeviceController extends Controller
             ],
             'vehicle_model' => 'nullable|string|max:80',
             'vehicle_type' => ['nullable', Rule::in(array_keys(Device::VEHICLE_TYPES))],
+            'route_id' => ['nullable', 'integer', 'exists:routes,id'],
             'driver_name' => 'nullable|string|max:120',
             'driver_contact' => 'nullable|string|max:40',
             'sim_type' => ['nullable', Rule::in(array_keys(Device::SIM_TYPES))],
@@ -426,5 +434,27 @@ class DeviceController extends Controller
             ->exists();
 
         abort_unless($exists, 404);
+    }
+
+    private function activeRoutesForForm()
+    {
+        return RoutePlan::query()
+            ->where('status', RoutePlan::STATUS_ACTIVE)
+            ->orderBy('name')
+            ->get(['id', 'name', 'start_city', 'destination_city']);
+    }
+
+    private function syncRouteAssignment(Device $device, mixed $routeId): void
+    {
+        if ($routeId === null || $routeId === '') {
+            DeviceRouteAssignment::query()->where('device_id', $device->id)->delete();
+
+            return;
+        }
+
+        DeviceRouteAssignment::query()->updateOrCreate(
+            ['device_id' => $device->id],
+            ['route_id' => (int) $routeId],
+        );
     }
 }

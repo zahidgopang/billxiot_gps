@@ -5,8 +5,10 @@ namespace App\Http\Controllers\Admin;
 use App\Enums\PlanBillingCycle;
 use App\Http\Controllers\Concerns\InteractsWithTenantAuthorization;
 use App\Http\Controllers\Controller;
+use App\Models\RoutePlan;
 use App\Models\SubscriptionPlan;
 use App\Services\AdminAuditService;
+use App\Support\Billing\SubscriptionPlanNotificationCatalog;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
@@ -16,6 +18,7 @@ class SubscriptionPlanController extends Controller
 
     public function __construct(
         private AdminAuditService $audit,
+        private SubscriptionPlanNotificationCatalog $notificationCatalog,
     ) {}
 
     public function index(Request $request)
@@ -43,6 +46,7 @@ class SubscriptionPlanController extends Controller
         return view('admin.subscription-plans.create', [
             'plan' => null,
             'panel' => $this->panelPrefix(),
+            ...$this->notificationFormData(null),
         ]);
     }
 
@@ -69,6 +73,7 @@ class SubscriptionPlanController extends Controller
         return view('admin.subscription-plans.edit', [
             'plan' => $subscriptionPlan,
             'panel' => $this->panelPrefix(),
+            ...$this->notificationFormData($subscriptionPlan),
         ]);
     }
 
@@ -128,7 +133,81 @@ class SubscriptionPlanController extends Controller
         $data['is_public'] = $request->boolean('is_public', true);
         $data['sort_order'] = (int) ($data['sort_order'] ?? 0);
 
+        $data['notification_email_types'] = $this->parseNotificationTypes($request, 'notification_email_types');
+        $data['notification_whatsapp_types'] = $this->parseNotificationTypes($request, 'notification_whatsapp_types');
+        $data['notification_route_ids'] = $this->parseRouteIds($request);
+
         return $data;
+    }
+
+    /**
+     * @return array{notificationTypeOptions: list<array{key: string, label: string}>, routeOptions: list<array{id: int, label: string}>, selectedEmailTypes: list<string>, selectedWhatsappTypes: list<string>, selectedRouteIds: list<int>}
+     */
+    private function notificationFormData(?SubscriptionPlan $plan): array
+    {
+        $defaults = $this->notificationCatalog->defaultTypeKeys();
+        $routes = RoutePlan::query()
+            ->where('status', RoutePlan::STATUS_ACTIVE)
+            ->orderBy('start_city')
+            ->orderBy('destination_city')
+            ->get()
+            ->map(fn (RoutePlan $route) => [
+                'id' => (int) $route->id,
+                'label' => $route->routeLabel(),
+            ])
+            ->values()
+            ->all();
+
+        return [
+            'notificationTypeOptions' => $this->notificationCatalog->standardTypeOptions(),
+            'routeOptions' => $routes,
+            'selectedEmailTypes' => old(
+                'notification_email_types',
+                $plan?->notification_email_types ?? $defaults,
+            ),
+            'selectedWhatsappTypes' => old(
+                'notification_whatsapp_types',
+                $plan?->notification_whatsapp_types ?? $defaults,
+            ),
+            'selectedRouteIds' => old(
+                'notification_route_ids',
+                $plan?->notification_route_ids ?? array_column($routes, 'id'),
+            ),
+        ];
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function parseNotificationTypes(Request $request, string $field): array
+    {
+        $allowed = $this->notificationCatalog->standardTypeKeys();
+        $selected = $request->input($field, []);
+
+        if (! is_array($selected)) {
+            return [];
+        }
+
+        return array_values(array_intersect($allowed, array_map('strval', $selected)));
+    }
+
+    /**
+     * @return list<int>
+     */
+    private function parseRouteIds(Request $request): array
+    {
+        $selected = $request->input('notification_route_ids', []);
+        if (! is_array($selected)) {
+            return [];
+        }
+
+        $validIds = RoutePlan::query()
+            ->whereIn('id', array_map('intval', $selected))
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+
+        return array_values($validIds);
     }
 
     /**

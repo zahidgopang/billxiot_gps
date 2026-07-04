@@ -4,12 +4,17 @@ namespace App\Services\Mobile;
 
 use App\Models\Device;
 use App\Services\DeviceSubscriptionService;
+use App\Services\Mobile\MobileMapStatusResolver;
+use App\Services\Mobile\VehicleStatusSpec;
+use App\Services\Tracking\StatusDurationResolver;
+use App\Support\Tracking\TelemetryFormatter;
 
 class MobileDevicePresenter
 {
     public function __construct(
         private DeviceSubscriptionService $subscriptions,
         private MobileMapStatusResolver $mapStatus,
+        private StatusDurationResolver $statusDuration,
     ) {}
 
     /**
@@ -29,7 +34,15 @@ class MobileDevicePresenter
             'device_type_label' => $device->deviceTypeLabel(),
             'vehicle_name' => $device->vehicle_name ?? null,
             'vehicle_number' => $device->vehicle_number ?? null,
-            'vehicle_type' => $device->vehicle_type ?? null,
+            'vehicle_type' => $device->defaultMapIconName(),
+            'map_icon_source' => $device->usesCustomMapIcon() ? 'custom' : 'default',
+            'map_custom_icon_url' => $device->usesCustomMapIcon()
+                ? app(\App\Services\Tracking\DeviceVehicleIconService::class)->url($device)
+                : null,
+            'map_marker_style' => $device->map_marker_style,
+            'map_marker_size' => $device->map_marker_size,
+            'map_marker_size_scale' => $device->mapMarkerSizeScale(),
+            'map_icon_rotation_enabled' => $device->map_icon_rotation_enabled,
             'display_name' => $device->mapMarkerTitle(),
             'map_marker_title' => $device->mapMarkerTitle(),
             'map_marker_plate' => $device->mapMarkerPlateLine(),
@@ -82,6 +95,11 @@ class MobileDevicePresenter
         }
 
         $map = $this->mapStatus->resolve($latest, $device);
+        $motionKey = VehicleStatusSpec::motionKey(
+            (float) ($latest->speed ?? 0),
+            (bool) $latest->ignition,
+        );
+        $duration = $this->statusDuration->resolve($device, $latest, $map);
 
         return [
             'lat' => (float) $latest->lat,
@@ -94,12 +112,20 @@ class MobileDevicePresenter
             'gps_signal' => $latest->gps_signal,
             'satellites' => $latest->satellites,
             'odometer' => $latest->odometer,
+            'odometer_km' => TelemetryFormatter::odometerKm($latest->odometer),
+            'altitude' => $latest->altitude !== null ? round((float) $latest->altitude) : null,
             'gps_fix' => $latest->gps_fix,
             'address' => null,
             'last_update' => app_datetime_api($latest->recorded_at),
             'last_update_display' => app_datetime_format($latest->recorded_at),
             'status' => $map['label'],
             'status_key' => $map['key'],
+            'motion_status' => VehicleStatusSpec::motionLabel($motionKey),
+            'motion_status_key' => $motionKey,
+            'status_since' => $duration['since']
+                ? app_datetime_api($duration['since'])
+                : null,
+            'status_duration_seconds' => $duration['seconds'],
             'connectivity_tier' => $map['connectivity_tier'],
             'last_known_status' => $map['last_known_status'],
             'last_known_status_key' => $map['last_known_status_key'],
@@ -108,6 +134,15 @@ class MobileDevicePresenter
             'is_online' => $this->mapStatus->isRecentlyOnline($latest),
             'vehicle_name' => $device->vehicle_name,
             'vehicle_number' => $device->vehicle_number,
+            'vehicle_type' => $device->defaultMapIconName(),
+            'map_icon_source' => $device->usesCustomMapIcon() ? 'custom' : 'default',
+            'map_custom_icon_url' => $device->usesCustomMapIcon()
+                ? app(\App\Services\Tracking\DeviceVehicleIconService::class)->url($device)
+                : null,
+            'map_marker_style' => $device->map_marker_style,
+            'map_marker_size' => $device->map_marker_size,
+            'map_marker_size_scale' => $device->mapMarkerSizeScale(),
+            'map_icon_rotation_enabled' => $device->map_icon_rotation_enabled,
             'map_marker_title' => $device->mapMarkerTitle(),
             'map_marker_plate' => $device->mapMarkerPlateLine(),
             'map_rendering' => MapRenderingSpec::toArray(),

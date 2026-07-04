@@ -8,6 +8,7 @@ use App\Models\Client;
 use App\Models\Device;
 use App\Models\DeviceStockOrder;
 use App\Models\DeviceStockSale;
+use App\Models\RoutePlan;
 use App\Models\Subscription;
 use App\Models\SubscriptionPlan;
 use App\Models\User;
@@ -128,6 +129,7 @@ class AdminAuditService
             DeviceStockSale::class => 'stock',
             BillingInvoice::class => 'billing_invoice',
             BillingPayment::class => 'billing_payment',
+            RoutePlan::class => 'route',
             default => strtolower(class_basename($subject)),
         };
     }

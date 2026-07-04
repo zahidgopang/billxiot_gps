@@ -99,6 +99,19 @@
         </div>
     </details>
 
+    <details class="sidebar-accordion" data-map-tour="history-timeline">
+        <summary class="sidebar-accordion__summary">
+            <i class="fas fa-stream" aria-hidden="true"></i>
+            {{ __('app.map.history_timeline') }}
+            <span class="sidebar-accordion__badge" id="historyTimelineCount">0</span>
+        </summary>
+        <div class="sidebar-accordion__body sidebar-accordion__body--flush">
+            <div class="trip-events-list" id="historyTimelineList">
+                <div class="trip-event-empty">{{ __('app.map.load_history_timeline') }}</div>
+            </div>
+        </div>
+    </details>
+
     <details class="sidebar-accordion" data-map-tour="trip-events">
         <summary class="sidebar-accordion__summary">
             <i class="fas fa-list-ul" aria-hidden="true"></i>

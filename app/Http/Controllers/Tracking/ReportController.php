@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Tracking;
 
+use App\Http\Concerns\AppliesReportLocale;
 use App\Http\Concerns\ResolvesHistoryDateRange;
 use App\Http\Concerns\ResolvesTrackingPanel;
 use App\Http\Controllers\Controller;
@@ -16,6 +17,7 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ReportController extends Controller
 {
+    use AppliesReportLocale;
     use ResolvesHistoryDateRange;
     use ResolvesTrackingPanel;
 
@@ -37,6 +39,7 @@ class ReportController extends Controller
 
     public function generate(Request $request): JsonResponse
     {
+        $this->applyReportLocale($request);
         $range = $this->resolveReportRange($request);
         $type = (string) $request->query('type', 'summary');
         $ids = $this->parseTrackingIdList($request);
@@ -54,6 +57,7 @@ class ReportController extends Controller
 
     public function export(Request $request): StreamedResponse|\Illuminate\Http\Response
     {
+        $this->applyReportLocale($request);
         $range = $this->resolveReportRange($request);
         $type = (string) $request->query('type', 'summary');
         $format = (string) $request->query('format', 'csv');

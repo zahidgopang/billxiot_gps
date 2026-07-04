@@ -16,40 +16,57 @@ use Illuminate\Support\Facades\Route;
  * Shared tracking module routes — register inside panel groups with name prefix admin.tracking.* etc.
  */
 return function (): void {
-    Route::get('/', [GlobalTrackingController::class, 'index'])->name('index');
-    Route::get('/live-json', [GlobalTrackingController::class, 'liveJson'])->name('live-json');
-    Route::get('/device-panel', [GlobalTrackingController::class, 'devicePanel'])->name('device-panel');
-    Route::get('/device-mileage', [GlobalTrackingController::class, 'deviceMileage'])->name('device-mileage');
-    Route::get('/history', [GlobalTrackingController::class, 'history'])->name('history');
-    Route::get('/history-json', [GlobalTrackingController::class, 'historyJson'])->name('history-json');
+    Route::middleware('permission:web.map.open,web.map.live_only')->group(function (): void {
+        Route::get('/', [GlobalTrackingController::class, 'index'])->name('index');
+        Route::get('/live-json', [GlobalTrackingController::class, 'liveJson'])->name('live-json');
+        Route::get('/device-panel', [GlobalTrackingController::class, 'devicePanel'])->name('device-panel');
+        Route::get('/device-mileage', [GlobalTrackingController::class, 'deviceMileage'])->name('device-mileage');
+    });
 
-    Route::prefix('reports')->name('reports.')->group(function () {
+    Route::middleware('permission:web.trips.complete')->group(function (): void {
+        Route::post('/complete-trip', [GlobalTrackingController::class, 'completeTrip'])->name('complete-trip');
+        Route::post('/start-new-trip', [GlobalTrackingController::class, 'startNewTrip'])->name('start-new-trip');
+        Route::post('/restart-trip', [GlobalTrackingController::class, 'restartTrip'])->name('restart-trip');
+    });
+
+    Route::get('/route-guidance', [GlobalTrackingController::class, 'routeGuidance'])
+        ->middleware('permission:web.map.toolbar.polyline')
+        ->name('route-guidance');
+
+    Route::middleware('permission:web.history.view')->group(function (): void {
+        Route::get('/history', [GlobalTrackingController::class, 'history'])->name('history');
+        Route::get('/history-json', [GlobalTrackingController::class, 'historyJson'])->name('history-json');
+    });
+
+    Route::prefix('reports')->name('reports.')->middleware('permission:web.reports.view')->group(function () {
         Route::get('/', [ReportController::class, 'index'])->name('index');
         Route::get('/generate', [ReportController::class, 'generate'])->name('generate');
         Route::get('/export', [ReportController::class, 'export'])->name('export');
     });
 
-    Route::prefix('events')->name('events.')->group(function () {
+    Route::prefix('events')->name('events.')->middleware('permission:web.events.view')->group(function () {
         Route::get('/', [TrackingEventsController::class, 'index'])->name('index');
         Route::get('/json', [TrackingEventsController::class, 'json'])->name('json');
         Route::post('/{eventId}/read', [TrackingEventsController::class, 'markRead'])->name('read');
     });
 
-    Route::prefix('geofences')->name('geofences.')->group(function () {
+    Route::prefix('geofences')->name('geofences.')->middleware('permission:web.geofence.view')->group(function () {
         Route::get('/', [TrackingGeofencesController::class, 'index'])->name('index');
         Route::get('/json', [TrackingGeofencesController::class, 'json'])->name('json');
-        Route::post('/', [TrackingGeofencesController::class, 'store'])->name('store');
-        Route::post('/{geofence}', [TrackingGeofencesController::class, 'update'])->name('update');
-        Route::delete('/{geofence}', [TrackingGeofencesController::class, 'destroy'])->name('destroy');
+        Route::middleware('permission:web.geofence.manage')->group(function (): void {
+            Route::post('/', [TrackingGeofencesController::class, 'store'])->name('store');
+            Route::post('/{geofence}', [TrackingGeofencesController::class, 'update'])->name('update');
+            Route::delete('/{geofence}', [TrackingGeofencesController::class, 'destroy'])->name('destroy');
+        });
     });
 
-    Route::prefix('notifications')->name('notifications.')->group(function () {
+    Route::prefix('notifications')->name('notifications.')->middleware('permission:web.tracking.hub.notifications')->group(function () {
         Route::get('/', [TrackingNotificationsController::class, 'index'])->name('index');
         Route::get('/json', [TrackingNotificationsController::class, 'json'])->name('json');
         Route::post('/', [TrackingNotificationsController::class, 'update'])->name('update');
     });
 
-    Route::prefix('maintenance')->name('maintenance.')->group(function () {
+    Route::prefix('maintenance')->name('maintenance.')->middleware('permission:web.tracking.hub.maintenance')->group(function () {
         Route::get('/', [MaintenanceController::class, 'index'])->name('index');
         Route::get('/json', [MaintenanceController::class, 'json'])->name('json');
         Route::post('/', [MaintenanceController::class, 'store'])->name('store');
@@ -57,7 +74,7 @@ return function (): void {
         Route::delete('/{maintenance}', [MaintenanceController::class, 'destroy'])->name('destroy');
     });
 
-    Route::prefix('drivers')->name('drivers.')->group(function () {
+    Route::prefix('drivers')->name('drivers.')->middleware('permission:web.tracking.hub.drivers')->group(function () {
         Route::get('/', [DriversController::class, 'index'])->name('index');
         Route::get('/json', [DriversController::class, 'json'])->name('json');
         Route::post('/', [DriversController::class, 'store'])->name('store');
@@ -65,14 +82,14 @@ return function (): void {
         Route::delete('/{driver}', [DriversController::class, 'destroy'])->name('destroy');
     });
 
-    Route::prefix('commands')->name('commands.')->group(function () {
+    Route::prefix('commands')->name('commands.')->middleware('permission:web.map.toolbar.commands')->group(function () {
         Route::get('/', [CommandsController::class, 'index'])->name('index');
         Route::get('/json', [CommandsController::class, 'json'])->name('json');
         Route::post('/send', [CommandsController::class, 'send'])->name('send');
         Route::delete('/{command}', [CommandsController::class, 'cancel'])->name('cancel');
     });
 
-    Route::prefix('tasks')->name('tasks.')->group(function () {
+    Route::prefix('tasks')->name('tasks.')->middleware('permission:web.tracking.hub.tasks')->group(function () {
         Route::get('/', [TasksController::class, 'index'])->name('index');
         Route::get('/json', [TasksController::class, 'json'])->name('json');
         Route::get('/export', [TasksController::class, 'export'])->name('export');
@@ -81,7 +98,7 @@ return function (): void {
         Route::delete('/{task}', [TasksController::class, 'destroy'])->name('destroy');
     });
 
-    Route::prefix('settings')->name('settings.')->group(function () {
+    Route::prefix('settings')->name('settings.')->middleware('permission:web.settings.view')->group(function () {
         Route::get('/', [TrackingSettingsController::class, 'index'])->name('index');
         Route::get('/json', [TrackingSettingsController::class, 'json'])->name('json');
         Route::post('/', [TrackingSettingsController::class, 'update'])->name('update');

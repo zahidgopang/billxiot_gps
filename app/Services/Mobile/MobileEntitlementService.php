@@ -9,6 +9,7 @@ use App\Models\Device;
 use App\Models\Subscription;
 use App\Models\User;
 use App\Services\Authorization\RbacService;
+use App\Services\Authorization\PermissionCatalogService;
 use App\Services\DeviceSubscriptionService;
 use App\Services\Traccar\TraccarTrackingGate;
 use App\Services\Traccar\TraccarUserAccessService;
@@ -194,25 +195,24 @@ class MobileEntitlementService
      */
     public function permissionsFor(User $user): array
     {
-        $role = $this->rbac->roleOf($user)->value;
-        $base = config("rbac.roles.{$role}.permissions", []);
-        $overrides = $this->rbac->permissionOverrides($user);
+        return $this->rbac->grantedPermissionsFor($user);
+    }
 
-        $granted = [];
-        foreach ($overrides as $key => $enabled) {
-            if ($enabled) {
-                $granted[] = $key;
+    /**
+     * @return array<string, bool>
+     */
+    public function permissionMapFor(User $user): array
+    {
+        try {
+            return app(PermissionCatalogService::class)->effectivePermissionMap($user, $this->rbac);
+        } catch (\Throwable) {
+            $granted = $this->permissionsFor($user);
+            if (in_array('*', $granted, true)) {
+                return ['*' => true];
             }
-        }
 
-        if (in_array('*', $base, true)) {
-            return ['*'];
+            return array_fill_keys($granted, true);
         }
-
-        return array_values(array_unique(array_merge(
-            array_filter($base, fn ($p) => $p !== '*'),
-            $granted
-        )));
     }
 
     /**

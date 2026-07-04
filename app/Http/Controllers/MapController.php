@@ -11,6 +11,7 @@ use App\Models\DeviceLocation;
 use App\Models\VehicleEvent;
 use App\Support\DateTime\AppDateTime;
 use App\Services\Mobile\MobileMapStatusResolver;
+use App\Services\Mobile\MobileRouteAnalyticsService;
 use App\Services\Tracking\DeviceHistoryFetcher;
 use App\Services\Tracking\NotificationPreferenceService;
 use App\Services\VehicleEventService;
@@ -29,6 +30,7 @@ class MapController extends Controller
         private GeofenceStoreInterface $geofences,
         private MobileMapStatusResolver $mapStatus,
         private DeviceHistoryFetcher $historyFetcher,
+        private MobileRouteAnalyticsService $routeAnalytics,
         private NotificationPreferenceService $notificationPrefs,
     ) {}
 
@@ -46,7 +48,13 @@ class MapController extends Controller
         );
 
         $latestLocation = $this->positions->latestForDevice($device);
-        $initialPoint = $this->formatLocationForDevice($latestLocation, $device);
+        $initialPoint = array_merge(
+            $this->formatLocationForDevice($latestLocation, $device) ?? [],
+            ['route_trip' => $this->routeTripPayload($device, $latestLocation)['route_trip'] ?? null],
+        );
+        if ($initialPoint === []) {
+            $initialPoint = null;
+        }
 
         $isAdminMap = $this->isAdminMapRequest();
         $mapApiRoutes = $this->mapApiRoutes($device, $token);
@@ -121,31 +129,23 @@ class MapController extends Controller
      */
     private function formatLocationForDevice(?DeviceLocation $location, Device $device): ?array
     {
-        $formatted = $this->formatLocation($location);
-
-        if (! $formatted) {
+        if (! $location) {
             return null;
         }
 
-        $map = $this->mapStatus->resolve($location, $device);
-
-        return array_merge($formatted, [
-            'status' => $map['label'],
-            'status_key' => $map['key'],
-            'connectivity_tier' => $map['connectivity_tier'],
-            'last_known_status' => $map['last_known_status'],
-            'last_known_status_key' => $map['last_known_status_key'],
-            'last_known_speed' => $map['last_known_speed'],
-            'last_known_ignition' => $map['last_known_ignition'],
-            'is_online' => $this->mapStatus->isRecentlyOnline($location),
-            'online' => $this->mapStatus->isRecentlyOnline($location),
-            'vehicle_name' => $device->vehicle_name,
-            'vehicle_number' => $device->vehicle_number,
-            'driver_name' => $device->driverDisplayName(),
-            'driver_contact' => $device->driverContactNumber(),
-            'map_marker_title' => $device->mapMarkerTitle(),
-            'map_marker_plate' => $device->mapMarkerPlateLine(),
-        ]);
+        return array_merge(
+            \App\Support\Tracking\DeviceLocationPayload::fromDeviceLocation($location, $device),
+            [
+                'gps_fix' => $location->gps_fix,
+                'time' => AppDateTime::toApi($location->recorded_at),
+                'vehicle_name' => $device->vehicle_name,
+                'vehicle_number' => $device->vehicle_number,
+                'driver_name' => $device->driverDisplayName(),
+                'driver_contact' => $device->driverContactNumber(),
+                'map_marker_title' => $device->mapMarkerTitle(),
+                'map_marker_plate' => $device->mapMarkerPlateLine(),
+            ],
+        );
     }
 
     public function historyJson(Request $request, string $token)
@@ -153,12 +153,22 @@ class MapController extends Controller
         $device = $this->findMapDevice($token);
 
         $range = $this->resolveHistoryRange($request);
-        $result = $this->fetchDeviceHistoryPoints($device, $request, $range);
+        $explicitRange = trim((string) ($request->query('from', $request->input('from', '')))) !== '';
+        $fetch = $this->historyFetcher->fetch($device, $range['from'], $range['to'], $explicitRange);
+        $stats = $this->routeAnalytics->analyze($fetch['locations']);
 
-        $response = response()->json($result['points']);
+        $payload = [
+            'points' => $this->formatLocationsCollection($fetch['locations']),
+            'stats' => $this->publicStatsPayload($stats),
+            'timeline' => $stats['timeline'] ?? [],
+            'used_fallback' => $fetch['used_fallback'],
+            'history_fallback' => $fetch['used_fallback'] ? $fetch['fallback_reason'] : null,
+        ];
+
+        $response = response()->json($payload);
 
         if ($request->boolean('debug_gps') || $request->query('debug_gps') === '1') {
-            $response->header('X-History-Count', (string) count($result['points']));
+            $response->header('X-History-Count', (string) count($payload['points']));
             $response->header('X-History-From', (string) $request->query('from', ''));
             $response->header('X-History-To', (string) $request->query('to', ''));
             if ($range['to'] !== null) {
@@ -167,8 +177,8 @@ class MapController extends Controller
             }
         }
 
-        if ($result['used_fallback'] && $result['fallback_reason']) {
-            $response->header('X-History-Fallback', $result['fallback_reason']);
+        if ($fetch['used_fallback'] && $fetch['fallback_reason']) {
+            $response->header('X-History-Fallback', $fetch['fallback_reason']);
         }
 
         return $response;
@@ -203,8 +213,14 @@ class MapController extends Controller
      */
     private function formatLocationsCollection(Collection $locations): array
     {
+        $statuses = $this->routeAnalytics->pointStatuses($locations);
+
         return $locations
-            ->map(fn ($loc) => $this->formatLocation($loc))
+            ->values()
+            ->map(fn ($loc, int $index) => array_merge(
+                $this->formatLocation($loc) ?? [],
+                $statuses[$index] ?? [],
+            ))
             ->filter()
             ->values()
             ->all();
@@ -225,8 +241,85 @@ class MapController extends Controller
             );
         }
 
-        return response()->json($this->formatLocationForDevice($latest, $device) ?? [])
-            ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+        return response()->json(array_merge(
+            $this->formatLocationForDevice($latest, $device) ?? [],
+            ['route_trip' => $this->routeTripPayload($device, $latest)['route_trip'] ?? null],
+        ))->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+    }
+
+    public function completeTrip(Request $request, string $token)
+    {
+        $device = $this->findMapDevice($token);
+
+        try {
+            $trip = app(\App\Services\Routes\TripManagementService::class)
+                ->markCompleted($device, $request->user());
+        } catch (\Throwable $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
+        }
+
+        $latest = $this->positions->latestForDevice($device);
+
+        return response()->json([
+            'success' => true,
+            'trip' => [
+                'id' => $trip->id,
+                'status' => $trip->status,
+            ],
+            'message' => __('app.routes.trip_marked_completed'),
+            'route_trip' => $this->routeTripPayload($device, $latest)['route_trip'] ?? null,
+        ]);
+    }
+
+    public function startNewTrip(Request $request, string $token)
+    {
+        $device = $this->findMapDevice($token);
+        $latest = $this->positions->latestForDevice($device);
+
+        try {
+            $trip = app(\App\Services\Routes\TripManagementService::class)->startNewTrip(
+                $device,
+                $latest ? (float) $latest->lat : null,
+                $latest ? (float) $latest->lng : null,
+                $latest ? (float) ($latest->speed ?? 0) : null,
+                $request->user(),
+            );
+        } catch (\Throwable $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
+        }
+
+        $message = $trip->started_at
+            ? __('app.routes.trip_started')
+            : __('app.routes.trip_armed_waiting_start');
+
+        return response()->json([
+            'success' => true,
+            'trip' => [
+                'id' => $trip->id,
+                'status' => $trip->status,
+            ],
+            'message' => $message,
+            'route_trip' => $this->routeTripPayload($device, $latest)['route_trip'] ?? null,
+        ]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function routeTripPayload(Device $device, ?DeviceLocation $location): array
+    {
+        $service = app(\App\Services\Routes\TripManagementService::class);
+        $payload = $service->payloadForDevice(
+            $device,
+            $location ? (float) $location->lat : null,
+            $location ? (float) $location->lng : null,
+            $location ? (float) ($location->speed ?? 0) : null,
+            $location ? (float) ($location->heading ?? 0) : null,
+            app(\App\Services\Mobile\MobileMapStatusResolver::class)
+                ->resolve($location, $device)['connectivity_tier'] === 'live',
+        );
+
+        return $payload ? ['route_trip' => $payload] : [];
     }
 
     public function summaryJson(string $token)
@@ -398,5 +491,28 @@ class MapController extends Controller
         ]);
 
         return response()->json($formatted);
+    }
+
+    /**
+     * @param  array<string, mixed>  $stats
+     * @return array<string, mixed>
+     */
+    private function publicStatsPayload(array $stats): array
+    {
+        return [
+            'total_distance_km' => $stats['total_distance_km'] ?? 0,
+            'moving_time_seconds' => max(0, (int) ($stats['moving_time_seconds'] ?? 0)),
+            'idle_time_seconds' => max(0, (int) ($stats['idle_time_seconds'] ?? 0)),
+            'parking_time_seconds' => max(0, (int) ($stats['parking_time_seconds'] ?? 0)),
+            'stopped_time_seconds' => max(0, (int) ($stats['stopped_time_seconds'] ?? 0)),
+            'offline_time_seconds' => max(0, (int) ($stats['offline_time_seconds'] ?? 0)),
+            'max_speed_kmh' => $stats['max_speed_kmh'] ?? 0,
+            'average_speed_kmh' => $stats['average_speed_kmh'] ?? 0,
+            'overspeed_events' => (int) ($stats['overspeed_events'] ?? 0),
+            'total_duration_seconds' => max(0, (int) ($stats['total_duration_seconds'] ?? 0)),
+            'start_time' => $stats['start_time'] ?? null,
+            'end_time' => $stats['end_time'] ?? null,
+            'stop_count' => (int) ($stats['stop_count'] ?? 0),
+        ];
     }
 }

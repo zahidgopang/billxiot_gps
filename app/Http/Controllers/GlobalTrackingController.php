@@ -6,6 +6,7 @@ use App\Http\Concerns\ResolvesHistoryDateRange;
 use App\Http\Concerns\ResolvesTrackingPanel;
 use App\Services\Mobile\VehicleStatusSpec;
 use App\Services\Tracking\GlobalTrackingService;
+use App\Services\Tracking\TrackingUiPermissions;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -34,6 +35,11 @@ class GlobalTrackingController extends Controller
             'hubRoutes' => $this->trackingHubRoutes($panel),
             'routes' => $this->liveRouteNames($panel),
             'deviceEditUrlTemplate' => $this->deviceEditUrlTemplate($panel),
+            'manageRoutesUrl' => Route::has("{$panel}.routes.index")
+                ? route("{$panel}.routes.index")
+                : null,
+            'trackingUi' => app(TrackingUiPermissions::class)->forUser($request->user()),
+            'companyMapCard' => app(\App\Services\Tracking\CompanyMapCardService::class)->mapPayload(),
         ]);
     }
 
@@ -50,8 +56,8 @@ class GlobalTrackingController extends Controller
         }
 
         $devices = $requested === []
-            ? $this->tracking->livePayloadForIds(array_slice($allowed, 0, GlobalTrackingService::MAX_LIVE_DEVICES))
-            : $this->tracking->livePayloadForIds($allowed);
+            ? $this->tracking->livePayloadForIds(array_slice($allowed, 0, GlobalTrackingService::MAX_LIVE_DEVICES), $request->user())
+            : $this->tracking->livePayloadForIds($allowed, $request->user());
 
         return $this->noStoreJson(['devices' => $devices]);
     }
@@ -78,6 +84,208 @@ class GlobalTrackingController extends Controller
         }
 
         return $this->noStoreJson(['success' => true, 'mileage' => $mileage]);
+    }
+
+    public function completeTrip(Request $request): JsonResponse
+    {
+        $id = (int) ($request->input('device_id') ?? $request->query('device_id') ?? 0);
+        $allowed = $this->tracking->filterAllowedIds($request->user(), [$id]);
+        if ($allowed === []) {
+            return $this->noStoreJson(['success' => false, 'message' => __('app.tracking.select_vehicle')], 404);
+        }
+
+        $device = \App\Models\Device::query()->find($id);
+        if (! $device) {
+            return $this->noStoreJson(['success' => false], 404);
+        }
+
+        try {
+            $trip = app(\App\Services\Routes\TripManagementService::class)
+                ->markCompleted($device, $request->user());
+        } catch (\Throwable $e) {
+            return $this->noStoreJson(['success' => false, 'message' => $e->getMessage()], 422);
+        }
+
+        $device->refresh();
+        $latest = $device->latestLocation;
+
+        return $this->noStoreJson([
+            'success' => true,
+            'message' => __('app.routes.trip_marked_completed'),
+            'trip' => [
+                'id' => $trip->id,
+                'status' => $trip->status,
+            ],
+            'route_trip' => $this->tracking->routeTripPayloadForActor($request->user(), $device, $latest),
+        ]);
+    }
+
+    public function startNewTrip(Request $request): JsonResponse
+    {
+        $id = (int) ($request->input('device_id') ?? $request->query('device_id') ?? 0);
+        $allowed = $this->tracking->filterAllowedIds($request->user(), [$id]);
+        if ($allowed === []) {
+            return $this->noStoreJson(['success' => false, 'message' => __('app.tracking.select_vehicle')], 404);
+        }
+
+        $device = \App\Models\Device::query()->find($id);
+        if (! $device) {
+            return $this->noStoreJson(['success' => false], 404);
+        }
+
+        app(\App\Services\Tracking\DevicePositionLoader::class)->attachLatest($device);
+        $latest = $device->latestLocation;
+
+        try {
+            $trip = app(\App\Services\Routes\TripManagementService::class)->startNewTrip(
+                $device,
+                $latest ? (float) $latest->lat : null,
+                $latest ? (float) $latest->lng : null,
+                $latest ? (float) ($latest->speed ?? 0) : null,
+                $request->user(),
+            );
+        } catch (\Throwable $e) {
+            return $this->noStoreJson(['success' => false, 'message' => $e->getMessage()], 422);
+        }
+
+        $routeTrip = $this->tracking->routeTripPayloadForActor($request->user(), $device, $latest);
+        $message = $trip->started_at
+            ? __('app.routes.trip_started')
+            : __('app.routes.trip_armed_waiting_start');
+
+        return $this->noStoreJson([
+            'success' => true,
+            'message' => $message,
+            'trip' => [
+                'id' => $trip->id,
+                'status' => $trip->status,
+            ],
+            'route_trip' => $routeTrip,
+        ]);
+    }
+
+    public function restartTrip(Request $request): JsonResponse
+    {
+        $id = (int) ($request->input('device_id') ?? $request->query('device_id') ?? 0);
+        $allowed = $this->tracking->filterAllowedIds($request->user(), [$id]);
+        if ($allowed === []) {
+            return $this->noStoreJson(['success' => false, 'message' => __('app.tracking.select_vehicle')], 404);
+        }
+
+        $device = \App\Models\Device::query()->find($id);
+        if (! $device) {
+            return $this->noStoreJson(['success' => false], 404);
+        }
+
+        app(\App\Services\Tracking\DevicePositionLoader::class)->attachLatest($device);
+        $latest = $device->latestLocation;
+
+        try {
+            $trip = app(\App\Services\Routes\TripManagementService::class)->restartTrip(
+                $device,
+                $latest ? (float) $latest->lat : null,
+                $latest ? (float) $latest->lng : null,
+                $latest ? (float) ($latest->speed ?? 0) : null,
+                $request->user(),
+            );
+        } catch (\Throwable $e) {
+            return $this->noStoreJson(['success' => false, 'message' => $e->getMessage()], 422);
+        }
+
+        $message = $trip->started_at
+            ? __('app.routes.trip_restarted')
+            : __('app.routes.trip_armed_waiting_start');
+
+        return $this->noStoreJson([
+            'success' => true,
+            'message' => $message,
+            'trip' => [
+                'id' => $trip->id,
+                'status' => $trip->status,
+            ],
+            'route_trip' => $this->tracking->routeTripPayloadForActor($request->user(), $device, $latest),
+        ]);
+    }
+
+    public function routeGuidance(Request $request): JsonResponse
+    {
+        $actor = $request->user();
+        $ui = app(TrackingUiPermissions::class)->forUser($actor);
+        if (! ($ui['polyline'] ?? true)) {
+            return $this->noStoreJson(['success' => false, 'message' => __('app.tracking.polyline_not_allowed')], 403);
+        }
+
+        $id = (int) ($request->query('device_id') ?? $request->input('device_id') ?? 0);
+        $allowed = $this->tracking->filterAllowedIds($request->user(), [$id]);
+        if ($allowed === []) {
+            return $this->noStoreJson(['success' => false], 404);
+        }
+
+        $device = \App\Models\Device::query()->find($id);
+        if (! $device) {
+            return $this->noStoreJson(['success' => false], 404);
+        }
+
+        app(\App\Services\Tracking\DevicePositionLoader::class)->attachLatest($device);
+        $latest = $device->latestLocation;
+        $lat = $latest ? (float) $latest->lat : null;
+        $lng = $latest ? (float) $latest->lng : null;
+        $speed = $latest ? (float) ($latest->speed ?? 0) : null;
+
+        $tripService = app(\App\Services\Routes\TripManagementService::class);
+        $payload = $tripService->payloadForDevice($device, $lat, $lng, $speed);
+        $route = $payload['route'] ?? null;
+        if (! $route) {
+            return $this->noStoreJson(['success' => false, 'message' => 'No route polyline'], 404);
+        }
+
+        if (! ($route['show_polyline'] ?? false)) {
+            return $this->noStoreJson(['success' => false, 'message' => 'Route polyline disabled'], 403);
+        }
+
+        if ($payload['trip_mode_active'] ?? false) {
+            $vertices = $route['navigation_polyline'] ?? [];
+            if (count($vertices) < 2) {
+                return $this->noStoreJson(['success' => false, 'message' => 'Navigation route unavailable'], 422);
+            }
+
+            return $this->noStoreJson([
+                'success' => true,
+                'mode' => 'navigation',
+                'vertices' => $vertices,
+                'distance_km' => $route['navigation_distance_km'] ?? null,
+                'duration_minutes' => $route['navigation_duration_minutes'] ?? null,
+                'is_road_polyline' => true,
+            ]);
+        }
+
+        $vertices = $route['guided_polyline'] ?? [];
+        $isRoad = (bool) ($route['is_road_polyline'] ?? false);
+
+        if (! $isRoad || count($vertices) < 10) {
+            $assignment = $tripService->assignmentForDevice($device->id);
+            $routePlan = $assignment?->route;
+            if ($routePlan) {
+                $guidance = app(\App\Services\Routes\RouteGuidanceService::class);
+                $guidance->forgetCache($routePlan);
+                $fresh = $guidance->fetchFromGoogle($routePlan);
+                if ($fresh && count($fresh['vertices'] ?? []) >= 2) {
+                    $vertices = $fresh['vertices'];
+                    $isRoad = true;
+                }
+            }
+        }
+
+        if (count($vertices) < 2) {
+            return $this->noStoreJson(['success' => false, 'message' => 'Guidance unavailable'], 422);
+        }
+
+        return $this->noStoreJson([
+            'success' => true,
+            'mode' => 'assigned',
+            'vertices' => $vertices,
+            'is_road_polyline' => $isRoad,
+        ]);
     }
 
     public function history(Request $request): View
@@ -180,6 +388,10 @@ class GlobalTrackingController extends Controller
             'devicePanel' => "{$panel}.tracking.device-panel",
             'deviceMileage' => "{$panel}.tracking.device-mileage",
             'commandsSend' => "{$panel}.tracking.commands.send",
+            'completeTrip' => "{$panel}.tracking.complete-trip",
+            'startNewTrip' => "{$panel}.tracking.start-new-trip",
+            'restartTrip' => "{$panel}.tracking.restart-trip",
+            'routeGuidance' => "{$panel}.tracking.route-guidance",
         ];
     }
 

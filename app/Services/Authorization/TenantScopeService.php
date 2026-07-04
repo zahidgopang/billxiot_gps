@@ -253,11 +253,13 @@ class TenantScopeService
         }
 
         if ($this->rbac->roleOf($actor) === AppRole::Admin) {
-            return $this->rbac->hasPermission($actor, 'maps.view');
+            return $this->rbac->hasPermission($actor, 'maps.view')
+                || $this->rbac->hasPermission($actor, 'web.map.live_only');
         }
 
         if ($this->rbac->isClientManager($actor)) {
-            if (! $this->rbac->hasPermission($actor, 'maps.view')) {
+            if (! $this->rbac->hasPermission($actor, 'maps.view')
+                && ! $this->rbac->hasPermission($actor, 'web.map.live_only')) {
                 return false;
             }
 

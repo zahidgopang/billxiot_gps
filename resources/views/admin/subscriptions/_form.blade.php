@@ -37,6 +37,12 @@
         $subscription?->subscription_type ?? \App\Enums\SubscriptionType::New->value
     );
     $isNewSubscription = $subscriptionType === \App\Enums\SubscriptionType::New->value;
+    $emailNotificationsEnabled = (bool) old('notification_email_enabled', $subscription?->notification_email_enabled ?? false);
+    $whatsappNotificationsEnabled = (bool) old('notification_whatsapp_enabled', $subscription?->notification_whatsapp_enabled ?? false);
+    $emailNotificationRows = $emailNotificationRows ?? [];
+    $whatsappNotificationRows = $whatsappNotificationRows ?? [];
+    $emailRouteRows = $emailRouteRows ?? [];
+    $whatsappRouteRows = $whatsappRouteRows ?? [];
 @endphp
 
 <x-admin.form-section
@@ -200,6 +206,34 @@
         @else
             <p class="admin-hint mb-0">If you choose Paid, you can optionally record payment details (cash/bank, reference, receipt).</p>
         @endif
+    </x-admin.form-col>
+
+    <x-admin.form-col :full="true">
+        <div class="border rounded-3 p-3 bg-white" id="subscription-notification-addons">
+            <h6 class="fw-semibold mb-2">
+                <i class="fas fa-bell me-2 text-primary"></i>{{ __('app.billing.notification_addons') }}
+            </h6>
+            <p class="admin-hint mb-3">{{ __('app.billing.notification_addons_hint') }}</p>
+
+            <div class="row g-3">
+                <div class="col-lg-6">
+                    @include('admin.subscriptions._notification-channel', [
+                        'channelPrefix' => 'notification_email',
+                        'enabled' => $emailNotificationsEnabled,
+                        'typeRows' => $emailNotificationRows,
+                        'routeRows' => $emailRouteRows,
+                    ])
+                </div>
+                <div class="col-lg-6">
+                    @include('admin.subscriptions._notification-channel', [
+                        'channelPrefix' => 'notification_whatsapp',
+                        'enabled' => $whatsappNotificationsEnabled,
+                        'typeRows' => $whatsappNotificationRows,
+                        'routeRows' => $whatsappRouteRows,
+                    ])
+                </div>
+            </div>
+        </div>
     </x-admin.form-col>
 
     @include('admin.subscriptions._payment-modal')

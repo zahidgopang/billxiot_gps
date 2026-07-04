@@ -63,6 +63,20 @@
                     </span>
                 </a>
 
+                @can('permission', 'routes.view')
+                    @if(Route::has($navPanel . '.routes.index'))
+                        <a href="{{ route($navPanel . '.routes.index') }}"
+                           role="listitem"
+                           class="nav-link-premium nav-flow-step {{ request()->routeIs($navPanel . '.routes.*') ? 'active' : '' }}">
+                            <span class="nav-flow-marker" aria-hidden="true"><span class="nav-flow-dot"></span></span>
+                            <span class="nav-flow-body">
+                                <i class="fas fa-route"></i>
+                                <span>{{ __('app.routes.nav') }}</span>
+                            </span>
+                        </a>
+                    @endif
+                @endcan
+
                 @if(Route::has($navPanel . '.subscriptions.index'))
                     <a href="{{ route($navPanel . '.subscriptions.index') }}"
                        role="listitem"
@@ -180,6 +194,20 @@
                 @endif
             @endcan
             @can('super-admin')
+                @if($navPanel === 'admin' && Route::has('admin.company-map-settings.index'))
+                    <a href="{{ route('admin.company-map-settings.index') }}"
+                       class="nav-link-premium {{ request()->routeIs('admin.company-map-settings.*') ? 'active' : '' }}">
+                        <i class="fas fa-building"></i>
+                        <span>{{ __('app.admin.nav.company_map') }}</span>
+                    </a>
+                @endif
+                @if($navPanel === 'admin' && Route::has('admin.permissions.index'))
+                    <a href="{{ route('admin.permissions.index') }}"
+                       class="nav-link-premium {{ request()->routeIs('admin.permissions.*') ? 'active' : '' }}">
+                        <i class="fas fa-shield-halved"></i>
+                        <span>{{ __('app.permissions.nav') }}</span>
+                    </a>
+                @endif
                 @if($navPanel === 'admin' && Route::has('admin.usage.index'))
                     <a href="{{ route('admin.usage.index') }}"
                        class="nav-link-premium {{ request()->routeIs('admin.usage.*') ? 'active' : '' }}">

@@ -228,7 +228,7 @@ class MobileMapStatusResolver
                 'delayed' => $counts['delayed']++,
                 'stale' => $counts['stale']++,
                 'alert' => $counts['alert']++,
-                'idle' => $counts['stopped']++,
+                'idle' => $counts['idle']++,
                 default => $counts['offline']++,
             };
         }

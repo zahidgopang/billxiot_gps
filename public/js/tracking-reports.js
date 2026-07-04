@@ -4,6 +4,9 @@
     if (!cfg) return;
 
     const PAGE_SIZES = [50, 100, 250, 500];
+    const i18n = cfg.i18n || {};
+    const colSets = i18n.columns || {};
+
     const state = {
         columns: [],
         rows: [],
@@ -24,19 +27,28 @@
 
     function formatDuration(sec) {
         const total = Math.round(parseFloat(sec) || 0);
-        if (total <= 0) return '0s';
+        if (total <= 0) return `0${i18n.secSuffix || 's'}`;
         const h = Math.floor(total / 3600);
         const m = Math.floor((total % 3600) / 60);
         const s = total % 60;
         const parts = [];
-        if (h) parts.push(`${h}h`);
-        if (h || m) parts.push(`${m}m`);
-        if (!h) parts.push(`${s}s`);
+        if (h) parts.push(`${h}${i18n.hourSuffix || 'h'}`);
+        if (h || m) parts.push(`${m}${i18n.minSuffix || 'm'}`);
+        if (!h) parts.push(`${s}${i18n.secSuffix || 's'}`);
         return parts.join(' ');
+    }
+
+    function numCell(value) {
+        return `<span class="gt-report-num" dir="ltr">${escapeHtml(value)}</span>`;
     }
 
     function selectedIds() {
         return [...document.querySelectorAll('#gtReportVehicles input:checked')].map((el) => el.value);
+    }
+
+    function reportLang() {
+        const el = $('gtReportLang');
+        return el ? el.value : (cfg.currentLang || 'en');
     }
 
     function queryParams() {
@@ -45,49 +57,81 @@
         p.set('from', $('gtReportFrom').value);
         p.set('to', $('gtReportTo').value);
         p.set('ids', selectedIds().join(','));
+        p.set('lang', reportLang());
         return p;
     }
 
-    /** Flatten the API payload into columns + a single flat rows array (fast to paginate/render). */
+    function columnsFor(type) {
+        return colSets[type] || colSets.summary || [];
+    }
+
+    /** Flatten API payload into columns + rows for the table. */
     function flatten(data) {
         const type = data.type;
         const devices = data.devices || [];
-        let columns = [];
+        const columns = columnsFor(type);
         const rows = [];
 
         if (type === 'summary') {
-            columns = ['Vehicle', 'Distance (km)', 'Max speed (km/h)', 'Stops', 'Duration'];
             devices.forEach((d) => rows.push([
-                d.device_name, d.total_distance_km, d.max_speed_kmh, d.stop_count, formatDuration(d.total_duration_seconds),
+                d.device_name,
+                d.total_distance_km,
+                formatDuration(d.moving_time_seconds),
+                formatDuration(d.stopped_time_seconds),
+                d.max_speed_kmh,
+                d.average_speed_kmh,
+                d.stop_count,
+                d.overspeed_events,
+                d.start_time || '',
+                d.end_time || '',
+                formatDuration(d.total_duration_seconds),
             ]));
         } else if (type === 'trips') {
-            columns = ['Vehicle', 'Start', 'End', 'Distance (km)', 'Duration'];
             devices.forEach((d) => (d.trips || []).forEach((t) => rows.push([
-                d.device_name, t.start_time || '', t.end_time || '', t.distance_km, formatDuration(t.duration_seconds),
+                d.device_name,
+                t.start_time || '',
+                t.end_time || '',
+                t.distance_km,
+                formatDuration(t.duration_seconds),
+                formatDuration(t.moving_time_seconds),
+                t.max_speed_kmh,
+                t.average_speed_kmh,
             ])));
         } else if (type === 'stops') {
-            columns = ['Vehicle', 'Start', 'Duration', 'Lat', 'Lng'];
             devices.forEach((d) => (d.stops || []).forEach((s) => rows.push([
-                d.device_name, s.start_display || s.start || '', formatDuration(s.duration_seconds), s.lat, s.lng,
+                d.device_name,
+                s.start_display || s.start || '',
+                s.end_display || s.end || '',
+                formatDuration(s.duration_seconds),
+                s.lat,
+                s.lng,
             ])));
         } else if (type === 'events') {
-            columns = ['Vehicle', 'Time', 'Title', 'Message'];
             devices.forEach((d) => (d.events || []).forEach((e) => rows.push([
-                d.device_name, e.time || '', e.title || '', e.message || '',
+                d.device_name,
+                e.time_display || e.time || '',
+                e.event_type || e.type || '',
+                e.title || '',
+                e.message || '',
+                e.speed ?? '',
             ])));
         } else if (type === 'route') {
-            columns = ['Vehicle', 'Points'];
-            devices.forEach((d) => rows.push([d.device_name, d.point_count]));
+            devices.forEach((d) => rows.push([
+                d.device_name,
+                d.point_count,
+                d.total_distance_km ?? 0,
+            ]));
         }
 
         return { columns, rows, type, devices };
     }
 
     function renderHead() {
-        $('gtReportHead').innerHTML = state.columns.map((c) => `<th>${escapeHtml(c)}</th>`).join('');
+        $('gtReportHead').innerHTML = state.columns
+            .map((c) => `<th>${escapeHtml(c)}</th>`)
+            .join('');
     }
 
-    /** Render only the current page — keeps the DOM small and rendering instant for huge datasets. */
     function renderPage() {
         const body = $('gtReportBody');
         const total = state.rows.length;
@@ -97,12 +141,15 @@
         const start = (state.page - 1) * state.pageSize;
         const end = Math.min(start + state.pageSize, total);
 
-        // Build the whole page as one string, then assign once (avoids O(n^2) innerHTML +=).
         let html = '';
         for (let i = start; i < end; i++) {
             const cells = state.rows[i];
             html += '<tr>';
-            for (let c = 0; c < cells.length; c++) html += `<td>${escapeHtml(cells[c])}</td>`;
+            for (let c = 0; c < cells.length; c++) {
+                const val = cells[c];
+                const isNum = typeof val === 'number' || (c > 0 && /^-?\d/.test(String(val)));
+                html += `<td>${isNum ? numCell(val) : escapeHtml(val)}</td>`;
+            }
             html += '</tr>';
         }
         body.innerHTML = html;
@@ -112,23 +159,33 @@
 
     function renderPager(total, start, end, pages) {
         const count = $('gtReportCount');
-        if (count) count.textContent = total ? `${start + 1}–${end} of ${total}` : '';
+        if (count) {
+            const tpl = i18n.pagerRange || ':from–:to of :total';
+            count.textContent = total
+                ? tpl
+                    .replace(':from', String(start + 1))
+                    .replace(':to', String(end))
+                    .replace(':total', String(total))
+                : '';
+        }
 
         const pager = $('gtReportPager');
         if (!pager) return;
-        if (total <= state.pageSize && state.pageSize === PAGE_SIZES[0] && pages <= 1) {
-            // still show page-size selector even for small sets
-        }
 
-        const sizeSel = `<select class="form-select form-select-sm" id="gtReportPageSize" title="Rows per page">${
-            PAGE_SIZES.map((n) => `<option value="${n}" ${n === state.pageSize ? 'selected' : ''}>${n}/page</option>`).join('')
+        const sizeSel = `<select class="form-select form-select-sm" id="gtReportPageSize" title="${escapeHtml(i18n.rowsPerPage || 'Rows per page')}">${
+            PAGE_SIZES.map((n) => `<option value="${n}" ${n === state.pageSize ? 'selected' : ''}>${n}</option>`).join('')
         }</select>`;
 
         const prevDis = state.page <= 1 ? 'disabled' : '';
         const nextDis = state.page >= pages ? 'disabled' : '';
+        const pageTpl = i18n.pageOf || ':page / :pages';
+        const pageLabel = pageTpl
+            .replace(':page', String(state.page))
+            .replace(':pages', String(pages));
+
         pager.innerHTML = `${sizeSel}
             <button type="button" class="btn btn-sm btn-outline-secondary" id="gtReportPrev" ${prevDis}>&lsaquo;</button>
-            <span class="small text-muted">${state.page} / ${pages}</span>
+            <span class="small text-muted">${pageLabel}</span>
             <button type="button" class="btn btn-sm btn-outline-secondary" id="gtReportNext" ${nextDis}>&rsaquo;</button>`;
 
         $('gtReportPageSize').addEventListener('change', (e) => {
@@ -201,7 +258,7 @@
             }
 
             if (!state.rows.length) {
-                showEmpty('No data for the selected report and period.');
+                showEmpty(i18n.noData || 'No data for the selected report and period.');
             } else {
                 showEmpty(null);
                 renderHead();
@@ -209,7 +266,7 @@
             }
         } catch (err) {
             console.error('[reports] generate failed', err);
-            showEmpty('Failed to load the report. Please try again.');
+            showEmpty(i18n.loadFailed || 'Failed to load the report. Please try again.');
         } finally {
             setLoading(false);
         }

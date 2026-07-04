@@ -13,6 +13,8 @@ use App\Services\Mobile\MobileMapStatusResolver;
 use App\Services\Mobile\VehicleStatusSpec;
 use App\Support\DateTime\AppDateTime;
 use App\Support\Tracking\DeviceLocationPayload;
+use App\Support\Tracking\TelemetryFormatter;
+use App\Services\Tracking\StatusDurationResolver;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 
@@ -43,9 +45,13 @@ class GlobalTrackingService
         private DeviceHistoryFetcher $historyFetcher,
         private EventReaderInterface $events,
         private MobileMapStatusResolver $mapStatus,
+        private StatusDurationResolver $statusDuration,
         private TenantScopeService $tenantScope,
         private RbacService $rbac,
         private \App\Services\Mobile\MobileRouteAnalyticsService $analytics,
+        private \App\Services\Routes\TripManagementService $tripManagement,
+        private DriverMapInfoService $driverMapInfo,
+        private TrackingUiPermissions $trackingUi,
     ) {}
 
     /**
@@ -68,11 +74,20 @@ class GlobalTrackingService
         $this->positionLoader->attachLatestToMany(collect([$device]));
         $latest = $device->latestLocation;
         $map = $this->mapStatus->resolve($latest, $device);
+        $motionKey = $latest
+            ? VehicleStatusSpec::motionKey((float) ($latest->speed ?? 0), (bool) $latest->ignition)
+            : null;
+        $duration = $this->statusDuration->resolve($device, $latest, $map);
 
         $from = now()->startOfDay();
         $to = now();
-        $collection = $this->historyFetcher->fetch($device, $from, $to, true)['locations'];
-        $stats = $this->analytics->analyze($collection);
+        try {
+            $collection = $this->historyFetcher->fetch($device, $from, $to, true)['locations'];
+            $stats = $this->analytics->analyze($collection);
+        } catch (\Throwable) {
+            $collection = collect();
+            $stats = $this->analytics->analyze($collection);
+        }
 
         $events = $this->events
             ->forDevice($device, now()->subDays(7), $to, null, limit: 12)
@@ -123,12 +138,21 @@ class GlobalTrackingService
             'plate' => $device->mapMarkerPlateLine() ?? $device->vehiclePlateNumber(),
             'status' => $map['label'],
             'status_key' => $map['key'],
+            'connectivity_tier' => $map['connectivity_tier'],
+            'last_known_status' => $map['last_known_status'],
+            'last_known_status_key' => $map['last_known_status_key'],
+            'motion_status' => $motionKey ? VehicleStatusSpec::motionLabel($motionKey) : null,
+            'motion_status_key' => $motionKey,
+            'status_since' => $duration['since']
+                ? app_datetime_api($duration['since'])
+                : null,
+            'status_duration_seconds' => $duration['seconds'],
             'icon' => $device->deviceTypeIconClass(),
             'color' => VehicleStatusSpec::colorForKey($map['key']),
             'speed' => $latest !== null ? round((float) ($latest->speed ?? 0)) : null,
             'angle' => $latest !== null ? round((float) ($latest->heading ?? 0)) : null,
             'altitude' => ($latest?->altitude !== null) ? round((float) $latest->altitude) : null,
-            'odometer' => $latest?->odometer,
+            'odometer' => TelemetryFormatter::odometerKm($latest?->odometer),
             'lat' => $latest ? (float) $latest->lat : null,
             'lng' => $latest ? (float) $latest->lng : null,
             'ignition' => $latest !== null ? (bool) $latest->ignition : null,
@@ -136,8 +160,10 @@ class GlobalTrackingService
             'time_server' => app_datetime_format(now()),
             'stats' => [
                 'distance_km' => round((float) ($stats['total_distance_km'] ?? 0), 2),
-                'move_seconds' => (int) ($stats['moving_time_seconds'] ?? 0),
-                'stop_seconds' => (int) ($stats['stopped_time_seconds'] ?? 0),
+                'move_seconds' => max(0, (int) ($stats['moving_time_seconds'] ?? 0)),
+                'stop_seconds' => max(0, (int) ($stats['stopped_time_seconds'] ?? 0)),
+                'idle_seconds' => max(0, (int) ($stats['idle_time_seconds'] ?? 0)),
+                'parking_seconds' => max(0, (int) ($stats['parking_time_seconds'] ?? 0)),
                 'top_speed' => round((float) ($stats['max_speed_kmh'] ?? 0)),
                 'avg_speed' => round((float) ($stats['average_speed_kmh'] ?? 0)),
             ],
@@ -149,8 +175,76 @@ class GlobalTrackingService
             'battery' => $latest?->battery_level ?? null,
             'notes' => $notes,
             'photo' => null,
+            'driver' => $this->driverPayloadForActor($actor, $device),
             'speed_max' => 160,
+            'route_trip' => $this->routeTripPayloadForActor($actor, $device, $latest),
         ];
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    public function routeTripPayload(Device $device, ?DeviceLocation $latest): ?array
+    {
+        $map = $this->mapStatus->resolve($latest, $device);
+        $isLive = ($map['connectivity_tier'] ?? 'offline') === 'live';
+
+        return $this->tripManagement->payloadForDevice(
+            $device,
+            $latest ? (float) $latest->lat : null,
+            $latest ? (float) $latest->lng : null,
+            $latest ? (float) ($latest->speed ?? 0) : null,
+            $latest ? (float) ($latest->heading ?? 0) : null,
+            $isLive,
+        );
+    }
+
+    public function routeTripPayloadForActor(User $actor, Device $device, ?DeviceLocation $latest): ?array
+    {
+        $payload = $this->routeTripPayload($device, $latest);
+        if ($payload === null) {
+            return null;
+        }
+
+        $ui = app(TrackingUiPermissions::class)->forUser($actor);
+        if (! ($ui['polyline'] ?? true)) {
+            return $this->stripRouteTripPolylines($payload);
+        }
+
+        return $payload;
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    public function stripRouteTripPolylines(array $payload): array
+    {
+        if (! isset($payload['route']) || ! is_array($payload['route'])) {
+            return $payload;
+        }
+
+        $polylineKeys = [
+            'assigned_polyline',
+            'guided_polyline',
+            'polyline',
+            'admin_polyline',
+            'actual_polyline',
+            'navigation_polyline',
+            'join_polyline',
+            'dynamic_polyline',
+            'display_polyline',
+            'encoded_polyline',
+        ];
+
+        foreach ($polylineKeys as $key) {
+            unset($payload['route'][$key]);
+        }
+
+        $payload['route']['has_stored_polyline'] = false;
+        $payload['route']['is_road_polyline'] = false;
+
+        return $payload;
     }
 
     /**
@@ -299,12 +393,14 @@ class GlobalTrackingService
     {
         $devices = $this->devicesForActor($actor);
         $this->positionLoader->attachLatestToMany($devices);
+        $driverPayloads = $this->driverMapInfo->payloadsForDevices($devices);
+        $includeDriver = (bool) ($this->trackingUi->forUser($actor)['driver'] ?? false);
 
-        return $devices->map(function (Device $device) {
+        return $devices->map(function (Device $device) use ($actor, $driverPayloads, $includeDriver) {
             $latest = $device->latestLocation;
             $map = $this->mapStatus->resolve($latest, $device);
 
-            return [
+            return array_merge([
                 'id' => $device->id,
                 'title' => $device->mapMarkerTitle(),
                 'plate' => $device->mapMarkerPlateLine(),
@@ -325,7 +421,9 @@ class GlobalTrackingService
                 'recorded_at_human' => $latest?->recorded_at
                     ? app_datetime_format($latest->recorded_at)
                     : (string) __('app.user.devices.no_data_yet'),
-            ];
+                'driver' => $includeDriver ? ($driverPayloads[$device->id] ?? null) : null,
+                'route_trip' => $this->routeTripPayloadForActor($actor, $device, $latest),
+            ], $device->mapAppearancePayload());
         })->values()->all();
     }
 
@@ -335,7 +433,7 @@ class GlobalTrackingService
      * @param  list<int>  $deviceIds
      * @return list<array<string, mixed>>
      */
-    public function livePayloadForIds(array $deviceIds): array
+    public function livePayloadForIds(array $deviceIds, ?User $actor = null): array
     {
         if ($deviceIds === []) {
             return [];
@@ -344,6 +442,8 @@ class GlobalTrackingService
         $deviceIds = array_slice($deviceIds, 0, self::MAX_LIVE_DEVICES);
         $devices = Device::query()->whereIn('id', $deviceIds)->get()->keyBy('id');
         $this->positionLoader->attachLatestToMany($devices);
+        $driverPayloads = $this->driverMapInfo->payloadsForDevices($devices);
+        $includeDriver = $actor && ($this->trackingUi->forUser($actor)['driver'] ?? false);
 
         $out = [];
 
@@ -354,17 +454,31 @@ class GlobalTrackingService
             }
 
             $latest = $device->latestLocation;
-            if (! $latest) {
-                continue;
-            }
 
-            $payload = DeviceLocationPayload::fromDeviceLocation($latest, $device);
+            $payload = $latest
+                ? DeviceLocationPayload::fromDeviceLocation($latest, $device)
+                : [
+                    'id' => $device->id,
+                    'lat' => null,
+                    'lng' => null,
+                    'speed' => null,
+                    'heading' => 0,
+                    'status_key' => 'offline',
+                    'status' => (string) __('app.tracking.offline'),
+                ];
+            $payload = array_merge($payload, $device->mapAppearancePayload());
             $payload['id'] = $device->id;
             $payload['title'] = $device->mapMarkerTitle();
             $payload['plate'] = $device->mapMarkerPlateLine();
             $payload['icon'] = $device->deviceTypeIconClass();
             $payload['color'] = VehicleStatusSpec::colorForKey((string) ($payload['status_key'] ?? 'offline'));
             $payload['recorded_at_human'] = app_datetime_format($latest->recorded_at);
+            $payload['route_trip'] = $actor
+                ? $this->routeTripPayloadForActor($actor, $device, $latest)
+                : $this->routeTripPayload($device, $latest);
+            if ($includeDriver) {
+                $payload['driver'] = $driverPayloads[$device->id] ?? null;
+            }
             $out[] = $payload;
         }
 
@@ -391,8 +505,14 @@ class GlobalTrackingService
             }
 
             $result = $this->historyFetcher->fetch($device, $from, $to, true);
+            $stats = $this->analytics->analyze($result['locations']);
+            $statuses = $this->analytics->pointStatuses($result['locations']);
             $points = $result['locations']
-                ->map(fn (DeviceLocation $loc) => $this->formatHistoryPoint($loc))
+                ->values()
+                ->map(fn (DeviceLocation $loc, int $index) => array_merge(
+                    $this->formatHistoryPoint($loc),
+                    $statuses[$index] ?? [],
+                ))
                 ->values()
                 ->all();
 
@@ -405,20 +525,48 @@ class GlobalTrackingService
                 ->values()
                 ->all();
 
-            $vehicles[] = [
+            $vehicles[] = array_merge([
                 'id' => $device->id,
                 'name' => $device->mapMarkerTitle(),
+                'title' => $device->mapMarkerTitle(),
+                'plate' => $device->mapMarkerPlateLine(),
                 'color' => $multi
                     ? self::MULTI_VEHICLE_COLORS[$colorIndex++ % count(self::MULTI_VEHICLE_COLORS)]
                     : null,
                 'points' => $points,
+                'stats' => [
+                    'total_distance_km' => $stats['total_distance_km'] ?? 0,
+                    'moving_time_seconds' => max(0, (int) ($stats['moving_time_seconds'] ?? 0)),
+                    'idle_time_seconds' => max(0, (int) ($stats['idle_time_seconds'] ?? 0)),
+                    'parking_time_seconds' => max(0, (int) ($stats['parking_time_seconds'] ?? 0)),
+                    'stopped_time_seconds' => max(0, (int) ($stats['stopped_time_seconds'] ?? 0)),
+                    'offline_time_seconds' => max(0, (int) ($stats['offline_time_seconds'] ?? 0)),
+                    'max_speed_kmh' => $stats['max_speed_kmh'] ?? 0,
+                    'average_speed_kmh' => $stats['average_speed_kmh'] ?? 0,
+                    'overspeed_events' => (int) ($stats['overspeed_events'] ?? 0),
+                    'total_duration_seconds' => max(0, (int) ($stats['total_duration_seconds'] ?? 0)),
+                    'stop_count' => (int) ($stats['stop_count'] ?? 0),
+                ],
+                'timeline' => $stats['timeline'] ?? [],
                 'used_fallback' => $result['used_fallback'],
                 'fallback_reason' => $result['fallback_reason'],
                 'events' => $events,
-            ];
+            ], $device->mapAppearancePayload());
         }
 
         return $vehicles;
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function driverPayloadForActor(User $actor, Device $device): ?array
+    {
+        if (! ($this->trackingUi->forUser($actor)['driver'] ?? false)) {
+            return null;
+        }
+
+        return $this->driverMapInfo->payloadForDevice($device);
     }
 
     /**
@@ -432,10 +580,24 @@ class GlobalTrackingService
             'speed' => (float) ($location->speed ?? 0),
             'heading' => (float) ($location->heading ?? 0),
             'ignition' => (bool) $location->ignition,
+            'acc' => (bool) ($location->acc ?? false),
+            'battery' => $location->battery_level,
+            'battery_level' => $location->battery_level,
+            'gsm_signal' => $location->gsm_signal,
+            'gps_signal' => $location->gps_signal,
+            'satellites' => $location->satellites,
+            'odometer' => $location->odometer,
+            'odometer_km' => TelemetryFormatter::odometerKm($location->odometer),
+            'altitude' => $location->altitude !== null ? round((float) $location->altitude) : null,
+            'power_cut' => (bool) $location->power_cut,
+            'panic' => (bool) $location->panic,
+            'gps_fix' => $location->gps_fix,
             'recorded_at' => AppDateTime::toApi($location->recorded_at),
+            'time' => AppDateTime::toApi($location->recorded_at),
             'timestamp' => $location->recorded_at
                 ? AppDateTime::format($location->recorded_at, 'log')
                 : null,
+            'position_id' => (int) ($location->id ?? 0),
         ];
     }
 }

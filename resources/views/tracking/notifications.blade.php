@@ -4,7 +4,7 @@
 @include('tracking.partials.module-styles')
 <style>
     .gt-notif-table th, .gt-notif-table td { vertical-align:middle; }
-    .gt-notif-table th.gt-notif-ch { width:120px; text-align:center; }
+    .gt-notif-table th.gt-notif-ch { width:96px; text-align:center; font-size:.78rem; }
     .gt-notif-table td.gt-notif-ch { text-align:center; }
     .gt-notif-ch-head { display:flex; flex-direction:column; align-items:center; gap:.2rem; }
     .gt-notif-ch-head small { font-size:.66rem; color:#94a3b8; font-weight:400; cursor:pointer; text-decoration:underline; }
@@ -35,6 +35,18 @@
                                 <small data-toggle-col="push">{{ __('app.tracking.notif_toggle_all') }}</small>
                             </span>
                         </th>
+                        <th class="gt-notif-ch">
+                            <span class="gt-notif-ch-head">
+                                {{ __('app.tracking.channel_email') }}
+                                <small data-toggle-col="email">{{ __('app.tracking.notif_toggle_all') }}</small>
+                            </span>
+                        </th>
+                        <th class="gt-notif-ch">
+                            <span class="gt-notif-ch-head">
+                                {{ __('app.tracking.channel_whatsapp') }}
+                                <small data-toggle-col="whatsapp">{{ __('app.tracking.notif_toggle_all') }}</small>
+                            </span>
+                        </th>
                     </tr></thead>
                     <tbody id="gtNotifBody"></tbody>
                 </table>
@@ -53,6 +65,8 @@
     i18n: {
         web: @json(__('app.tracking.channel_web')),
         push: @json(__('app.tracking.channel_push')),
+        email: @json(__('app.tracking.channel_email')),
+        whatsapp: @json(__('app.tracking.channel_whatsapp')),
         saved: @json(__('app.tracking.notif_saved')),
         failed: @json(__('app.common.failed')),
         noTypes: @json(__('app.tracking.notif_none')),

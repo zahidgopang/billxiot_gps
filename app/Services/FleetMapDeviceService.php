@@ -6,6 +6,7 @@ use App\Models\Device;
 use App\Models\User;
 use App\Services\Tracking\DevicePositionLoader;
 use App\Services\Traccar\TraccarTrackingGate;
+use App\Support\Tracking\DeviceLocationPayload;
 use Illuminate\Support\Collection;
 
 class FleetMapDeviceService
@@ -56,11 +57,10 @@ class FleetMapDeviceService
             $latest = $device->latestLocation;
             $status = $dashboard->resolveDeviceStatus($device, $alertDeviceIds);
 
-            return [
+            $row = array_merge([
                 'id' => $device->id,
                 'title' => $device->mapMarkerTitle(),
                 'plate' => $device->mapMarkerPlateLine(),
-                'vehicle_type' => $device->vehicle_type ?: 'car',
                 'status_key' => $status['key'],
                 'status_label' => $status['label'],
                 'lat' => $latest ? (float) $latest->lat : null,
@@ -71,7 +71,13 @@ class FleetMapDeviceService
                     ? app_datetime_format($latest->recorded_at)
                     : __('app.user.devices.no_data_yet'),
                 'launch_map_url' => $launchUrl($device),
-            ];
+            ], $device->mapAppearancePayload());
+
+            if ($latest) {
+                $row = array_merge($row, DeviceLocationPayload::fromDeviceLocation($latest, $device));
+            }
+
+            return $row;
         })->values()->all();
     }
 }

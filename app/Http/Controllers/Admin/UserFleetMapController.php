@@ -6,6 +6,7 @@ use App\Http\Controllers\Concerns\InteractsWithTenantAuthorization;
 use App\Http\Controllers\Controller;
 use App\Models\Device;
 use App\Models\User;
+use App\Services\FleetMapDeviceService;
 use App\Services\Mobile\MapRenderingSpec;
 use App\Services\Tracking\DevicePositionLoader;
 use App\Services\UserDashboardService;
@@ -85,28 +86,10 @@ class UserFleetMapController extends Controller
      */
     private function buildDevicesPayload(Collection $devices, UserDashboardService $dashboard, string $panel): array
     {
-        $alertDeviceIds = $dashboard->alertDeviceIds($devices);
-
-        return $devices->map(function (Device $device) use ($dashboard, $alertDeviceIds, $panel) {
-            $latest = $device->latestLocation;
-            $status = $dashboard->resolveDeviceStatus($device, $alertDeviceIds);
-
-            return [
-                'id' => $device->id,
-                'title' => $device->mapMarkerTitle(),
-                'plate' => $device->mapMarkerPlateLine(),
-                'vehicle_type' => $device->vehicle_type ?: 'car',
-                'status_key' => $status['key'],
-                'status_label' => $status['label'],
-                'lat' => $latest ? (float) $latest->lat : null,
-                'lng' => $latest ? (float) $latest->lng : null,
-                'heading' => $latest ? (float) ($latest->heading ?? 0) : 0,
-                'speed' => $latest ? round((float) ($latest->speed ?? 0)) : null,
-                'recorded_at_human' => $latest?->recorded_at
-                    ? app_datetime_format($latest->recorded_at)
-                    : __('app.common.no_data'),
-                'launch_map_url' => route($panel.'.locations.launch-map', $device),
-            ];
-        })->values()->all();
+        return app(FleetMapDeviceService::class)->buildPayload(
+            $devices,
+            $dashboard,
+            fn (Device $device) => route($panel.'.locations.launch-map', $device),
+        );
     }
 }

@@ -4,6 +4,17 @@ return [
 
     'default' => env('BROADCAST_DRIVER', 'reverb'),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Browser Echo (Laravel Reverb / Pusher protocol)
+    |--------------------------------------------------------------------------
+    |
+    | Set REVERB_CLIENT_ENABLED=false when Reverb is not running locally;
+    | maps still update via HTTP polling.
+    |
+    */
+    'echo_enabled' => env('REVERB_CLIENT_ENABLED', env('BROADCAST_DRIVER') === 'reverb'),
+
     'connections' => [
 
         'reverb' => [

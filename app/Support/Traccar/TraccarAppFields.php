@@ -46,6 +46,16 @@ final class TraccarAppFields
 
     public const KEY_VEHICLE_TYPE = 'vehicle_type';
 
+    public const KEY_MAP_MARKER_STYLE = 'map_marker_style';
+
+    public const KEY_MAP_MARKER_SIZE = 'map_marker_size';
+
+    public const KEY_MAP_ICON_SOURCE = 'map_icon_source';
+
+    public const KEY_MAP_CUSTOM_ICON = 'map_custom_icon';
+
+    public const KEY_MAP_ICON_ROTATION = 'map_icon_rotation_enabled';
+
     public const KEY_DRIVER_NAME = 'driver_name';
 
     public const KEY_DRIVER_CONTACT = 'driver_contact';

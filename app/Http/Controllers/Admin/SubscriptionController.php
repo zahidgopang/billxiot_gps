@@ -14,6 +14,7 @@ use App\Services\Billing\BillingInvoiceService;
 use App\Services\Billing\DeviceCostResolver;
 use App\Services\Billing\SubscriptionBillingService;
 use App\Services\SubscriptionRenewalService;
+use App\Support\Billing\SubscriptionNotificationConfig;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
@@ -30,6 +31,7 @@ class SubscriptionController extends Controller
         private SubscriptionBillingService $subscriptionBilling,
         private BillingInvoiceService $billingInvoices,
         private DeviceCostResolver $deviceCosts,
+        private SubscriptionNotificationConfig $notificationConfig,
     ) {}
 
     public function index(Request $request)
@@ -81,6 +83,7 @@ class SubscriptionController extends Controller
             'selectedClient' => $selectedClient,
             'plans' => $this->activePlans(),
             'panel' => $this->panelPrefix(),
+            ...$this->notificationFormData(null),
         ]);
     }
 
@@ -134,6 +137,7 @@ class SubscriptionController extends Controller
             'selectedClient' => $selectedClient,
             'plans' => $this->activePlans(),
             'panel' => $this->panelPrefix(),
+            ...$this->notificationFormData($subscription),
         ]);
     }
 
@@ -410,6 +414,19 @@ class SubscriptionController extends Controller
             $rules['device_selling_price'] = 'nullable|numeric|min:0';
         }
 
+        $rules['notification_email_enabled'] = 'nullable|boolean';
+        $rules['notification_whatsapp_enabled'] = 'nullable|boolean';
+        $rules['notification_email'] = 'nullable|array';
+        $rules['notification_email.types'] = 'nullable|array';
+        $rules['notification_email.types.*.price'] = 'nullable|numeric|min:0';
+        $rules['notification_email.routes'] = 'nullable|array';
+        $rules['notification_email.routes.*.price'] = 'nullable|numeric|min:0';
+        $rules['notification_whatsapp'] = 'nullable|array';
+        $rules['notification_whatsapp.types'] = 'nullable|array';
+        $rules['notification_whatsapp.types.*.price'] = 'nullable|numeric|min:0';
+        $rules['notification_whatsapp.routes'] = 'nullable|array';
+        $rules['notification_whatsapp.routes.*.price'] = 'nullable|numeric|min:0';
+
         if (! $this->isClientPanel()) {
             $rules['client_id'] = 'required|integer|exists:clients,id';
         }
@@ -505,7 +522,93 @@ class SubscriptionController extends Controller
             $data['status'] = 'expired';
         }
 
+        $emailEnabled = $request->boolean('notification_email_enabled');
+        $whatsappEnabled = $request->boolean('notification_whatsapp_enabled');
+
+        $data['notification_email_enabled'] = $emailEnabled;
+        $data['notification_whatsapp_enabled'] = $whatsappEnabled;
+        $data['notification_email_config'] = $this->notificationConfig->parseChannelRequest($request, 'email', $emailEnabled);
+        $data['notification_whatsapp_config'] = $this->notificationConfig->parseChannelRequest($request, 'whatsapp', $whatsappEnabled);
+
+        if ($emailEnabled) {
+            $this->assertNotificationChannelHasItems($data['notification_email_config'], 'notification_email_enabled');
+        }
+        if ($whatsappEnabled) {
+            $this->assertNotificationChannelHasItems($data['notification_whatsapp_config'], 'notification_whatsapp_enabled');
+        }
+
+        $data['notification_email_price'] = $emailEnabled
+            ? ($this->notificationConfig->sumConfigPrices($data['notification_email_config']) ?: null)
+            : null;
+        $data['notification_whatsapp_price'] = $whatsappEnabled
+            ? ($this->notificationConfig->sumConfigPrices($data['notification_whatsapp_config']) ?: null)
+            : null;
+
         return $billing !== null ? [$data, $billing] : [$data];
+    }
+
+    /**
+     * @return array{
+     *     emailNotificationRows: list<array<string, mixed>>,
+     *     whatsappNotificationRows: list<array<string, mixed>>,
+     *     emailRouteRows: list<array<string, mixed>>,
+     *     whatsappRouteRows: list<array<string, mixed>>,
+     *     hasRouteNotifications: bool
+     * }
+     */
+    private function notificationFormData(?Subscription $subscription): array
+    {
+        $emailConfig = $subscription?->notification_email_config;
+        $whatsappConfig = $subscription?->notification_whatsapp_config;
+        $emailLegacy = $subscription
+            && $subscription->notification_email_enabled
+            && $emailConfig === null;
+        $whatsappLegacy = $subscription
+            && $subscription->notification_whatsapp_enabled
+            && $whatsappConfig === null;
+
+        $emailRouteRows = $this->notificationConfig->formRouteRows(
+            is_array($emailConfig) ? $emailConfig : null,
+            'notification_email',
+            $emailLegacy,
+        );
+        $whatsappRouteRows = $this->notificationConfig->formRouteRows(
+            is_array($whatsappConfig) ? $whatsappConfig : null,
+            'notification_whatsapp',
+            $whatsappLegacy,
+        );
+
+        return [
+            'emailNotificationRows' => $this->notificationConfig->formRows(
+                is_array($emailConfig) ? $emailConfig : null,
+                'notification_email',
+                $emailLegacy,
+            ),
+            'whatsappNotificationRows' => $this->notificationConfig->formRows(
+                is_array($whatsappConfig) ? $whatsappConfig : null,
+                'notification_whatsapp',
+                $whatsappLegacy,
+            ),
+            'emailRouteRows' => $emailRouteRows,
+            'whatsappRouteRows' => $whatsappRouteRows,
+            'hasRouteNotifications' => $emailRouteRows !== [] || $whatsappRouteRows !== [],
+        ];
+    }
+
+    /**
+     * @param  array{types: array<string, mixed>, routes: array<string, mixed>}|null  $config
+     */
+    private function assertNotificationChannelHasItems(?array $config, string $field): void
+    {
+        if ($config === null) {
+            return;
+        }
+
+        if (($config['types'] ?? []) === [] && ($config['routes'] ?? []) === []) {
+            throw ValidationException::withMessages([
+                $field => __('app.billing.subscription_notif_required'),
+            ]);
+        }
     }
 
     private function authorizeSubscription(Subscription $subscription): void

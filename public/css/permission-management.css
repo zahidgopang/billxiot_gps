@@ -1,0 +1,314 @@
+.perm-mgmt {
+    --perm-card-bg: #fff;
+    --perm-card-border: #e2e8f0;
+    --perm-granted: #ecfdf5;
+    --perm-granted-border: #10b981;
+    --perm-grant: #ecfdf5;
+    --perm-grant-border: #10b981;
+    --perm-deny: #fef2f2;
+    --perm-deny-border: #ef4444;
+    --perm-inherit: #f8fafc;
+}
+
+/* Mode selector cards */
+.perm-mode-card {
+    display: flex;
+    gap: 14px;
+    align-items: flex-start;
+    padding: 16px;
+    border: 2px solid #e2e8f0;
+    border-radius: 12px;
+    text-decoration: none;
+    color: inherit;
+    height: 100%;
+    transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+}
+
+.perm-mode-card:hover {
+    border-color: #93c5fd;
+    background: #f8fafc;
+    color: inherit;
+}
+
+.perm-mode-card.is-active {
+    border-color: #2563eb;
+    background: #eff6ff;
+    box-shadow: 0 4px 14px rgba(37, 99, 235, 0.12);
+}
+
+.perm-mode-card__icon {
+    width: 42px;
+    height: 42px;
+    border-radius: 10px;
+    background: #dbeafe;
+    color: #2563eb;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.1rem;
+    flex-shrink: 0;
+}
+
+.perm-mode-card.is-active .perm-mode-card__icon {
+    background: #2563eb;
+    color: #fff;
+}
+
+.perm-mode-card__title {
+    font-weight: 700;
+    font-size: 0.95rem;
+    margin-bottom: 2px;
+}
+
+.perm-mode-card__desc {
+    font-size: 0.82rem;
+    color: #64748b;
+    line-height: 1.4;
+}
+
+.perm-how-it-works {
+    border-radius: 10px;
+}
+
+.perm-user-summary {
+    padding: 8px 12px;
+    background: #f8fafc;
+    border-radius: 10px;
+    border: 1px solid #e2e8f0;
+}
+
+.perm-override-legend .perm-legend-item {
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: 1px solid #e2e8f0;
+    font-size: 0.82rem;
+    height: 100%;
+}
+
+.perm-override-legend .perm-legend-item strong {
+    display: block;
+    margin-bottom: 2px;
+}
+
+.perm-override-legend .perm-legend-item span {
+    color: #64748b;
+}
+
+.perm-legend-item--inherit {
+    background: #f8fafc;
+}
+
+.perm-legend-item--grant {
+    background: #ecfdf5;
+    border-color: #bbf7d0;
+}
+
+.perm-legend-item--deny {
+    background: #fef2f2;
+    border-color: #fecaca;
+}
+
+.perm-user-filters .btn.active {
+    font-weight: 600;
+}
+
+.perm-tabs .nav-link {
+    font-weight: 600;
+    font-size: 0.9rem;
+    white-space: nowrap;
+}
+
+.perm-accordion__item {
+    border: 1px solid var(--perm-card-border);
+    border-radius: 12px !important;
+    margin-bottom: 10px;
+    overflow: hidden;
+}
+
+.perm-accordion .accordion-header {
+    display: flex;
+}
+
+.perm-accordion .accordion-button {
+    font-weight: 700;
+    background: #f8fafc;
+}
+
+.perm-accordion .accordion-button:not(.collapsed) {
+    background: #eff6ff;
+    color: #1d4ed8;
+}
+
+.perm-cat-actions .btn-link {
+    text-decoration: none;
+    padding: 0.35rem 0.5rem;
+}
+
+.perm-group-label {
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #64748b;
+    margin: 0.5rem 0;
+}
+
+.perm-card {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px;
+    border: 1px solid var(--perm-card-border);
+    border-radius: 12px;
+    background: var(--perm-card-bg);
+    height: 100%;
+    transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+    margin: 0;
+}
+
+.perm-card__label {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    cursor: pointer;
+}
+
+.perm-card:hover {
+    border-color: #93c5fd;
+    box-shadow: 0 4px 14px rgba(15, 23, 42, 0.06);
+}
+
+.perm-card.is-granted,
+.perm-card:has(.perm-card__check:checked) {
+    background: var(--perm-granted);
+    border-color: var(--perm-granted-border);
+}
+
+.perm-card.is-inherit {
+    background: var(--perm-inherit);
+}
+
+.perm-card.is-grant {
+    background: var(--perm-grant);
+    border-color: var(--perm-grant-border);
+}
+
+.perm-card.is-deny {
+    background: var(--perm-deny);
+    border-color: var(--perm-deny-border);
+}
+
+.perm-card.is-effective {
+    box-shadow: inset 0 0 0 1px rgba(37, 99, 235, 0.12);
+}
+
+.perm-tristate .btn {
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.perm-tristate .btn-check:checked + .btn-outline-secondary {
+    background: #64748b;
+    border-color: #64748b;
+    color: #fff;
+}
+
+.perm-access-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    margin-top: 8px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    border: 1px solid #e2e8f0;
+    background: #fff;
+}
+
+.perm-access-status.is-allowed {
+    border-color: #bbf7d0;
+    background: #f0fdf4;
+    color: #15803d;
+}
+
+.perm-access-status.is-denied {
+    border-color: #fecaca;
+    background: #fef2f2;
+    color: #b91c1c;
+}
+
+.perm-card__check {
+    margin-top: 4px;
+    flex-shrink: 0;
+    width: 1.1em;
+    height: 1.1em;
+}
+
+.perm-card__body {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.perm-card__icon {
+    color: #2563eb;
+    margin-bottom: 4px;
+}
+
+.perm-card__title {
+    font-weight: 700;
+    font-size: 0.9rem;
+    color: #0f172a;
+    line-height: 1.3;
+}
+
+.perm-card__key {
+    display: none;
+    font-size: 0.68rem;
+    font-family: ui-monospace, monospace;
+    color: #94a3b8;
+}
+
+.perm-show-keys .perm-card__key {
+    display: block;
+}
+
+.perm-card__desc {
+    font-size: 0.8rem;
+    color: #475569;
+    line-height: 1.4;
+    margin-top: 4px;
+}
+
+.perm-item.is-hidden,
+.perm-item.is-filter-hidden {
+    display: none !important;
+}
+
+.perm-mgmt__footer {
+    position: sticky;
+    bottom: 12px;
+    z-index: 100;
+}
+
+@media (max-width: 768px) {
+    .perm-card {
+        padding: 10px;
+    }
+
+    .perm-tabs .nav-link {
+        font-size: 0.8rem;
+        padding: 0.5rem 0.65rem;
+    }
+
+    .perm-user-filters {
+        display: flex;
+        flex-wrap: wrap;
+    }
+
+    .perm-user-filters .btn {
+        flex: 1 1 auto;
+    }
+}

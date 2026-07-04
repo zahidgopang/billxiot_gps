@@ -3,6 +3,11 @@
 
     $featuresText = old('features_text', isset($plan) && is_array($plan->features) ? implode("\n", $plan->features) : '');
     $selectedCycle = old('billing_cycle', $plan->billing_cycle ?? PlanBillingCycle::Monthly->value);
+    $notificationTypeOptions = $notificationTypeOptions ?? [];
+    $routeOptions = $routeOptions ?? [];
+    $selectedEmailTypes = collect($selectedEmailTypes ?? [])->map(fn ($v) => (string) $v)->all();
+    $selectedWhatsappTypes = collect($selectedWhatsappTypes ?? [])->map(fn ($v) => (string) $v)->all();
+    $selectedRouteIds = collect($selectedRouteIds ?? [])->map(fn ($v) => (int) $v)->all();
 @endphp
 
 <x-admin.form-section :title="__('app.billing.plan_details')" icon="fas fa-layer-group">
@@ -97,3 +102,158 @@
         <p class="admin-hint">{{ __('app.billing.features_hint') }}</p>
     </x-admin.form-col>
 </x-admin.form-section>
+
+<x-admin.form-section
+    :title="__('app.billing.plan_email_notifications')"
+    icon="fas fa-envelope"
+    :description="__('app.billing.plan_email_notifications_hint')"
+>
+    <x-admin.form-col :full="true">
+        <div class="d-flex flex-wrap gap-2 mb-2">
+            <button type="button" class="btn btn-outline-secondary btn-sm plan-notif-select-all" data-target="email">
+                {{ __('app.billing.plan_notif_select_all') }}
+            </button>
+            <button type="button" class="btn btn-outline-secondary btn-sm plan-notif-clear-all" data-target="email">
+                {{ __('app.billing.plan_notif_clear_all') }}
+            </button>
+            <span class="small text-muted align-self-center plan-notif-count" data-target="email"></span>
+        </div>
+        <div class="row g-2 plan-notification-grid" data-channel="email">
+            @foreach($notificationTypeOptions as $option)
+                <div class="col-md-6 col-lg-4">
+                    <div class="form-check">
+                        <input type="checkbox"
+                               class="form-check-input plan-notif-check"
+                               data-channel="email"
+                               name="notification_email_types[]"
+                               id="plan-email-notif-{{ $option['key'] }}"
+                               value="{{ $option['key'] }}"
+                               @checked(in_array($option['key'], $selectedEmailTypes, true))>
+                        <label class="form-check-label" for="plan-email-notif-{{ $option['key'] }}">
+                            {{ $option['label'] }}
+                        </label>
+                    </div>
+                </div>
+            @endforeach
+        </div>
+    </x-admin.form-col>
+</x-admin.form-section>
+
+<x-admin.form-section
+    :title="__('app.billing.plan_whatsapp_notifications')"
+    icon="fab fa-whatsapp"
+    :description="__('app.billing.plan_whatsapp_notifications_hint')"
+>
+    <x-admin.form-col :full="true">
+        <div class="d-flex flex-wrap gap-2 mb-2">
+            <button type="button" class="btn btn-outline-secondary btn-sm plan-notif-select-all" data-target="whatsapp">
+                {{ __('app.billing.plan_notif_select_all') }}
+            </button>
+            <button type="button" class="btn btn-outline-secondary btn-sm plan-notif-clear-all" data-target="whatsapp">
+                {{ __('app.billing.plan_notif_clear_all') }}
+            </button>
+            <span class="small text-muted align-self-center plan-notif-count" data-target="whatsapp"></span>
+        </div>
+        <div class="row g-2 plan-notification-grid" data-channel="whatsapp">
+            @foreach($notificationTypeOptions as $option)
+                <div class="col-md-6 col-lg-4">
+                    <div class="form-check">
+                        <input type="checkbox"
+                               class="form-check-input plan-notif-check"
+                               data-channel="whatsapp"
+                               name="notification_whatsapp_types[]"
+                               id="plan-whatsapp-notif-{{ $option['key'] }}"
+                               value="{{ $option['key'] }}"
+                               @checked(in_array($option['key'], $selectedWhatsappTypes, true))>
+                        <label class="form-check-label" for="plan-whatsapp-notif-{{ $option['key'] }}">
+                            {{ $option['label'] }}
+                        </label>
+                    </div>
+                </div>
+            @endforeach
+        </div>
+    </x-admin.form-col>
+</x-admin.form-section>
+
+@if(! empty($routeOptions))
+    <x-admin.form-section
+        :title="__('app.billing.plan_route_notifications')"
+        icon="fas fa-route"
+        :description="__('app.billing.plan_route_notifications_hint')"
+    >
+        <x-admin.form-col :full="true">
+            <div class="d-flex flex-wrap gap-2 mb-2">
+                <button type="button" class="btn btn-outline-secondary btn-sm plan-notif-select-all" data-target="route">
+                    {{ __('app.billing.plan_notif_select_all') }}
+                </button>
+                <button type="button" class="btn btn-outline-secondary btn-sm plan-notif-clear-all" data-target="route">
+                    {{ __('app.billing.plan_notif_clear_all') }}
+                </button>
+                <span class="small text-muted align-self-center plan-notif-count" data-target="route"></span>
+            </div>
+            <div class="row g-2 plan-notification-grid" data-channel="route">
+                @foreach($routeOptions as $route)
+                    <div class="col-md-6 col-lg-4">
+                        <div class="form-check">
+                            <input type="checkbox"
+                                   class="form-check-input plan-notif-check"
+                                   data-channel="route"
+                                   name="notification_route_ids[]"
+                                   id="plan-route-notif-{{ $route['id'] }}"
+                                   value="{{ $route['id'] }}"
+                                   @checked(in_array((int) $route['id'], $selectedRouteIds, true))>
+                            <label class="form-check-label" for="plan-route-notif-{{ $route['id'] }}">
+                                {{ $route['label'] }}
+                            </label>
+                        </div>
+                    </div>
+                @endforeach
+            </div>
+        </x-admin.form-col>
+    </x-admin.form-section>
+@endif
+
+@push('scripts')
+<script>
+(function () {
+    'use strict';
+
+    function channelSelector(channel) {
+        if (channel === 'route') {
+            return '.plan-notif-check[data-channel="route"]';
+        }
+        return `.plan-notif-check[data-channel="${channel}"]`;
+    }
+
+    function updateCount(channel) {
+        const checks = document.querySelectorAll(channelSelector(channel));
+        const checked = Array.from(checks).filter((cb) => cb.checked).length;
+        const el = document.querySelector(`.plan-notif-count[data-target="${channel}"]`);
+        if (el) {
+            el.textContent = `${checked} / ${checks.length} {{ __('app.billing.plan_notif_selected') }}`;
+        }
+    }
+
+    function setAll(channel, checked) {
+        document.querySelectorAll(channelSelector(channel)).forEach((cb) => {
+            cb.checked = checked;
+        });
+        updateCount(channel);
+    }
+
+    document.querySelectorAll('.plan-notif-select-all').forEach((btn) => {
+        btn.addEventListener('click', () => setAll(btn.dataset.target, true));
+    });
+
+    document.querySelectorAll('.plan-notif-clear-all').forEach((btn) => {
+        btn.addEventListener('click', () => setAll(btn.dataset.target, false));
+    });
+
+    document.querySelectorAll('.plan-notif-check').forEach((cb) => {
+        cb.addEventListener('change', () => updateCount(cb.dataset.channel));
+    });
+
+    ['email', 'whatsapp', 'route'].forEach(updateCount);
+})();
+</script>
+@endpush

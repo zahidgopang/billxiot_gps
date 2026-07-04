@@ -78,6 +78,7 @@
         setField('maintenance_id', '');
         setField('data_list', true);
         setField('popup', true);
+        setField('update_last_service', true);
         clearSelectedObjects();
         syncToggles();
     }

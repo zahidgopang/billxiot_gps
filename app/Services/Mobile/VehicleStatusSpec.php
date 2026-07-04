@@ -32,7 +32,9 @@ class VehicleStatusSpec
     public const STATE_COLORS = [
         'running' => '#22c55e',
         'stopped' => '#f97316',
+        'idle' => '#f97316',
         'parked' => '#94a3b8',
+        'parking' => '#94a3b8',
         'moving' => '#a855f7',
         'delayed' => '#eab308',
         'stale' => '#f59e0b',
@@ -40,17 +42,25 @@ class VehicleStatusSpec
         'alert' => '#ef4444',
         'blocked' => '#ef4444',
         // Legacy keys (maps / older clients)
-        'idle' => '#f97316',
         'ignition_off' => '#94a3b8',
     ];
 
     public static function motionKey(float $speed, bool $ignition): string
     {
         if ($ignition) {
-            return $speed > self::MOVING_SPEED_KMH ? 'running' : 'stopped';
+            return $speed > self::MOVING_SPEED_KMH ? 'running' : 'idle';
         }
 
         return $speed > self::MOVING_SPEED_KMH ? 'moving' : 'parked';
+    }
+
+    public static function tripStatusKey(float $speed, bool $ignition): string
+    {
+        if ($speed > self::MOVING_SPEED_KMH) {
+            return 'moving';
+        }
+
+        return $ignition ? 'idle' : 'parking';
     }
 
     public static function motionLabel(string $key): string
@@ -58,7 +68,9 @@ class VehicleStatusSpec
         return match (self::normalizeKey($key)) {
             'running' => (string) __('app.map.status_running'),
             'stopped' => (string) __('app.map.status_stopped'),
+            'idle' => (string) __('app.map.status_idle'),
             'parked' => (string) __('app.map.status_parked'),
+            'parking' => (string) __('app.map.status_parked'),
             'moving' => (string) __('app.map.status_moving'),
             default => (string) __('app.map.status_stopped'),
         };
@@ -94,8 +106,8 @@ class VehicleStatusSpec
         $k = strtolower(trim($key));
 
         return match ($k) {
-            'idle' => 'stopped',
             'ignition_off' => 'parked',
+            'parking' => 'parked',
             default => $k,
         };
     }
@@ -112,6 +124,7 @@ class VehicleStatusSpec
         return match (self::normalizeKey($key)) {
             'running' => (string) __('app.map.status_running'),
             'stopped' => (string) __('app.map.status_stopped'),
+            'idle' => (string) __('app.map.status_idle'),
             'parked' => (string) __('app.map.status_parked'),
             'moving' => (string) __('app.map.status_moving'),
             'delayed' => (string) __('app.map.status_delayed'),
@@ -130,7 +143,7 @@ class VehicleStatusSpec
     {
         $movingSpeed = (float) ($thresholds['moving_speed_kmh'] ?? self::MOVING_SPEED_KMH);
         $motionKey = $ignition
-            ? ($speed > $movingSpeed ? 'running' : 'stopped')
+            ? ($speed > $movingSpeed ? 'running' : 'idle')
             : ($speed > $movingSpeed ? 'moving' : 'parked');
         $motion = [
             'key' => $motionKey,

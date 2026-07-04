@@ -29,6 +29,8 @@ class NotificationPreferenceController extends Controller
             'preferences.*.type' => 'required|string',
             'preferences.*.web' => 'boolean',
             'preferences.*.push' => 'boolean',
+            'preferences.*.email' => 'boolean',
+            'preferences.*.whatsapp' => 'boolean',
         ]);
 
         $this->notifications->update($request->user(), $validated['preferences']);

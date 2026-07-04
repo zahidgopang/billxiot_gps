@@ -13,11 +13,15 @@ class EnsurePermission
         private RbacService $rbac,
     ) {}
 
-    public function handle(Request $request, Closure $next, string $permission): Response
+    public function handle(Request $request, Closure $next, string ...$permissions): Response
     {
         $user = $request->user();
+        $permissions = array_values(array_filter($permissions));
 
-        if (! $user || ! $this->rbac->hasPermission($user, $permission)) {
+        $allowed = $user && $permissions !== [] && collect($permissions)
+            ->contains(fn (string $permission) => $this->rbac->hasPermission($user, $permission));
+
+        if (! $allowed) {
             abort(403, 'You do not have permission to perform this action.');
         }
 

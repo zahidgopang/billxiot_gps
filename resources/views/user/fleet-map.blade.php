@@ -4,6 +4,7 @@
 
 @push('styles')
     <link rel="stylesheet" href="{{ asset('css/fleet-map.css') }}?v={{ filemtime(public_path('css/fleet-map.css')) }}">
+    <link rel="stylesheet" href="{{ asset('css/vehicle-map-popup.css') }}?v={{ filemtime(public_path('css/vehicle-map-popup.css')) }}">
     <style>
         body.user-fleet-map-page-active {
             overflow: hidden;
@@ -201,9 +202,25 @@
             devices: @json($initialPayload),
             stats: @json($stats),
             mapSpec: @json($mapSpec),
+            i18n: {
+                dash: @json(__('app.map.dash')),
+                plate: @json(__('app.tracking.lbl_plate')),
+                odometer: @json(__('app.tracking.lbl_odometer')),
+                status: @json(__('app.tracking.lbl_status')),
+                altitude: @json(__('app.tracking.lbl_altitude')),
+                angle: @json(__('app.tracking.lbl_angle')),
+                position: @json(__('app.tracking.lbl_position')),
+                engine: @json(__('app.tracking.lbl_engine')),
+                statusFor: @json(__('app.tracking.lbl_status_duration')),
+                ignitionOn: @json(__('app.map.ignition_on')),
+                ignitionOff: @json(__('app.map.ignition_off')),
+                openMap: @json(__('app.common.map')),
+                close: @json(__('app.map.close_panel')),
+            },
         };
     </script>
     <script src="{{ protected_js('vehicle-marker.js') }}"></script>
+    <script src="{{ protected_js('vehicle-map-popup.js') }}"></script>
     <script src="{{ protected_js('fleet-map-cluster.js') }}"></script>
     <script src="{{ protected_js('user-fleet-map.js') }}"></script>
 @endpush

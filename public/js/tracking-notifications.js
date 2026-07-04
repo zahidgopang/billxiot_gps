@@ -6,6 +6,7 @@
     const i18n = cfg.i18n || {};
     const form = document.getElementById('gtNotifForm');
     const body = document.getElementById('gtNotifBody');
+    const channels = ['web', 'push', 'email', 'whatsapp'];
 
     const csrf = () => document.querySelector('meta[name="csrf-token"]')?.content || '';
 
@@ -22,13 +23,15 @@
         }
     }
 
-    function row(p, i) {
-        const web = `<input type="checkbox" class="form-check-input" data-type="${escHtml(p.type)}" data-ch="web" ${p.web ? 'checked' : ''} aria-label="${escHtml(i18n.web || 'Web')}">`;
-        const push = `<input type="checkbox" class="form-check-input" data-type="${escHtml(p.type)}" data-ch="push" ${p.push ? 'checked' : ''} aria-label="${escHtml(i18n.push || 'Push')}">`;
+    function row(p) {
+        const cells = channels.map((ch) => {
+            const checked = p[ch] ? 'checked' : '';
+            const label = escHtml(i18n[ch] || ch);
+            return `<td class="gt-notif-ch"><input type="checkbox" class="form-check-input" data-type="${escHtml(p.type)}" data-ch="${ch}" ${checked} aria-label="${label}"></td>`;
+        }).join('');
         return `<tr>
             <td>${escHtml(p.label || p.type)}</td>
-            <td class="gt-notif-ch">${web}</td>
-            <td class="gt-notif-ch">${push}</td>
+            ${cells}
         </tr>`;
     }
 
@@ -41,14 +44,13 @@
         } catch (e) { prefs = []; }
 
         if (!prefs.length) {
-            body.innerHTML = `<tr><td colspan="3" class="gt-notif-empty">${escHtml(i18n.noTypes || 'No notification types')}</td></tr>`;
+            body.innerHTML = `<tr><td colspan="5" class="gt-notif-empty">${escHtml(i18n.noTypes || 'No notification types')}</td></tr>`;
             return;
         }
 
         body.innerHTML = prefs.map(row).join('');
     }
 
-    // Column "toggle all" links in the header.
     form?.querySelectorAll('[data-toggle-col]').forEach((link) => {
         link.addEventListener('click', () => {
             const ch = link.dataset.toggleCol;
@@ -61,11 +63,13 @@
     form?.addEventListener('submit', async (e) => {
         e.preventDefault();
         const types = new Set([...body.querySelectorAll('[data-type]')].map((el) => el.dataset.type));
-        const preferences = [...types].map((type) => ({
-            type,
-            web: !!body.querySelector(`[data-type="${CSS.escape(type)}"][data-ch="web"]`)?.checked,
-            push: !!body.querySelector(`[data-type="${CSS.escape(type)}"][data-ch="push"]`)?.checked,
-        }));
+        const preferences = [...types].map((type) => {
+            const pref = { type };
+            channels.forEach((ch) => {
+                pref[ch] = !!body.querySelector(`[data-type="${CSS.escape(type)}"][data-ch="${ch}"]`)?.checked;
+            });
+            return pref;
+        });
 
         const btn = form.querySelector('button[type="submit"]');
         btn?.setAttribute('disabled', 'disabled');

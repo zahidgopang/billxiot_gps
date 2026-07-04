@@ -4,6 +4,8 @@
 
 @push('styles')
     <link rel="stylesheet" href="{{ asset('css/fleet-map.css') }}?v={{ filemtime(public_path('css/fleet-map.css')) }}">
+    <link rel="stylesheet" href="{{ asset('css/vehicle-map-popup.css') }}?v={{ filemtime(public_path('css/vehicle-map-popup.css')) }}">
+    <link rel="stylesheet" href="{{ asset('css/route-trip-bar.css') }}?v={{ filemtime(public_path('css/route-trip-bar.css')) }}">
     <style>
         /* ===== Design tokens (single source of truth; dark-mode-ready) =====
            Defined on :root so they resolve everywhere, including menus/info-windows
@@ -81,6 +83,7 @@
             height: @if($panel === 'user') 100% @else calc(100vh - 64px) @endif;
             min-height: 460px;
             background: var(--tc-bg);
+            position: relative;
         }
 
         /* ===== Top icon toolbar (Traccar style) ===== */
@@ -90,10 +93,28 @@
             gap: 0.15rem;
             flex-wrap: wrap;
             padding: 0.4rem 0.7rem;
+            padding-inline-start: 3.85rem;
             background: var(--tc-surface);
             border-bottom: 1px solid var(--tc-border);
             box-shadow: var(--tc-shadow-sm);
             z-index: 6;
+            max-height: 0;
+            opacity: 0;
+            overflow: hidden;
+            pointer-events: none;
+            padding-top: 0;
+            padding-bottom: 0;
+            transform: translateY(-8px);
+            transition: max-height 0.24s ease, opacity 0.18s ease, padding 0.24s ease, transform 0.24s ease;
+        }
+        .tc-app.tc-app--topnav-open .tc-iconbar {
+            max-height: 96px;
+            opacity: 1;
+            overflow: visible;
+            pointer-events: auto;
+            padding-top: 0.4rem;
+            padding-bottom: 0.4rem;
+            transform: none;
         }
 
         .tc-iconbar a {
@@ -158,8 +179,9 @@
             position: relative;
         }
 
-        /* Mobile drawer toggle (hidden on desktop) */
-        .tc-panel-toggle {
+        /* Floating navigation toggles */
+        .tc-panel-toggle,
+        .tc-topbar-toggle {
             display: none;
             position: absolute;
             top: 12px;
@@ -176,6 +198,15 @@
             font-size: 1.05rem;
             box-shadow: var(--tc-shadow);
             cursor: pointer;
+        }
+        .tc-topbar-toggle {
+            display: inline-flex;
+            inset-inline-start: 62px;
+        }
+        .tc-topbar-toggle[aria-expanded="true"],
+        .tc-panel-toggle[aria-expanded="true"] {
+            background: var(--tc-primary);
+            color: #fff;
         }
         .tc-panel-toggle .tc-toggle-badge {
             position: absolute;
@@ -219,6 +250,25 @@
             border-inline-end: 1px solid var(--tc-border);
             z-index: 4;
         }
+
+        /* Slide-out drawer (all breakpoints when workspace sidebar is enabled) */
+        .tc-main.tc-main--drawer .tc-panel {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            inset-inline-start: 0;
+            max-width: 360px;
+            border-inline-end: 1px solid var(--tc-border);
+            box-shadow: var(--tc-shadow-lg);
+            transform: translateX(-106%);
+            transition: transform 0.28s ease;
+            z-index: 9;
+            will-change: transform;
+        }
+        [dir="rtl"] .tc-main.tc-main--drawer .tc-panel { transform: translateX(106%); }
+        .tc-main.tc-main--drawer .tc-panel.tc-panel--open { transform: none; }
+        .tc-main.tc-main--drawer .tc-panel-toggle { display: inline-flex; }
+        .tc-main.tc-main--drawer .tc-map-wrap { width: 100%; flex: 1; }
 
         .tc-tabs {
             display: flex;
@@ -463,6 +513,478 @@
         /* ===== Map ===== */
         .tc-map-wrap { position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; }
         .tc-map-area { position: relative; flex: 1; min-height: 0; }
+        .tc-map-overlay--start {
+            position: absolute;
+            top: 64px;
+            inset-inline-start: 12px;
+            z-index: 6;
+            width: min(340px, calc(100% - 24px));
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            pointer-events: none;
+        }
+        .tc-map-overlay--start > * { pointer-events: auto; }
+        .tc-map-route-footer {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            right: 10px;
+            z-index: 6;
+            pointer-events: none;
+            max-width: min(960px, calc(100% - 20px));
+            margin-inline: auto;
+        }
+        .tc-map-route-footer .route-trip-bar {
+            position: static;
+            top: auto;
+            left: auto;
+            transform: none;
+            width: 100%;
+            pointer-events: auto;
+        }
+        .route-trip-bar {
+            position: absolute;
+            top: 12px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 6;
+            width: min(720px, calc(100% - 24px));
+            pointer-events: auto;
+        }
+        .route-trip-bar[hidden] { display: none !important; }
+        .route-trip-bar__hint {
+            font-size: 11px;
+            color: var(--tc-text-muted);
+            margin-bottom: 6px;
+            text-align: center;
+        }
+        .route-trip-bar__manage-link {
+            color: var(--tc-primary);
+            font-weight: 600;
+            text-decoration: none;
+        }
+        .route-trip-bar__manage-link:hover { text-decoration: underline; }
+        .route-trip-bar__alert {
+            background: #fef2f2;
+            border: 1px solid #fecaca;
+            color: #b91c1c;
+            border-radius: 10px;
+            padding: 8px 12px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .route-trip-bar__inner {
+            background: var(--tc-surface);
+            border: 1px solid var(--tc-border);
+            box-shadow: var(--tc-shadow);
+            border-radius: 14px;
+            padding: 10px 14px 12px;
+        }
+        .route-trip-bar__cities {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--tc-text);
+            margin-bottom: 8px;
+        }
+        .route-trip-bar__track {
+            position: relative;
+            height: 8px;
+            border-radius: 999px;
+            background: var(--tc-surface-3);
+            overflow: visible;
+        }
+        .route-trip-bar__fill {
+            height: 100%;
+            border-radius: inherit;
+            background: linear-gradient(90deg, #0ea5e9, #2563eb);
+            transition: width 0.8s ease;
+        }
+        .route-trip-bar__fill--warn { background: linear-gradient(90deg, #f59e0b, #dc2626); }
+        .route-trip-bar__bus {
+            position: absolute;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 18px;
+            line-height: 1;
+            transition: left 0.8s ease;
+        }
+        .route-trip-bar__meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px 14px;
+            margin-top: 8px;
+            font-size: 11px;
+            color: var(--tc-text-soft);
+        }
+        .route-trip-bar__meta span:first-child { font-weight: 800; color: var(--tc-text); }
+        .route-trip-complete-btn,
+        .route-trip-start-btn { margin-top: 0; }
+        .route-trip-bar__actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 8px;
+        }
+        /* Reference-style map info cards (company / driver / route) */
+        .tc-map-area--dark-panels {
+            --tc-panel-bg: #0F2D57;
+            --tc-panel-bg-deep: #061E49;
+            --tc-panel-text: #FFFFFF;
+            --tc-panel-label: #E2E8F0;
+            --tc-panel-radius: 22px;
+            --tc-panel-shadow: 0 8px 20px rgba(0, 0, 0, 0.18);
+        }
+        .tc-info-card {
+            position: relative;
+            width: 100%;
+            pointer-events: auto;
+            background: var(--tc-panel-bg);
+            border: none;
+            border-radius: var(--tc-panel-radius);
+            box-shadow: var(--tc-panel-shadow);
+            color: var(--tc-panel-text);
+            overflow: hidden;
+            background-image: linear-gradient(145deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0));
+        }
+        .tc-info-card[hidden] { display: none !important; }
+        .tc-info-card__collapse {
+            position: absolute;
+            top: 8px;
+            inset-inline-end: 10px;
+            z-index: 2;
+            border: 0;
+            background: transparent;
+            color: var(--tc-panel-label);
+            padding: 4px 6px;
+            line-height: 1;
+            cursor: pointer;
+        }
+        .tc-info-card__collapse:hover { color: var(--tc-panel-text); }
+        .tc-info-card__collapse::before {
+            content: '';
+            display: none;
+        }
+        .tc-info-card:not(.is-open) .tc-info-card__collapse {
+            position: static;
+            width: 100%;
+            min-height: 46px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 12px 16px;
+            color: var(--tc-panel-text);
+            font-size: 14px;
+            font-weight: 800;
+            text-align: start;
+        }
+        .tc-info-card:not(.is-open) .tc-info-card__collapse::before {
+            content: attr(data-collapsed-label);
+            display: inline-flex;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .tc-info-card__body {
+            max-height: 520px;
+            overflow: hidden;
+            transition: max-height 0.28s ease, opacity 0.2s ease;
+            opacity: 1;
+            padding: 14px 16px;
+            padding-inline-end: 32px;
+        }
+        .tc-info-card:not(.is-open) .tc-info-card__body {
+            max-height: 0;
+            opacity: 0;
+            padding-top: 0;
+            padding-bottom: 0;
+        }
+        .tc-info-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 0;
+            border-bottom: 1px solid var(--tc-panel-bg-deep);
+        }
+        .tc-info-row:first-child { padding-top: 0; }
+        .tc-info-row:last-child { border-bottom: 0; padding-bottom: 0; }
+        .tc-info-row[hidden] { display: none !important; }
+        .tc-info-row__content {
+            flex: 1 1 auto;
+            min-width: 0;
+        }
+        .tc-info-row__labels {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 10px;
+            margin-bottom: 2px;
+        }
+        .tc-info-row__label-en {
+            flex: 0 1 46%;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--tc-panel-label);
+            line-height: 1.35;
+            text-align: start;
+        }
+        .tc-info-row__label-ar {
+            flex: 0 1 46%;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--tc-panel-label);
+            direction: rtl;
+            text-align: end;
+            line-height: 1.35;
+            unicode-bidi: plaintext;
+        }
+        .tc-info-row__icon {
+            flex: 0 0 22px;
+            width: 22px;
+            text-align: center;
+            font-size: 16px;
+            color: var(--tc-panel-text);
+            line-height: 1;
+            align-self: center;
+        }
+        .tc-info-row__value {
+            display: block;
+            width: 100%;
+            font-size: 15px;
+            font-weight: 800;
+            color: var(--tc-panel-text);
+            line-height: 1.4;
+            word-break: normal;
+            overflow-wrap: break-word;
+            white-space: normal;
+            text-align: start;
+            unicode-bidi: plaintext;
+        }
+        .tc-info-row__value--phone {
+            font-size: 16px;
+            letter-spacing: 0.01em;
+        }
+        .tc-info-row__value a {
+            color: inherit;
+            text-decoration: none;
+            font-weight: inherit;
+            display: inline;
+            white-space: normal;
+        }
+        .tc-info-row__value a:hover { text-decoration: underline; }
+        .tc-driver-card__layout {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            min-width: 0;
+        }
+        .tc-driver-card__fields {
+            flex: 1 1 auto;
+            min-width: 0;
+        }
+        .tc-driver-card__fields .tc-info-row {
+            padding: 7px 0;
+            border-bottom-color: var(--tc-panel-bg-deep);
+        }
+        .tc-driver-card__fields .tc-info-row:first-child { padding-top: 0; }
+        .tc-driver-card__fields .tc-info-row:last-child { border-bottom: 0; padding-bottom: 0; }
+        .tc-driver-card__photo-wrap {
+            flex: 0 0 64px;
+            width: 64px;
+            height: 64px;
+            background: #fff;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 4px 12px rgba(6, 30, 73, 0.35);
+        }
+        .tc-driver-card__photo {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+        .tc-driver-card__photo--default {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            height: 100%;
+            color: #94a3b8;
+            font-size: 30px;
+            background: #fff;
+        }
+        .tc-driver-card__empty {
+            padding: 8px 0 0;
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--tc-panel-label);
+            text-align: center;
+        }
+
+        /* Dark map panels: company, driver, route footer */
+        .tc-map-area--dark-panels .tc-info-card,
+        .tc-map-area--dark-panels .route-trip-bar__card {
+            background: var(--tc-panel-bg);
+            border: none;
+            border-radius: var(--tc-panel-radius);
+            box-shadow: var(--tc-panel-shadow);
+            color: var(--tc-panel-text);
+        }
+        .tc-map-area--dark-panels .route-trip-bar__head-title,
+        .tc-map-area--dark-panels .route-trip-bar__stat-label,
+        .tc-map-area--dark-panels .route-trip-bar__hint,
+        .tc-map-area--dark-panels .route-trip-bar__compact-hint {
+            color: var(--tc-panel-label);
+            font-weight: 500;
+        }
+        .tc-map-area--dark-panels .route-trip-bar__stat-value,
+        .tc-map-area--dark-panels .route-trip-bar__pct,
+        .tc-map-area--dark-panels .route-trip-bar__meta {
+            color: var(--tc-panel-text);
+            font-weight: 700;
+        }
+        .tc-map-area--dark-panels .route-trip-bar__stat-value--muted {
+            color: var(--tc-panel-label);
+        }
+        .tc-map-area--dark-panels .route-trip-bar__pct {
+            font-weight: 700;
+        }
+        .tc-map-area--dark-panels .route-trip-bar__pct--warn { color: #fca5a5; }
+        .tc-map-area--dark-panels .route-trip-bar__pct--frozen { color: #fde68a; }
+        .tc-map-area--dark-panels .route-trip-bar__nav-badge {
+            font-weight: 700;
+            border: none;
+            background: var(--tc-panel-bg-deep);
+            color: var(--tc-panel-text);
+        }
+        .tc-map-area--dark-panels .route-trip-bar__nav-badge--on_assigned,
+        .tc-map-area--dark-panels .route-trip-bar__nav-badge--destination_reached {
+            color: #bbf7d0;
+            background: rgba(22, 101, 52, 0.45);
+        }
+        .tc-map-area--dark-panels .route-trip-bar__nav-badge--off_route {
+            color: #fecaca;
+            background: rgba(185, 28, 28, 0.4);
+        }
+        .tc-map-area--dark-panels .route-trip-bar__compact:hover {
+            background: rgba(255, 255, 255, 0.04);
+        }
+        .tc-map-area--dark-panels .route-trip-bar__chevron {
+            color: var(--tc-panel-label);
+        }
+        .tc-map-area--dark-panels .route-trip-bar__manage-link {
+            color: #FFFFFF;
+            font-weight: 700;
+            text-decoration: underline;
+        }
+        .tc-map-area--dark-panels .route-trip-bar--footer .route-trip-bar__compact {
+            padding: 14px 18px;
+            gap: 10px;
+        }
+        .tc-map-area--dark-panels .route-trip-bar--footer .route-trip-bar__head {
+            margin-bottom: 6px;
+        }
+        .tc-map-area--dark-panels .route-trip-bar--footer .route-trip-bar__head-title {
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--tc-panel-label);
+            text-transform: none;
+            letter-spacing: 0;
+        }
+        .tc-map-area--dark-panels .route-trip-bar--footer .route-trip-bar__pct {
+            font-size: 17px;
+            font-weight: 900;
+            color: var(--tc-panel-text);
+        }
+        .tc-map-area--dark-panels .route-trip-bar--footer .route-trip-bar__stats--compact {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px 16px;
+            margin-top: 6px;
+        }
+        .tc-map-area--dark-panels .route-trip-bar--footer .route-trip-bar__stats--compact .route-trip-bar__stat {
+            display: inline-flex;
+            gap: 6px;
+            align-items: baseline;
+        }
+        .tc-map-area--dark-panels .route-trip-bar--footer .route-trip-bar__stat-label {
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--tc-panel-label);
+            text-transform: none;
+            letter-spacing: 0;
+            opacity: 1;
+        }
+        .tc-map-area--dark-panels .route-trip-bar--footer .route-trip-bar__stat-value {
+            font-size: 14px;
+            font-weight: 900;
+            color: var(--tc-panel-text);
+        }
+        .tc-map-area--dark-panels .route-trip-bar--footer .route-trip-bar__route-line {
+            margin-top: 8px;
+            height: 24px;
+        }
+        .tc-map-area--dark-panels .route-trip-bar--footer .route-trip-bar__line-bg {
+            height: 5px;
+            top: 10px;
+            background: var(--tc-panel-bg-deep);
+        }
+        .tc-map-area--dark-panels .route-trip-bar--footer .route-trip-bar__line-fill {
+            height: 4px;
+            top: 9px;
+        }
+        .tc-map-area--dark-panels .route-trip-bar--footer .route-trip-bar__vehicle {
+            font-size: 14px;
+            top: 9px;
+        }
+        .tc-map-area--dark-panels .route-trip-bar--footer .route-trip-bar__details-inner {
+            padding: 0 10px 8px;
+            font-size: 10px;
+        }
+        .tc-map-area--dark-panels .route-trip-bar--footer .route-trip-bar__stats:not(.route-trip-bar__stats--compact) {
+            display: none;
+        }
+        .tc-map-area--dark-panels .route-trip-bar--footer .route-trip-bar__card--idle .route-trip-bar__compact {
+            padding: 16px 20px;
+        }
+        .tc-map-area--dark-panels .route-trip-bar__alert {
+            background: rgba(127, 29, 29, 0.45);
+            border-color: rgba(255, 255, 255, 0.15);
+            color: #fecaca;
+            font-weight: 700;
+        }
+        .tc-map-area--dark-panels .route-trip-bar__success {
+            color: #bbf7d0;
+            font-weight: 700;
+        }
+
+        .tc-map-overlay--end {
+            position: absolute;
+            top: 12px;
+            inset-inline-end: 12px;
+            z-index: 6;
+            width: min(340px, calc(100% - 24px));
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 8px;
+            pointer-events: none;
+        }
+        .tc-map-overlay--end > * { pointer-events: auto; }
+        .tc-map-overlay--end .tc-map-controls {
+            position: static;
+            top: auto;
+            inset-inline-end: auto;
+        }
         #tcMap { position: absolute; inset: 0; background: var(--tc-surface-3); }
 
         .tc-map-controls {
@@ -590,10 +1112,11 @@
             flex-shrink: 0;
             display: flex;
             flex-direction: column;
-            background: var(--tc-surface);
-            border-top: 1px solid var(--tc-border);
-            box-shadow: 0 -6px 20px -8px rgba(16, 24, 40, 0.14);
+            background: #0F2D57;
+            border-top: none;
+            box-shadow: 0 -8px 20px rgba(0, 0, 0, 0.18);
             z-index: 5;
+            color: #FFFFFF;
         }
         .tc-footer[hidden] { display: none !important; }
         .tc-footer-head {
@@ -601,26 +1124,60 @@
             align-items: center;
             gap: 0.75rem;
             padding: 0 0.7rem;
-            border-bottom: 1px solid var(--tc-border-soft);
+            border-bottom: 1px solid #061E49;
             font-size: 0.82rem;
-            font-weight: 600;
-            color: var(--tc-text-soft);
+            font-weight: 700;
+            color: #FFFFFF;
+            background: #061E49;
         }
         .tc-footer-tabs { display: flex; gap: 0.2rem; }
         .tc-ftab {
             border: none;
             background: none;
             padding: 0.55rem 0.7rem;
-            font-size: 0.8rem;
-            font-weight: 600;
-            color: var(--tc-text-muted);
+            font-size: 0.85rem;
+            font-weight: 700;
+            color: #D6DCE6;
             border-bottom: 2px solid transparent;
             cursor: pointer;
         }
-        .tc-ftab:hover { color: var(--tc-primary); }
-        .tc-ftab.active { color: var(--tc-primary); border-bottom-color: var(--tc-primary); }
-        .tc-footer-title { flex: 1; font-weight: 700; color: var(--tc-text); text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .tc-footer-body { flex: 1; min-height: 0; position: relative; }
+        .tc-ftab:hover { color: #FFFFFF; }
+        .tc-ftab.active {
+            color: #FFFFFF;
+            border-bottom-color: #FFFFFF;
+        }
+        .tc-footer-title {
+            flex: 1;
+            font-weight: 700;
+            color: #FFFFFF;
+            text-align: center;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .tc-footer-body {
+            flex: 1;
+            min-height: 0;
+            position: relative;
+            background: #0F2D57;
+        }
+        .tc-footer .tc-hist-stat {
+            background: #061E49;
+            border: none;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+        }
+        .tc-footer .tc-hist-stat-lbl { color: #D6DCE6; font-weight: 500; }
+        .tc-footer .tc-hist-stat-val { color: #FFFFFF; font-weight: 700; }
+        .tc-footer .tc-empty { color: #D6DCE6; }
+        .tc-footer .tc-fbody[data-fbody="messages"] .tc-msg-list li {
+            border-bottom-color: #061E49;
+            color: #FFFFFF;
+            font-weight: 500;
+        }
+        .tc-footer .tc-fbody[data-fbody="messages"] .tc-msg-time {
+            color: #D6DCE6;
+        }
         .tc-fbody { position: absolute; inset: 0; padding: 0.5rem 0.8rem; overflow: auto; display: none; }
         .tc-fbody.active { display: block; }
         /* Data tab scrolls horizontally (Traccar-style strip), never grows the footer height. */
@@ -793,7 +1350,14 @@
             .tc-iconbar a { flex: 0 0 auto; width: 40px; height: 40px; }
             .tc-iconbar .tc-iconbar-sep { display: none; }
 
-            /* Drawer */
+            /* Drawer width tweaks on small screens */
+            .tc-main.tc-main--drawer .tc-panel,
+            .tc-panel {
+                width: 86vw;
+                max-width: 340px;
+            }
+
+            /* Legacy mobile drawer rules (kept for width / footer) */
             .tc-panel {
                 position: absolute;
                 top: 0;
@@ -835,13 +1399,39 @@
             .tc-row { padding-top: 0.7rem; padding-bottom: 0.7rem; }
             .tc-tab { padding: 0.75rem 0.4rem; }
         }
+
+        .tc-app.tc-app--map-only .tc-map-wrap {
+            width: 100%;
+            flex: 1;
+        }
+        .tc-app.tc-app--map-only .tc-main {
+            display: block;
+        }
+
+        /* Live-map-only permission: hide tracking shell chrome */
+        body.tc-live-map-only .tracking-topbar { display: none !important; }
+        body.tc-live-map-only .content-wrap { padding: 0 !important; }
+        body.tc-live-map-only .tc-app {
+            height: 100dvh !important;
+            max-height: 100dvh;
+        }
+        body.tc-live-map-only.gt-page-active .content-wrap {
+            height: 100dvh;
+            max-height: 100dvh;
+        }
     </style>
 @endpush
 
 @section('content')
     @php
+        $ui = $trackingUi ?? [];
+        $hubPerms = $ui['hub'] ?? [];
+        $tabPerms = $ui['sidebar_tabs'] ?? [];
+        $mapCtl = $ui['map_controls'] ?? [];
+        $firstSidebarTab = collect(['objects', 'events', 'places', 'history'])
+            ->first(fn (string $tab) => ! empty($tabPerms[$tab])) ?? null;
         $iconLinks = [
-            ['key' => 'live', 'icon' => 'fa-location-arrow', 'route' => $hubRoutes['live'] ?? null, 'label' => __('app.tracking.live_link'), 'active' => true],
+            ['key' => 'live', 'icon' => 'fa-location-arrow', 'route' => $hubRoutes['live'] ?? null, 'label' => __('app.tracking.live_link'), 'active' => true, 'hub' => true],
             ['key' => 'reports', 'icon' => 'fa-chart-bar', 'route' => $hubRoutes['reports'] ?? null, 'label' => __('app.tracking.reports_nav')],
             ['key' => 'geofences', 'icon' => 'fa-draw-polygon', 'route' => $hubRoutes['geofences'] ?? null, 'label' => __('app.tracking.geofences_nav')],
             ['key' => 'maintenance', 'icon' => 'fa-wrench', 'route' => $hubRoutes['maintenance'] ?? null, 'label' => __('app.tracking.maintenance_nav')],
@@ -852,10 +1442,20 @@
             ['key' => 'settings', 'icon' => 'fa-sliders-h', 'route' => $hubRoutes['settings'] ?? null, 'label' => __('app.tracking.settings_nav')],
         ];
     @endphp
-    <div class="tc-app">
-        <div class="tc-iconbar">
+    <div class="tc-app{{ ! empty($ui['map_only']) ? ' tc-app--map-only' : '' }}">
+        @if(! empty($ui['iconbar']))
+        <button type="button" class="tc-topbar-toggle" id="tcTopbarToggle"
+                aria-label="{{ __('app.tracking.hub_nav') }}" title="{{ __('app.tracking.hub_nav') }}"
+                aria-expanded="false" aria-controls="tcIconbar">
+            <i class="fas fa-list-ul"></i>
+        </button>
+        <div class="tc-iconbar" id="tcIconbar">
             @foreach($iconLinks as $link)
-                @if($link['route'] && Route::has($link['route']))
+                @php
+                    $hubKey = $link['key'];
+                    $showHub = ! empty($link['hub']) || ! empty($hubPerms[$hubKey]);
+                @endphp
+                @if($showHub && $link['route'] && Route::has($link['route']))
                     @if(!empty($link['active']))
                         <a href="{{ route($link['route']) }}" class="active"
                            title="{{ $link['label'] }}" aria-label="{{ $link['label'] }}">
@@ -872,6 +1472,7 @@
                     @endif
                 @endif
             @endforeach
+            @if(! empty($ui['alert_controls']))
             <span class="tc-iconbar-sep"></span>
             <div class="tc-alert-controls">
                 <button type="button" class="tc-alert-btn" id="tcSoundToggle"
@@ -883,9 +1484,12 @@
                     <i class="fas fa-bell"></i>
                 </button>
             </div>
+            @endif
         </div>
+        @endif
 
-        <div class="tc-main">
+        <div class="tc-main{{ ! empty($ui['panel_toggle']) ? ' tc-main--drawer' : '' }}">
+            @if(! empty($ui['panel_toggle']))
             <button type="button" class="tc-panel-toggle" id="tcPanelToggle"
                     aria-label="{{ __('app.tracking.panel_toggle') }}" title="{{ __('app.tracking.panel_toggle') }}"
                     aria-expanded="false" aria-controls="tcPanel">
@@ -893,19 +1497,31 @@
                 <span class="tc-toggle-badge" id="tcToggleBadge" hidden>0</span>
             </button>
             <div class="tc-panel-backdrop" id="tcPanelBackdrop"></div>
+            @endif
+            @if(! empty($ui['sidebar']))
             <aside class="tc-panel" id="tcPanel">
                 <div class="tc-tabs" role="tablist">
-                    <button type="button" class="tc-tab active" data-tab="objects">{{ __('app.tracking.tab_objects') }}</button>
-                    <button type="button" class="tc-tab" data-tab="events">{{ __('app.tracking.events_nav') }}<span class="tc-tab-badge" id="tcEventsBadge" hidden>0</span></button>
-                    <button type="button" class="tc-tab" data-tab="places">{{ __('app.tracking.tab_places') }}</button>
-                    <button type="button" class="tc-tab" data-tab="history">{{ __('app.tracking.history_link') }}</button>
+                    @if(! empty($tabPerms['objects']))
+                    <button type="button" class="tc-tab{{ $firstSidebarTab === 'objects' ? ' active' : '' }}" data-tab="objects">{{ __('app.tracking.tab_objects') }}</button>
+                    @endif
+                    @if(! empty($tabPerms['events']))
+                    <button type="button" class="tc-tab{{ $firstSidebarTab === 'events' ? ' active' : '' }}" data-tab="events">{{ __('app.tracking.events_nav') }}<span class="tc-tab-badge" id="tcEventsBadge" hidden>0</span></button>
+                    @endif
+                    @if(! empty($tabPerms['places']))
+                    <button type="button" class="tc-tab{{ $firstSidebarTab === 'places' ? ' active' : '' }}" data-tab="places">{{ __('app.tracking.tab_places') }}</button>
+                    @endif
+                    @if(! empty($tabPerms['history']))
+                    <button type="button" class="tc-tab{{ $firstSidebarTab === 'history' ? ' active' : '' }}" data-tab="history">{{ __('app.tracking.history_link') }}</button>
+                    @endif
                 </div>
 
-                {{-- Objects --}}
-                <div class="tc-tab-body active" data-tab-body="objects">
+                @if(! empty($tabPerms['objects']))
+                <div class="tc-tab-body{{ $firstSidebarTab === 'objects' ? ' active' : '' }}" data-tab-body="objects">
                     <div class="tc-tab-head">
+                        @if(! empty($ui['vehicle_search']))
                         <input type="search" id="tcSearch" class="form-control form-control-sm"
                                placeholder="{{ __('app.tracking.search_vehicles') }}" autocomplete="off">
+                        @endif
                         <div class="tc-filter-chips" id="tcChips">
                             <button type="button" class="tc-chip active" data-filter="all">{{ __('app.tracking.filter_all') }} <span class="tc-chip-count" data-count="all">0</span></button>
                             <button type="button" class="tc-chip" data-filter="moving">{{ __('app.tracking.filter_moving') }} <span class="tc-chip-count" data-count="moving">0</span></button>
@@ -925,9 +1541,10 @@
                     </div>
                     <div class="tc-list" id="tcVehicleList"></div>
                 </div>
+                @endif
 
-                {{-- Events --}}
-                <div class="tc-tab-body" data-tab-body="events">
+                @if(! empty($tabPerms['events']))
+                <div class="tc-tab-body{{ $firstSidebarTab === 'events' ? ' active' : '' }}" data-tab-body="events">
                     <div class="tc-tab-head">
                         <button type="button" class="btn btn-sm btn-outline-primary w-100" id="tcEventsReload">
                             <i class="fas fa-sync-alt me-1"></i>{{ __('app.tracking.refresh') }}
@@ -937,9 +1554,10 @@
                         <div class="tc-empty">{{ __('app.tracking.refresh') }}…</div>
                     </div>
                 </div>
+                @endif
 
-                {{-- Places (geofences) --}}
-                <div class="tc-tab-body" data-tab-body="places">
+                @if(! empty($tabPerms['places']))
+                <div class="tc-tab-body{{ $firstSidebarTab === 'places' ? ' active' : '' }}" data-tab-body="places">
                     <div class="tc-tab-head">
                         <button type="button" class="btn btn-sm btn-outline-primary w-100" id="tcPlacesReload">
                             <i class="fas fa-sync-alt me-1"></i>{{ __('app.tracking.refresh') }}
@@ -949,9 +1567,10 @@
                         <div class="tc-empty">{{ __('app.tracking.refresh') }}…</div>
                     </div>
                 </div>
+                @endif
 
-                {{-- History --}}
-                <div class="tc-tab-body" data-tab-body="history">
+                @if(! empty($tabPerms['history']))
+                <div class="tc-tab-body{{ $firstSidebarTab === 'history' ? ' active' : '' }}" data-tab-body="history">
                     <div class="tc-form tc-hist-form">
                         <label for="tcHistVehicle">{{ __('app.tracking.object') }}</label>
                         <select id="tcHistVehicle" class="form-select form-select-sm no-select2">
@@ -991,10 +1610,81 @@
                         <div class="tc-list" id="tcHistResults"></div>
                     </div>
                 </div>
+                @endif
             </aside>
+            @endif
 
             <div class="tc-map-wrap">
-                <div class="tc-map-area">
+                <div class="tc-map-area tc-map-area--dark-panels">
+                    <div class="tc-map-overlay--start">
+                        <div id="tcCompanyMapCard" class="tc-info-card tc-company-card is-open" hidden aria-live="polite">
+                            <button type="button" class="tc-info-card__collapse" id="tcCompanyMapCardToggle" aria-expanded="true" aria-label="{{ __('app.tracking.company_map_collapse') }}" data-collapsed-label="{{ __('app.tracking.company_map_card_title') }}">
+                                <i class="fas fa-chevron-down" aria-hidden="true"></i>
+                            </button>
+                            <div class="tc-info-card__body" id="tcCompanyMapCardBody">
+                                <div class="tc-info-row" data-company-row="company_name">
+                                    <div class="tc-info-row__content">
+                                        <div class="tc-info-row__labels">
+                                            <span class="tc-info-row__label-en">{{ __('app.tracking.company_map_label_company_name') }}</span>
+                                            <span class="tc-info-row__label-ar" lang="ar">{{ __('app.tracking.company_map_label_company_name_ar') }}</span>
+                                        </div>
+                                        <div class="tc-info-row__value" data-company-value="company_name" dir="auto">—</div>
+                                    </div>
+                                    <div class="tc-info-row__icon"><i class="fas fa-building" aria-hidden="true"></i></div>
+                                </div>
+                                <div class="tc-info-row" data-company-row="company_number">
+                                    <div class="tc-info-row__content">
+                                        <div class="tc-info-row__labels">
+                                            <span class="tc-info-row__label-en">{{ __('app.tracking.company_map_label_company_number') }}</span>
+                                            <span class="tc-info-row__label-ar" lang="ar">{{ __('app.tracking.company_map_label_company_number_ar') }}</span>
+                                        </div>
+                                        <div class="tc-info-row__value" data-company-value="company_number" dir="ltr">—</div>
+                                    </div>
+                                    <div class="tc-info-row__icon"><i class="fas fa-hashtag" aria-hidden="true"></i></div>
+                                </div>
+                                <div class="tc-info-row" data-company-row="operation_card">
+                                    <div class="tc-info-row__content">
+                                        <div class="tc-info-row__labels">
+                                            <span class="tc-info-row__label-en">{{ __('app.tracking.company_map_label_operation_card') }}</span>
+                                            <span class="tc-info-row__label-ar" lang="ar">{{ __('app.tracking.company_map_label_operation_card_ar') }}</span>
+                                        </div>
+                                        <div class="tc-info-row__value" data-company-value="operation_card" dir="auto">—</div>
+                                    </div>
+                                    <div class="tc-info-row__icon"><i class="fas fa-id-card" aria-hidden="true"></i></div>
+                                </div>
+                                <div class="tc-info-row" data-company-row="bus_name">
+                                    <div class="tc-info-row__content">
+                                        <div class="tc-info-row__labels">
+                                            <span class="tc-info-row__label-en">{{ __('app.tracking.company_map_label_bus_name') }}</span>
+                                            <span class="tc-info-row__label-ar" lang="ar">{{ __('app.tracking.company_map_label_bus_name_ar') }}</span>
+                                        </div>
+                                        <div class="tc-info-row__value" data-company-value="bus_name" dir="auto">—</div>
+                                    </div>
+                                    <div class="tc-info-row__icon"><i class="fas fa-bus" aria-hidden="true"></i></div>
+                                </div>
+                                <div class="tc-info-row" data-company-row="bus_plate">
+                                    <div class="tc-info-row__content">
+                                        <div class="tc-info-row__labels">
+                                            <span class="tc-info-row__label-en">{{ __('app.tracking.company_map_label_bus_plate') }}</span>
+                                            <span class="tc-info-row__label-ar" lang="ar">{{ __('app.tracking.company_map_label_bus_plate_ar') }}</span>
+                                        </div>
+                                        <div class="tc-info-row__value" data-company-value="bus_plate" dir="auto">—</div>
+                                    </div>
+                                    <div class="tc-info-row__icon"><i class="fas fa-tag" aria-hidden="true"></i></div>
+                                </div>
+                                <div class="tc-info-row" data-company-row="support">
+                                    <div class="tc-info-row__content">
+                                        <div class="tc-info-row__labels">
+                                            <span class="tc-info-row__label-en">{{ __('app.tracking.company_map_label_support') }}</span>
+                                            <span class="tc-info-row__label-ar" lang="ar">{{ __('app.tracking.company_map_label_support_ar') }}</span>
+                                        </div>
+                                        <div class="tc-info-row__value" data-company-value="support" dir="ltr">—</div>
+                                    </div>
+                                    <div class="tc-info-row__icon"><i class="fas fa-phone" aria-hidden="true"></i></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                     <div id="tcMap" aria-label="{{ __('app.tracking.live_map_aria') }}"></div>
                     <div id="tcLegend" class="tc-legend"></div>
                     <div id="tcMapError" class="tc-map-error" hidden>
@@ -1002,7 +1692,63 @@
                             <span data-tc-error-text>{{ __('app.map.loading_map_failed') }}</span>
                         </div>
                     </div>
+                    <div class="tc-map-overlay--end">
+                        @if(! empty($ui['driver']))
+                        <div id="tcDriverMapCard" class="tc-info-card tc-driver-card is-open" hidden aria-live="polite">
+                            <button type="button" class="tc-info-card__collapse" id="tcDriverMapCardToggle" aria-expanded="true" aria-label="{{ __('app.tracking.driver_map_collapse') }}" data-collapsed-label="{{ __('app.tracking.driver_map_card_title') }}">
+                                <i class="fas fa-chevron-down" aria-hidden="true"></i>
+                            </button>
+                            <div class="tc-info-card__body" id="tcDriverMapCardBody">
+                                <div class="tc-driver-card__layout" id="tcDriverLayout">
+                                    <div class="tc-driver-card__fields">
+                                        <div class="tc-info-row" id="tcDriverNameRow">
+                                            <div class="tc-info-row__content">
+                                                <div class="tc-info-row__labels">
+                                                    <span class="tc-info-row__label-en">{{ __('app.tracking.driver_map_label_name') }}</span>
+                                                    <span class="tc-info-row__label-ar" lang="ar">{{ __('app.tracking.driver_map_label_name_ar') }}</span>
+                                                </div>
+                                                <div class="tc-info-row__value" id="tcDriverName" dir="auto">—</div>
+                                            </div>
+                                        </div>
+                                        <div class="tc-info-row" id="tcDriverPhoneRow" hidden>
+                                            <div class="tc-info-row__content">
+                                                <div class="tc-info-row__labels">
+                                                    <span class="tc-info-row__label-en">{{ __('app.tracking.driver_map_label_contact') }}</span>
+                                                    <span class="tc-info-row__label-ar" lang="ar">{{ __('app.tracking.driver_map_label_contact_ar') }}</span>
+                                                </div>
+                                                <div class="tc-info-row__value tc-info-row__value--phone">
+                                                    <a id="tcDriverPhone" href="#" dir="ltr">—</a>
+                                                </div>
+                                            </div>
+                                            <div class="tc-info-row__icon"><i class="fas fa-phone" aria-hidden="true"></i></div>
+                                        </div>
+                                        <div class="tc-info-row" id="tcDriverEmailRow" hidden>
+                                            <div class="tc-info-row__content">
+                                                <div class="tc-info-row__labels">
+                                                    <span class="tc-info-row__label-en">{{ __('app.tracking.driver_map_label_email') }}</span>
+                                                    <span class="tc-info-row__label-ar" lang="ar">{{ __('app.tracking.driver_map_label_email_ar') }}</span>
+                                                </div>
+                                                <div class="tc-info-row__value">
+                                                    <a id="tcDriverEmail" href="#" dir="ltr">—</a>
+                                                </div>
+                                            </div>
+                                            <div class="tc-info-row__icon"><i class="fas fa-envelope" aria-hidden="true"></i></div>
+                                        </div>
+                                    </div>
+                                    <div class="tc-driver-card__photo-wrap">
+                                        <img id="tcDriverPhoto" class="tc-driver-card__photo" alt="" hidden>
+                                        <div id="tcDriverPhotoDefault" class="tc-driver-card__photo tc-driver-card__photo--default" aria-hidden="true">
+                                            <i class="fas fa-user"></i>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="tc-driver-card__empty" id="tcDriverEmpty" hidden>{{ __('app.tracking.driver_map_none') }}</div>
+                            </div>
+                        </div>
+                        @endif
+                    @if(! empty($ui['show_map_controls']))
                     <div class="tc-map-controls">
+                        @if(! empty($mapCtl['zoom']))
                         <div class="tc-ctrl-group">
                             <button type="button" class="btn btn-light" id="tcZoomIn" title="{{ __('app.tracking.zoom_in') }}">
                                 <i class="fas fa-plus"></i>
@@ -1011,18 +1757,28 @@
                                 <i class="fas fa-minus"></i>
                             </button>
                         </div>
+                        @endif
+                        @if(! empty($mapCtl['fit']))
                         <button type="button" class="btn btn-light" id="tcFit" title="{{ __('app.tracking.fit_all') }}">
                             <i class="fas fa-compress-arrows-alt"></i>
                         </button>
+                        @endif
+                        @if(! empty($mapCtl['follow']))
                         <button type="button" class="btn btn-light" id="tcFollow" title="{{ __('app.tracking.follow_vehicle') }}" aria-pressed="false">
                             <i class="fas fa-crosshairs"></i>
                         </button>
+                        @endif
+                        @if(! empty($mapCtl['refresh']))
                         <button type="button" class="btn btn-light" id="tcRefresh" title="{{ __('app.tracking.refresh') }}">
                             <i class="fas fa-sync-alt"></i>
                         </button>
+                        @endif
+                        @if(! empty($mapCtl['traffic']))
                         <button type="button" class="btn btn-light" id="tcTraffic" title="{{ __('app.tracking.layer_traffic') }}" aria-pressed="false">
                             <i class="fas fa-traffic-light"></i>
                         </button>
+                        @endif
+                        @if(! empty($mapCtl['layers']))
                         <div class="tc-layer-wrap">
                             <button type="button" class="btn btn-light" id="tcLayers" title="{{ __('app.tracking.map_layers') }}" aria-haspopup="true" aria-expanded="false">
                                 <i class="fas fa-layer-group"></i>
@@ -1034,12 +1790,23 @@
                                 <button type="button" class="tc-layer-item" data-layer="terrain" role="menuitemradio"><i class="fas fa-mountain"></i>{{ __('app.tracking.layer_terrain') }}</button>
                             </div>
                         </div>
+                        @endif
+                        @if(! empty($mapCtl['capture']))
                         <button type="button" class="btn btn-light" id="tcCapture" title="{{ __('app.tracking.capture_image') }}">
                             <i class="fas fa-camera"></i>
                         </button>
+                        @endif
                     </div>
+                    @endif
+                    </div>
+                    @if(! empty($ui['route_progress']))
+                    <div class="tc-map-route-footer">
+                        <div id="routeTripProgressBar" class="route-trip-bar route-trip-bar--footer" hidden aria-live="polite"></div>
+                    </div>
+                    @endif
                 </div>
 
+                @if(! empty($ui['vehicle_footer']))
                 <div class="tc-footer" id="tcFooter" hidden>
                     <div class="tc-footer-head">
                         <div class="tc-footer-tabs">
@@ -1048,7 +1815,7 @@
                             <button type="button" class="tc-ftab" data-ftab="messages">{{ __('app.tracking.ft_messages') }}</button>
                         </div>
                         <span class="tc-footer-title" id="tcFooterTitle"></span>
-                        <button type="button" class="btn btn-sm btn-link text-muted p-0" id="tcFooterClose" aria-label="{{ __('app.tracking.hide') }}">
+                        <button type="button" class="btn btn-sm btn-link text-white p-0" id="tcFooterClose" aria-label="{{ __('app.tracking.hide') }}">
                             <i class="fas fa-times"></i>
                         </button>
                     </div>
@@ -1058,6 +1825,7 @@
                         <div class="tc-fbody" data-fbody="messages" id="tcFooterMessages"></div>
                     </div>
                 </div>
+                @endif
             </div>
         </div>
 
@@ -1085,7 +1853,7 @@
         <script src="https://cdnjs.cloudflare.com/ajax/libs/laravel-echo/1.15.0/echo.iife.js"></script>
         @include('user._pusher')
     @endif
-    <script>document.body.classList.add('gt-page-active');</script>
+    <script>document.body.classList.add('gt-page-active'@if(! empty($ui['map_only'])), 'tc-live-map-only'@endif);</script>
     <script>
         window.TRACCAR_UI_CONFIG = {
             panel: @json($panel),
@@ -1098,6 +1866,11 @@
             geofencesJsonUrl: @json(Route::has($routes['geofencesJson']) ? route($routes['geofencesJson']) : null),
             devicePanelUrl: @json(Route::has($routes['devicePanel']) ? route($routes['devicePanel']) : null),
             deviceMileageUrl: @json(Route::has($routes['deviceMileage']) ? route($routes['deviceMileage']) : null),
+            completeTripUrl: @json(Route::has($routes['completeTrip']) ? route($routes['completeTrip']) : null),
+            startNewTripUrl: @json(Route::has($routes['startNewTrip']) ? route($routes['startNewTrip']) : null),
+            restartTripUrl: @json(Route::has($routes['restartTrip'] ?? '') ? route($routes['restartTrip']) : null),
+            routeGuidanceUrl: @json(Route::has($routes['routeGuidance']) ? route($routes['routeGuidance']) : null),
+            manageRoutesUrl: @json($manageRoutesUrl ?? null),
             commandsSendUrl: @json(Route::has($routes['commandsSend']) ? route($routes['commandsSend']) : null),
             commandTypes: @json(\App\Services\Tracking\CommandService::typeLabels()),
             liveUrl: @json(route($routes['live'])),
@@ -1108,12 +1881,15 @@
             stateColors: @json($stateColors),
             appTimezone: @json(config('app.timezone')),
             vehicles: @json($vehicles),
+            trackingUi: @json($trackingUi ?? []),
+            companyMapCard: @json($companyMapCard ?? ['enabled' => false]),
             startIconUrl: @json(asset('images/map/marker-start.svg')),
             endIconUrl: @json(asset('images/map/marker-end.svg')),
             i18n: {
                 noVehicles: @json(__('app.tracking.no_vehicles')),
                 selectVehicle: @json(__('app.tracking.select_vehicle')),
                 loadFailed: @json(__('app.tracking.load_failed')),
+                panelLoadFailed: @json(__('app.tracking.panel_load_failed')),
                 loadingMapFailed: @json(__('app.map.loading_map_failed')),
                 mapApiKeyMissing: @json(__('app.map.map_api_key_missing')),
                 kmhUnit: @json(__('app.map.kmh_unit')),
@@ -1136,10 +1912,22 @@
                 ftGraph: @json(__('app.tracking.ft_graph')),
                 ftMessages: @json(__('app.tracking.ft_messages')),
                 lblPlate: @json(__('app.tracking.lbl_plate')),
+                lblPosition: @json(__('app.tracking.lbl_position')),
+                lblAngle: @json(__('app.tracking.lbl_angle')),
+                hide: @json(__('app.tracking.hide')),
+                companyMapExpand: @json(__('app.tracking.company_map_expand')),
+                companyMapCollapse: @json(__('app.tracking.company_map_collapse')),
+                driverMapExpand: @json(__('app.tracking.driver_map_expand')),
+                driverMapCollapse: @json(__('app.tracking.driver_map_collapse')),
+                driverMapNone: @json(__('app.tracking.driver_map_none')),
+                callDriver: @json(__('app.map.call_driver')),
                 lblStatus: @json(__('app.tracking.lbl_status')),
                 lblSpeed: @json(__('app.tracking.lbl_speed')),
                 lblAltitude: @json(__('app.tracking.lbl_altitude')),
                 lblOdometer: @json(__('app.tracking.lbl_odometer')),
+                lblEngine: @json(__('app.tracking.lbl_engine')),
+                lblStatusDuration: @json(__('app.tracking.lbl_status_duration')),
+                lblLastKnown: @json(__('app.admin.devices.last_known')),
                 lblTimePosition: @json(__('app.tracking.lbl_time_position')),
                 lblTimeServer: @json(__('app.tracking.lbl_time_server')),
                 lblIgnition: @json(__('app.tracking.lbl_ignition')),
@@ -1149,6 +1937,8 @@
                 statRouteLength: @json(__('app.tracking.stat_route_length')),
                 statMoveDuration: @json(__('app.tracking.stat_move_duration')),
                 statStopDuration: @json(__('app.tracking.stat_stop_duration')),
+                totalIdleTime: @json(__('app.tracking.stat_idle_duration')),
+                parkingTime: @json(__('app.tracking.stat_parking_duration')),
                 statTopSpeed: @json(__('app.tracking.stat_top_speed')),
                 statAvgSpeed: @json(__('app.tracking.stat_avg_speed')),
                 cmdSend: @json(__('app.tracking.cmd_send')),
@@ -1196,10 +1986,50 @@
                 alertDesktopOff: @json(__('app.tracking.alert_desktop_off')),
                 alertDesktopBlocked: @json(__('app.tracking.alert_desktop_blocked')),
                 newAlertTitle: @json(__('app.tracking.new_alert_title')),
+                routeRemaining: @json(__('app.routes.remaining')),
+                routeEta: @json(__('app.routes.eta')),
+                routeDuration: @json(__('app.routes.duration')),
+                routeComplete: @json(__('app.routes.complete_trip')),
+                routeStartNew: @json(__('app.routes.start_new_trip')),
+                routeOffRoute: @json(__('app.routes.off_route_alert')),
+                routeElapsed: @json(__('app.routes.elapsed')),
+                routePlanned: @json(__('app.routes.planned')),
+                routeCheckpointTotal: @json(__('app.routes.checkpoint_total')),
+                routeMinAbbr: @json(__('app.routes.min_abbr')),
+                routePending: @json(__('app.routes.pending')),
+                routeToggleDetails: @json(__('app.routes.toggle_details')),
+                routeProgressOffRoute: @json(__('app.routes.progress_off_route_zero')),
+                routeProgressFrozen: @json(__('app.routes.progress_frozen_off_route')),
+                routeProgressStale: @json(__('app.routes.progress_stale_position')),
+                routeWaitingForStart: @json(__('app.routes.trip_waiting_for_start')),
+                routeWaitingForStartHint: @json(__('app.routes.trip_waiting_for_start_hint')),
+                routeManage: @json(__('app.routes.nav')),
+                routeAssignedHint: @json(__('app.routes.index_subtitle')),
+                routeProgressTitle: @json(__('app.routes.progress_title')),
+                routeReachedStart: @json(__('app.routes.reached_start')),
+                routeReachedCheckpoint: @json(__('app.routes.reached_checkpoint')),
+                routeReachedDestination: @json(__('app.routes.reached_destination')),
+                routeTraveled: @json(__('app.routes.distance_traveled')),
+                routeCurrentSpeed: @json(__('app.routes.current_speed')),
+                routeCurrentCheckpoint: @json(__('app.routes.current_checkpoint')),
+                routeNextCheckpoint: @json(__('app.routes.next_checkpoint')),
+                routeCurrentCity: @json(__('app.routes.current_city')),
+                routeNextCity: @json(__('app.routes.next_city')),
+                routeArrivalTime: @json(__('app.routes.arrival_time')),
+                routeNavOnAssigned: @json(__('app.routes.nav_on_assigned')),
+                routeNavJoining: @json(__('app.routes.nav_joining')),
+                routeSuggestedRoute: @json(__('app.routes.suggested_route_to_destination')),
+                routeNavRecalculated: @json(__('app.routes.nav_recalculated')),
+                routeNavSlightDeviation: @json(__('app.routes.nav_slight_deviation')),
+                routeNavDestinationReached: @json(__('app.routes.nav_destination_reached')),
+                routeOffRouteBadge: @json(__('app.routes.off_route_badge')),
             },
         };
     </script>
     <script src="{{ protected_js('app-datetime.js') }}"></script>
     <script src="{{ protected_js('vehicle-marker.js') }}"></script>
+    <script src="{{ protected_js('history-analytics.js') }}"></script>
+    <script src="{{ protected_js('route-trip-progress.js') }}"></script>
+    <script src="{{ protected_js('vehicle-map-popup.js') }}"></script>
     <script src="{{ protected_js('tracking-traccar.js') }}"></script>
 @endpush

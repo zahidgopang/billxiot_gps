@@ -4,6 +4,8 @@
 
 @push('styles')
     <link rel="stylesheet" href="{{ asset('css/fleet-map.css') }}?v={{ filemtime(public_path('css/fleet-map.css')) }}">
+    <link rel="stylesheet" href="{{ asset('css/vehicle-map-popup.css') }}?v={{ filemtime(public_path('css/vehicle-map-popup.css')) }}">
+    <link rel="stylesheet" href="{{ asset('css/route-trip-bar.css') }}?v={{ filemtime(public_path('css/route-trip-bar.css')) }}">
     <style>
         @if($panel === 'user')
         body.gt-page-active { overflow: hidden; }
@@ -123,6 +125,16 @@
             min-width: 0;
         }
 
+        .gt-map-wrap .route-trip-bar {
+            position: absolute;
+            top: 12px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 6;
+            width: min(720px, calc(100% - 24px));
+            pointer-events: auto;
+        }
+
         #gtMap {
             position: absolute;
             inset: 0;
@@ -202,6 +214,7 @@
             </aside>
 
             <div class="gt-map-wrap">
+                <div id="routeTripProgressBar" class="route-trip-bar" hidden aria-live="polite"></div>
                 <div id="gtMap" aria-label="{{ __('app.tracking.live_map_aria') }}"></div>
                 <div id="gtMapError" class="gt-map-error" hidden>
                     <div class="alert alert-danger mb-0">
@@ -236,6 +249,11 @@
             panel: @json($panel),
             googleMapsKey: @json(config('services.google.maps_key')),
             liveJsonUrl: @json(route($routes['liveJson'])),
+            completeTripUrl: @json(\Illuminate\Support\Facades\Route::has($routes['completeTrip'] ?? '') ? route($routes['completeTrip']) : null),
+            startNewTripUrl: @json(\Illuminate\Support\Facades\Route::has($routes['startNewTrip'] ?? '') ? route($routes['startNewTrip']) : null),
+            routeGuidanceUrl: @json(\Illuminate\Support\Facades\Route::has($routes['routeGuidance'] ?? '') ? route($routes['routeGuidance']) : null),
+            manageRoutesUrl: @json(\Illuminate\Support\Facades\Route::has("{$panel}.routes.index") ? route("{$panel}.routes.index") : null),
+            csrfToken: @json(csrf_token()),
             pollIntervalMs: 4000,
             animDurationMs: 1200,
             stateColors: @json($stateColors),
@@ -248,10 +266,40 @@
                 kmhUnit: @json(__('app.map.kmh_unit')),
                 ignitionOn: @json(__('app.map.ignition_on')),
                 ignitionOff: @json(__('app.map.ignition_off')),
+                plate: @json(__('app.tracking.lbl_plate')),
+                odometer: @json(__('app.tracking.lbl_odometer')),
+                status: @json(__('app.tracking.lbl_status')),
+                altitude: @json(__('app.tracking.lbl_altitude')),
+                angle: @json(__('app.tracking.lbl_angle')),
+                position: @json(__('app.tracking.lbl_position')),
+                engine: @json(__('app.tracking.lbl_engine')),
+                statusFor: @json(__('app.tracking.lbl_status_duration')),
+                close: @json(__('app.map.close_panel')),
+                routeRemaining: @json(__('app.routes.remaining')),
+                routeEta: @json(__('app.routes.eta')),
+                routeComplete: @json(__('app.routes.complete_trip')),
+                routeStartNew: @json(__('app.routes.start_new_trip')),
+                routeOffRoute: @json(__('app.routes.off_route_alert')),
+                routeElapsed: @json(__('app.routes.elapsed')),
+                routePlanned: @json(__('app.routes.planned')),
+                routeCheckpointTotal: @json(__('app.routes.checkpoint_total')),
+                routeMinAbbr: @json(__('app.routes.min_abbr')),
+                routePending: @json(__('app.routes.pending')),
+                routeToggleDetails: @json(__('app.routes.toggle_details')),
+                routeProgressOffRoute: @json(__('app.routes.progress_off_route_zero')),
+                routeProgressFrozen: @json(__('app.routes.progress_frozen_off_route')),
+                routeWaitingForStart: @json(__('app.routes.trip_waiting_for_start')),
+                routeWaitingForStartHint: @json(__('app.routes.trip_waiting_for_start_hint')),
+                routeProgressTitle: @json(__('app.routes.progress_title')),
+                routeReachedStart: @json(__('app.routes.reached_start')),
+                routeReachedCheckpoint: @json(__('app.routes.reached_checkpoint')),
+                routeReachedDestination: @json(__('app.routes.reached_destination')),
             },
         };
     </script>
     <script src="{{ protected_js('app-datetime.js') }}"></script>
     <script src="{{ protected_js('vehicle-marker.js') }}"></script>
+    <script src="{{ protected_js('route-trip-progress.js') }}"></script>
+    <script src="{{ protected_js('vehicle-map-popup.js') }}"></script>
     <script src="{{ protected_js('global-tracking.js') }}"></script>
 @endpush

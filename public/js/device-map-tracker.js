@@ -66,6 +66,7 @@
     }
 
     let map, drawingManager, trafficLayer, customInfoWindow;
+    let vehicleMapPopup = null;
     let geofences = [];
     let polylines = [];
     let realtimePolylines = [];
@@ -80,10 +81,13 @@
     let playbackActive = false;
     /** When true, marker/pulse color uses fix-time motion, not wall-clock offline tier. */
     let routeScrubUsesMotion = false;
-    let followVehicle = true;
+    let followVehicle = false;
+    let playbackFollow = false;
     let flatpickrFrom;
     let flatpickrTo;
     let historyData = [];
+    let historyTimeline = [];
+    let historyStats = null;
     let lastRealtimePoint = null;
     let lastTelemetry = null;
     let pollTimer = null;
@@ -118,6 +122,11 @@
     let mapResizeObserver = null;
     let lastMapBootError = '';
     let lastAppliedPositionKey = '';
+    let userViewportLocked = false;
+    let suppressViewportLock = false;
+    let suppressViewportLockTimer = null;
+    let historyAutoFitDone = false;
+    let routeTripAutoFitDone = false;
     let vehiclePopupPinned = false;
     let livePopupAddress = '';
     let livePollTimer = null;
@@ -135,6 +144,50 @@
     const mediumSpeedKmh = cfg.mediumSpeedKmh ?? 60;
     const ANIM_DURATION_MS = cfg.markerAnimMs ?? 1200;
 
+    function resolveMarkerStyle(source) {
+        return window.VehicleMarker?.resolveMarkerStyle?.(source || mapAppearance)
+            || 'labeled';
+    }
+
+    function resolveMarkerSizeScale(source) {
+        return window.VehicleMarker?.resolveMarkerSizeScale?.(
+            source || mapAppearance,
+            cfg.mapRendering
+        ) || 1;
+    }
+
+    function resolveCustomIconUrl(source) {
+        return window.VehicleMarker?.resolveCustomIconUrl?.(source || mapAppearance) || null;
+    }
+
+    function resolveRotationEnabled(source) {
+        return window.VehicleMarker?.resolveRotationEnabled?.(source || mapAppearance) !== false;
+    }
+
+    const mapAppearance = {
+        vehicle_type: cfg.vehicleType || 'car',
+        map_marker_style: cfg.mapMarkerStyle || 'labeled',
+        map_marker_size: cfg.mapMarkerSize || '100',
+        map_marker_size_scale: cfg.mapMarkerSizeScale || 1,
+        map_icon_source: cfg.mapIconSource || 'default',
+        map_custom_icon_url: cfg.mapCustomIconUrl || null,
+        map_icon_rotation_enabled: cfg.mapIconRotationEnabled !== false,
+    };
+
+    function applyMapAppearance(next) {
+        Object.assign(mapAppearance, next || {});
+        cfg.vehicleType = mapAppearance.vehicle_type;
+        cfg.mapIconSource = mapAppearance.map_icon_source;
+        cfg.mapCustomIconUrl = mapAppearance.map_custom_icon_url;
+        cfg.mapIconRotationEnabled = mapAppearance.map_icon_rotation_enabled;
+        if (fleetRenderer) {
+            fleetRenderer.refreshIconKit();
+            if (lastTelemetry) {
+                fleetRenderer.setCurrentVehicle(lastTelemetry, { animate: false });
+            }
+        }
+    }
+
     function ensureFleetRenderer() {
         if (!map) return null;
         if (!window.FleetMapRenderer) {
@@ -148,6 +201,11 @@
                 getState: vehicleStateKey,
                 getColor: vehicleStateColor,
                 getVehicleType: resolveVehicleType,
+                getMarkerStyle: resolveMarkerStyle,
+                getMarkerSizeScale: resolveMarkerSizeScale,
+                getCustomIconUrl: resolveCustomIconUrl,
+                getRotationEnabled: resolveRotationEnabled,
+                mapRendering: cfg.mapRendering,
                 shouldShowDirection: shouldShowVehicleDirection,
                 isHidden: hasNoGpsData,
                 speedToColor,
@@ -167,6 +225,32 @@
         }
         currentPositionMarker = fleetRenderer.getMarker();
         return fleetRenderer;
+    }
+
+    function markProgrammaticViewportMove(callback) {
+        if (suppressViewportLockTimer) {
+            clearTimeout(suppressViewportLockTimer);
+        }
+        suppressViewportLock = true;
+        try {
+            callback?.();
+        } finally {
+            suppressViewportLockTimer = setTimeout(() => {
+                suppressViewportLock = false;
+                suppressViewportLockTimer = null;
+            }, 700);
+        }
+    }
+
+    function lockViewportFromUser() {
+        if (suppressViewportLock) {
+            return;
+        }
+        userViewportLocked = true;
+        followVehicle = false;
+        playbackFollow = false;
+        ensureFleetRenderer()?.setFollowVehicle(false);
+        document.getElementById('btnFollow')?.classList.remove('active');
     }
 
     function updateVehiclePulseOverlay(point) {
@@ -236,6 +320,8 @@
             satellites: raw.satellites ?? null,
             fuel: raw.fuel ?? raw.fuel_level ?? null,
             odometer: raw.odometer ?? null,
+            odometer_km: raw.odometer_km ?? null,
+            altitude: raw.altitude != null ? parseFloat(raw.altitude) : null,
             power_cut: raw.power_cut === true || raw.power_cut === 1,
             panic: raw.panic === true || raw.panic === 1,
             recorded_at: ts,
@@ -243,6 +329,14 @@
             position_id: raw.position_id != null ? Number(raw.position_id) : null,
             status: raw.status ?? null,
             status_key: raw.status_key ?? null,
+            status_label: raw.status_label ?? null,
+            status_duration_seconds: raw.status_duration_seconds != null
+                ? parseFloat(raw.status_duration_seconds)
+                : null,
+            motion_status: raw.motion_status ?? null,
+            motion_status_key: raw.motion_status_key ?? null,
+            trip_status_key: raw.trip_status_key ?? raw.status_key ?? null,
+            trip_status_label: raw.trip_status_label ?? raw.status_label ?? null,
             connectivity_tier: raw.connectivity_tier ?? null,
             last_known_status: raw.last_known_status ?? null,
             last_known_status_key: raw.last_known_status_key ?? null,
@@ -252,6 +346,8 @@
                 : (raw.last_known_ignition === false || raw.last_known_ignition === 0 || raw.last_known_ignition === '0'
                     ? false
                     : null),
+            plate: raw.plate ?? raw.map_marker_plate ?? raw.vehicle_number ?? null,
+            name: raw.name ?? raw.map_marker_title ?? null,
             is_online: raw.is_online,
         };
     }
@@ -390,50 +486,92 @@
         return markerIdentityForPoint(point || {});
     }
 
+    function vehiclePopupI18n() {
+        return {
+            dash: mi('dash', '—'),
+            plate: mi('vehicleNumber', 'Plate Number'),
+            odometer: mi('odometer', 'Odometer'),
+            status: mi('currentStatus', 'Status'),
+            altitude: mi('altitude', 'Altitude'),
+            angle: mi('heading', 'Angle'),
+            position: mi('coords', 'Position'),
+            engine: mi('ignition', 'Engine'),
+            statusFor: mi('statusDuration', 'for'),
+            ignitionOn: mi('ignitionOn', 'ON'),
+            ignitionOff: mi('ignitionOff', 'OFF'),
+            close: mi('closePanel', 'Close'),
+        };
+    }
+
+    function ensureVehicleMapPopup() {
+        if (!vehicleMapPopup && window.VehicleMapPopup) {
+            vehicleMapPopup = new window.VehicleMapPopup({
+                getMap: () => map,
+                googleMaps: google,
+                stateColors: cfg.stateColors,
+                i18n: vehiclePopupI18n(),
+                onClose: () => {
+                    vehiclePopupPinned = false;
+                    if (lastTelemetry) {
+                        updateVehiclePulseOverlay(lastTelemetry);
+                    }
+                },
+            });
+        }
+        return vehicleMapPopup;
+    }
+
+    function updateLiveVehiclePopup(point) {
+        const kit = ensureVehicleMapPopup();
+        if (!vehiclePopupPinned || !kit || !currentPositionMarker || !point) {
+            return;
+        }
+        const identity = markerIdentityForPoint(point);
+        kit.update({
+            ...point,
+            title: identity.title,
+            plate: identity.plate || point.plate,
+            id: deviceId,
+        });
+        const pos = currentPositionMarker.getPosition();
+        if (pos && kit.infoWindow && !kit.infoWindow.getMap()) {
+            kit.open({
+                ...point,
+                title: identity.title,
+                plate: identity.plate || point.plate,
+                id: deviceId,
+            }, currentPositionMarker);
+        }
+    }
+
+    function closeLiveVehiclePopup() {
+        vehiclePopupPinned = false;
+        vehicleMapPopup?.close();
+        customInfoWindow?.close();
+        if (lastTelemetry) {
+            updateVehiclePulseOverlay(lastTelemetry);
+        }
+    }
+
+    function openLiveVehiclePopup(point) {
+        const kit = ensureVehicleMapPopup();
+        if (!kit || !currentPositionMarker || !point) {
+            return;
+        }
+        vehiclePopupPinned = true;
+        const identity = markerIdentityForPoint(point);
+        kit.open({
+            ...point,
+            title: identity.title,
+            plate: identity.plate || point.plate,
+            id: deviceId,
+        }, currentPositionMarker);
+        updateVehiclePulseOverlay(point);
+    }
+
     function formatIgnitionLabel(point) {
         if (point?.ignition == null) return dash();
         return point.ignition ? mi('ignitionOn', 'ON') : mi('ignitionOff', 'OFF');
-    }
-
-    function buildLiveVehiclePopupHtml(point) {
-        const identity = markerIdentityForPoint(point);
-        const status = resolveVehicleStatus(point);
-        const speed = parseFloat(point.speed || 0).toFixed(0);
-        const updated = point.recorded_at
-            ? (window.AppDateTime?.formatDateTime(point.recorded_at) ?? new Date(point.recorded_at).toLocaleString())
-            : dash();
-
-        const plateRow = identity.plate
-            ? `<div class="vehicle-map-popup__row"><strong>${mi('vehicleNumber', 'Vehicle Number')}</strong><span>${escapeHtml(identity.plate)}</span></div>`
-            : '';
-
-        const driverName = String(point?.driver_name || cfg.driverName || '').trim();
-        const driverContact = String(point?.driver_contact || cfg.driverContact || '').trim();
-        const driverTel = String(cfg.driverContactTel || driverContact).replace(/[^\d+]/g, '');
-        const driverNameRow = driverName
-            ? `<div class="vehicle-map-popup__row"><strong>${mi('driverName', 'Driver')}</strong><span>${escapeHtml(driverName)}</span></div>`
-            : '';
-        const driverContactRow = driverContact
-            ? `<div class="vehicle-map-popup__row"><strong>${mi('driverContact', 'Driver contact')}</strong><span><a class="vehicle-map-popup__call" href="tel:${escapeHtml(driverTel)}" dir="ltr">${escapeHtml(driverContact)}</a></span></div>`
-            : '';
-
-        return `<div class="vehicle-map-popup">
-            <div class="vehicle-map-popup__head">
-                <div>
-                    <div class="vehicle-map-popup__title">${escapeHtml(identity.title)}</div>
-                </div>
-                <button type="button" class="vehicle-map-popup__close" id="liveVehiclePopupClose" aria-label="Close">&times;</button>
-            </div>
-            <div class="vehicle-map-popup__body">
-                ${plateRow}
-                ${driverNameRow}
-                ${driverContactRow}
-                <div class="vehicle-map-popup__row vehicle-map-popup__row--status"><strong>${mi('currentStatus', 'Status')}</strong><span class="map-status-chip ${status.cls}">${escapeHtml(status.label)}</span></div>
-                <div class="vehicle-map-popup__row"><strong>${mi('speed', 'Speed')}</strong><span>${speed} ${mi('kmh', 'km/h')}</span></div>
-                <div class="vehicle-map-popup__row"><strong>${mi('ignition', 'Ignition')}</strong><span>${escapeHtml(formatIgnitionLabel(point))}</span></div>
-                <div class="vehicle-map-popup__row"><strong>${mi('updated', 'Updated')}</strong><span>${escapeHtml(updated)}</span></div>
-            </div>
-        </div>`;
     }
 
     function updateRouteSummaryLive(point) {
@@ -471,44 +609,44 @@
         setText('rssLastUpdate', updated);
     }
 
-    function updateLiveVehiclePopup(point) {
-        if (!vehiclePopupPinned || !customInfoWindow || !currentPositionMarker || !point) {
-            return;
-        }
-        customInfoWindow.setContent(buildLiveVehiclePopupHtml(point));
-        const pos = currentPositionMarker.getPosition();
-        if (pos) {
-            customInfoWindow.setPosition(pos);
-        }
-        if (!customInfoWindow.getMap()) {
-            customInfoWindow.open(map);
-        }
-    }
-
-    function closeLiveVehiclePopup() {
-        vehiclePopupPinned = false;
-        customInfoWindow?.close();
-        if (lastTelemetry) {
-            updateVehiclePulseOverlay(lastTelemetry);
-        }
-    }
-
-    function openLiveVehiclePopup(point) {
-        if (!customInfoWindow || !currentPositionMarker || !point) {
-            return;
-        }
-        vehiclePopupPinned = true;
-        updateLiveVehiclePopup(point);
-        updateVehiclePulseOverlay(point);
-    }
-
     function normalizeResponse(j) {
         if (!j) return [];
         if (Array.isArray(j)) return j;
+        if (Array.isArray(j.points)) return j.points;
         if (Array.isArray(j.locations)) return j.locations;
         if (Array.isArray(j.data)) return j.data;
+        if (Array.isArray(j.polyline)) return j.polyline;
         if (j.lat && j.lng) return [j];
         return [];
+    }
+
+    function extractHistoryMeta(json) {
+        if (!json || Array.isArray(json)) {
+            return { timeline: [], stats: null };
+        }
+        return {
+            timeline: Array.isArray(json.timeline) ? json.timeline : [],
+            stats: json.stats && typeof json.stats === 'object' ? json.stats : null,
+        };
+    }
+
+    function statusDurationAtPoint(index, points) {
+        if (window.HistoryAnalytics?.statusDurationAtIndex) {
+            return window.HistoryAnalytics.statusDurationAtIndex(points || playbackPoints, index);
+        }
+        const data = points || playbackPoints;
+        const point = data[index];
+        if (!point) return 0;
+        const target = vehicleStateKeyFromMetrics(point);
+        const endMs = parseRouteTimestampMs(point.recorded_at);
+        if (endMs == null) return 0;
+        let sinceMs = endMs;
+        for (let i = index - 1; i >= 0; i--) {
+            if (vehicleStateKeyFromMetrics(data[i]) !== target) break;
+            const ms = parseRouteTimestampMs(data[i].recorded_at);
+            if (ms != null) sinceMs = ms;
+        }
+        return Math.max(0, (endMs - sinceMs) / 1000);
     }
 
     function haversineDistance(lat1, lng1, lat2, lng2) {
@@ -612,6 +750,7 @@
             running: mi('statusRunning', 'Running'),
             stopped: mi('statusStopped', 'Stopped'),
             parked: mi('statusParked', 'Parked'),
+            parking: mi('statusParked', 'Parking'),
             moving: mi('statusMoving', 'Moving'),
             idle: mi('statusIdle', 'Idle'),
             ignition_off: mi('statusParked', 'Parked'),
@@ -630,6 +769,7 @@
     function statusClassForKey(key) {
         const k = String(key || '').toLowerCase();
         if (k === 'idle') return 'map-status-chip--stopped';
+        if (k === 'parking') return 'map-status-chip--parked';
         if (k === 'ignition_off') return 'map-status-chip--parked';
         if (k === 'blocked') return 'map-status-chip--offline';
         return 'map-status-chip--' + k;
@@ -640,9 +780,9 @@
             return 'alert';
         }
         const speed = parseFloat(point.speed || 0);
-        const movingThreshold = typeof movingSpeedKmh === 'number' ? movingSpeedKmh : 5;
+        const movingThreshold = typeof movingSpeedKmh === 'number' ? movingSpeedKmh : 1;
         if (point.ignition === true) {
-            return speed > movingThreshold ? 'running' : 'stopped';
+            return speed > movingThreshold ? 'running' : 'idle';
         }
         return speed > movingThreshold ? 'moving' : 'parked';
     }
@@ -650,7 +790,7 @@
     function normalizeVehicleStateKey(key) {
         if (!key) return key;
         const k = String(key).toLowerCase();
-        if (k === 'idle') return 'stopped';
+        if (k === 'parking') return 'parked';
         if (k === 'ignition_off') return 'parked';
         return k;
     }
@@ -931,6 +1071,42 @@
         }
     }
 
+    window.deviceMapApplyAppearance = applyMapAppearance;
+
+    function initMapMarkerAppearance() {
+        const form = document.getElementById('mapMarkerAppearanceForm');
+        if (!form || !window.MapMarkerAppearance || !cfg.mapAppearanceSaveUrl) {
+            return;
+        }
+        window.MapMarkerAppearance.bindForm({
+            form,
+            saveUrl: cfg.mapAppearanceSaveUrl,
+            uploadUrl: cfg.mapCustomIconUploadUrl,
+            deleteUrl: cfg.mapCustomIconDeleteUrl,
+            csrf: cfg.csrfToken,
+            initial: mapAppearance,
+            mapRendering: cfg.mapRendering,
+            previewTitle: cfg.markerTitle,
+            previewPlate: cfg.markerPlate,
+            sizeOrder: window.MapMarkerAppearance.DEFAULT_SIZE_ORDER,
+            i18n: cfg.mapAppearanceI18n || {},
+            onSaved(appearance) {
+                applyMapAppearance(appearance);
+                window.MapMarkerAppearance.renderPreview?.(form, {
+                    initial: appearance,
+                    mapRendering: cfg.mapRendering,
+                    sizeOrder: window.MapMarkerAppearance.DEFAULT_SIZE_ORDER,
+                    i18n: cfg.mapAppearanceI18n || {},
+                    previewTitle: cfg.markerTitle,
+                    previewPlate: cfg.markerPlate,
+                });
+            },
+            onPreviewChange(appearance) {
+                applyMapAppearance(appearance);
+            },
+        });
+    }
+
     function initMapBackNavigation() {
         const backUrl = cfg.backUrl || document.querySelector('.sidebar-back-link')?.href;
         if (!backUrl) {
@@ -1135,10 +1311,9 @@
             showNotification(mi('noPosition', 'No position available'), 'info');
             return;
         }
-        ensureFleetRenderer()?.focusOnVehicle(16);
-        followVehicle = true;
-        fleetRenderer?.setFollowVehicle(true);
-        document.getElementById('btnFollow')?.classList.add('active');
+        markProgrammaticViewportMove(() => {
+            ensureFleetRenderer()?.focusOnVehicle(16);
+        });
     }
 
     function copyLiveCoords() {
@@ -1163,6 +1338,20 @@
 
     function analyzeRoute(data) {
         if (!data.length) return null;
+        if (window.HistoryAnalytics?.analyze) {
+            const stats = window.HistoryAnalytics.analyze(data);
+            return {
+                dist: stats.dist,
+                maxSpeed: stats.maxSpeed,
+                overspeedEvents: stats.overspeedEvents,
+                movingSec: stats.movingSec,
+                stoppedSec: stats.stoppedSec,
+                idleSec: stats.idleSec,
+                parkingSec: stats.parkingSec,
+                totalSec: stats.totalSec,
+                stops: stats.stops,
+            };
+        }
         const stopMinSec = (cfg.stopMinMinutes || 2) * 60;
         let dist = 0, maxSpeed = 0, overspeedEvents = 0, movingSec = 0, stoppedSec = 0;
         const stops = [];
@@ -1226,7 +1415,7 @@
             }
             const t0 = new Date(stopRun[0].recorded_at).getTime();
             const t1 = new Date(stopRun[stopRun.length - 1].recorded_at).getTime();
-            const dur = (t1 - t0) / 1000;
+            const dur = t0 != null && t1 != null && t1 > t0 ? (t1 - t0) / 1000 : 0;
             if (dur >= stopMinSec) {
                 const mid = stopRun[Math.floor(stopRun.length / 2)];
                 events.push({
@@ -1478,7 +1667,9 @@
         if (!historyData.length) return showNotification('Load route history first', 'info');
         const bounds = new google.maps.LatLngBounds();
         historyData.forEach((p) => bounds.extend({ lat: p.lat, lng: p.lng }));
-        map.fitBounds(bounds, { top: 120, right: 80, bottom: 140, left: 320 });
+        markProgrammaticViewportMove(() => {
+            map.fitBounds(bounds, { top: 120, right: 80, bottom: 140, left: 320 });
+        });
     }
 
     function downloadFile(filename, content, mime) {
@@ -1517,12 +1708,14 @@ ${pts}
         showNotification('GPX exported', 'success');
     }
 
-    function updateTelemetryUI(point) {
+    function updateTelemetryUI(point, options) {
         if (!point) return;
+        options = options || {};
 
-        const tier = connectivityTier(point);
-        const isRecent = tier === 'live';
-        const isOffline = tier === 'offline';
+        const playbackMode = options.playback === true || playbackActive || routeScrubUsesMotion;
+        const tier = playbackMode ? 'live' : connectivityTier(point);
+        const isRecent = playbackMode || tier === 'live';
+        const isOffline = !playbackMode && tier === 'offline';
         const speed = isRecent ? parseFloat(point.speed || 0) : lastKnownSpeed(point);
         const battery = point.battery != null ? parseInt(point.battery, 10) : null;
         const status = resolveVehicleStatus(point);
@@ -1547,6 +1740,19 @@ ${pts}
         setText('livePanelSatellites', point.satellites != null ? String(point.satellites) : dash());
         setText('livePanelBattery', battery != null ? battery + '%' : dash());
         setText('livePanelUpdated', point.recorded_at ? (window.AppDateTime?.formatDateTime(point.recorded_at) ?? point.recorded_at) : dash());
+        setText('livePanelHeading', point.heading != null && point.heading !== '' ? point.heading + '°' : dash());
+        setText('livePanelOdometer', point.odometer != null ? Number(point.odometer).toLocaleString() + ' ' + mi('km', 'km') : dash());
+        setText('livePanelLat', isValidCoord(point.lat) ? Number(point.lat).toFixed(6) : dash());
+        setText('livePanelLng', isValidCoord(point.lng) ? Number(point.lng).toFixed(6) : dash());
+        setText('livePanelGpsTime', point.recorded_at ? (window.AppDateTime?.formatDateTime(point.recorded_at) ?? point.recorded_at) : dash());
+        setText('livePanelServerTime', window.AppDateTime?.formatDateTime
+            ? window.AppDateTime.formatDateTime(new Date().toISOString())
+            : new Date().toLocaleString());
+
+        const durationSec = options.statusDurationSec ?? (playbackMode ? statusDurationAtPoint(playbackIndex) : null);
+        if (durationSec != null) {
+            setText('livePanelStatusDuration', formatDurationLong(durationSec));
+        }
 
         const liveChip = document.getElementById('liveStatusChip');
         if (liveChip) {
@@ -1689,8 +1895,6 @@ ${pts}
                 const lat = parseFloat(el.getAttribute('data-alert-lat'));
                 const lng = parseFloat(el.getAttribute('data-alert-lng'));
                 if (!map || Number.isNaN(lat) || Number.isNaN(lng)) return;
-                followVehicle = true;
-                document.getElementById('btnFollow')?.classList.add('active');
                 map.panTo({ lat, lng });
                 if ((map.getZoom() || 0) < 15) map.setZoom(15);
             });
@@ -1854,6 +2058,79 @@ ${pts}
         ensureFleetRenderer()?.drawRealtimeSegment(from, to, speed);
     }
 
+    let routeTripProgress = null;
+
+    function ensureRouteTripProgress() {
+        if (routeTripProgress || !window.RouteTripProgress) return routeTripProgress;
+        routeTripProgress = new window.RouteTripProgress({
+            containerId: 'routeTripProgressBar',
+            getMap: () => map,
+            googleMaps: google,
+            i18n: cfg.routeTripI18n || {},
+            shouldFitRouteBounds: () => !userViewportLocked && !routeTripAutoFitDone,
+            onBeforeRouteBoundsFit: () => markProgrammaticViewportMove(() => {}),
+            onRouteBoundsFitted: () => {
+                routeTripAutoFitDone = true;
+            },
+            onComplete: completeAssignedTrip,
+            onStartNew: startNewAssignedTrip,
+            onMilestoneReached: (_milestone, message) => showNotification(message, 'success'),
+        });
+        return routeTripProgress;
+    }
+
+    async function completeAssignedTrip() {
+        const url = cfg.completeTripUrl;
+        if (!url) return;
+        try {
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    Accept: 'application/json',
+                    'X-CSRF-TOKEN': cfg.csrfToken || '',
+                },
+            });
+            const data = await res.json().catch(() => ({}));
+            if (data.success) {
+                showNotification(data.message || 'Trip completed', 'success');
+                if (data.route_trip) applyRouteTripPayload({ route_trip: data.route_trip });
+                else await pollLive();
+            }
+        } catch (_) { /* ignore */ }
+    }
+
+    async function startNewAssignedTrip() {
+        const url = cfg.startNewTripUrl;
+        if (!url) return;
+        try {
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    Accept: 'application/json',
+                    'X-CSRF-TOKEN': cfg.csrfToken || '',
+                },
+            });
+            const data = await res.json().catch(() => ({}));
+            if (data.success) {
+                showNotification(data.message || 'Trip started', 'success');
+                if (data.route_trip) applyRouteTripPayload({ route_trip: data.route_trip });
+                else await pollLive();
+            } else if (data.message) {
+                showNotification(data.message, 'error');
+            }
+        } catch (_) { /* ignore */ }
+    }
+
+    function applyRouteTripPayload(raw) {
+        const kit = ensureRouteTripProgress();
+        if (!kit) return;
+        if (raw?.route_trip) {
+            kit.update(raw);
+        } else if (raw && raw.route) {
+            kit.update({ route_trip: raw });
+        }
+    }
+
     function applyLivePoint(raw) {
         let point = normalizePoint(raw);
         if (!point) return;
@@ -1885,10 +2162,15 @@ ${pts}
             routeScrubUsesMotion = false;
         }
 
-        updateTelemetryUI(point);
-        updateLiveVehiclePopup(point);
+        if (!playbackActive) {
+            updateTelemetryUI(point);
+            updateLiveVehiclePopup(point);
+        }
         evaluateAlerts(point, prev);
         lastTelemetry = point;
+        if (raw?.route_trip) {
+            applyRouteTripPayload(raw);
+        }
     }
 
     async function pollLive() {
@@ -2387,22 +2669,25 @@ ${pts}
             ? { lat: initial.lat, lng: initial.lng }
             : { lat: cfg.defaultLat || 24.8607, lng: cfg.defaultLng || 67.0011 };
 
-        map = new google.maps.Map(mapEl, {
-            center,
-            zoom: initial ? 15 : 13,
-            mapTypeId: 'roadmap',
-            gestureHandling: 'greedy',
-            fullscreenControl: true,
-            zoomControl: true,
-            streetViewControl: false,
-            minZoom: 3,
-            maxZoom: 21,
+        markProgrammaticViewportMove(() => {
+            map = new google.maps.Map(mapEl, {
+                center,
+                zoom: initial ? 15 : 13,
+                mapTypeId: 'roadmap',
+                gestureHandling: 'greedy',
+                fullscreenControl: true,
+                zoomControl: true,
+                streetViewControl: false,
+                minZoom: 3,
+                maxZoom: 21,
+            });
         });
 
         initDrawingManager();
         trafficLayer = new google.maps.TrafficLayer();
         customInfoWindow = new google.maps.InfoWindow({ maxWidth: 320, pixelOffset: new google.maps.Size(0, -8) });
         customInfoWindow.addListener('closeclick', () => {
+            if (!vehiclePopupPinned) return;
             closeLiveVehiclePopup();
         });
         map.addListener('click', () => {
@@ -2410,13 +2695,8 @@ ${pts}
                 closeLiveVehiclePopup();
             }
         });
-        google.maps.event.addListener(customInfoWindow, 'domready', () => {
-            document.getElementById('liveVehiclePopupClose')?.addEventListener('click', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                closeLiveVehiclePopup();
-            });
-        });
+        map.addListener('dragstart', lockViewportFromUser);
+        map.addListener('zoom_changed', lockViewportFromUser);
 
         if (!mapControlsBound) {
             bindControls();
@@ -2424,6 +2704,7 @@ ${pts}
             initMapHudToggle();
             initMapLivePanelToggle();
             initHudRouteSummary();
+            initMapMarkerAppearance();
             initMapBackNavigation();
             updatePlaybackFab();
             initDateFilter();
@@ -2433,7 +2714,7 @@ ${pts}
         ensureFleetRenderer();
 
         if (initial) {
-            applyLivePoint(initial);
+            applyLivePoint(cfg.initialPoint ?? initial);
             lastRealtimePoint = { lat: initial.lat, lng: initial.lng };
         }
     }
@@ -2649,10 +2930,16 @@ ${pts}
         });
         document.getElementById('btnCenterVehicle')?.addEventListener('click', centerOnVehicle);
         document.getElementById('btnFollow')?.addEventListener('click', () => {
-            followVehicle = !followVehicle;
-            fleetRenderer?.setFollowVehicle(followVehicle);
-            document.getElementById('btnFollow')?.classList.toggle('active', followVehicle);
-            showNotification(followVehicle ? 'Follow mode on' : 'Follow mode off', 'info');
+            if (playbackPoints.length && document.getElementById('playbackPanel')?.classList.contains('active')) {
+                playbackFollow = !playbackFollow;
+                document.getElementById('btnFollow')?.classList.toggle('active', playbackFollow);
+                if (playbackFollow && playbackPoints[playbackIndex]) {
+                    const p = playbackPoints[playbackIndex];
+                    map?.panTo({ lat: p.lat, lng: p.lng });
+                }
+                return;
+            }
+            centerOnVehicle();
         });
         document.getElementById('btnTraffic')?.addEventListener('click', () => {
             trafficLayer.setMap(trafficLayer.getMap() ? null : map);
@@ -2827,15 +3114,77 @@ ${pts}
         updatePlaybackAtIndex(playbackIndex);
     }
 
+    function renderHistoryTimeline(timeline) {
+        const list = document.getElementById('historyTimelineList');
+        const countEl = document.getElementById('historyTimelineCount');
+        if (!list) return;
+
+        const items = (timeline || []).filter((seg) => (seg.duration_seconds ?? 0) > 0 || seg.is_transition);
+        if (countEl) countEl.textContent = String(items.length);
+
+        if (!items.length) {
+            list.innerHTML = `<div class="trip-event-empty text-muted small text-center py-3">${escapeHtml(mi('load_history_timeline', 'Load history to see the status timeline'))}</div>`;
+            return;
+        }
+
+        list.innerHTML = items.map((seg) => {
+            const time = seg.start_display || formatRouteTimestamp(seg.start);
+            const dur = formatDurationLong(seg.duration_seconds || 0);
+            const speed = seg.speed_kmh != null ? `${Number(seg.speed_kmh).toFixed(0)} ${mi('kmh', 'km/h')}` : '';
+            const coords = seg.end_lat != null && seg.end_lng != null
+                ? `${Number(seg.end_lat).toFixed(5)}, ${Number(seg.end_lng).toFixed(5)}`
+                : '';
+            return `
+                <div class="trip-event-item trip-event-item--${escapeHtml(String(seg.status_key || 'stop'))}">
+                    <strong>${escapeHtml(time)} — ${escapeHtml(seg.status_label || seg.status_key || '—')}${dur ? ` (${dur})` : ''}</strong>
+                    <span>${escapeHtml([speed, coords].filter(Boolean).join(' · '))}</span>
+                </div>`;
+        }).join('');
+    }
+
+    function routeStatsFromHistory(data) {
+        if (historyStats) {
+            return {
+                dist: parseFloat(historyStats.total_distance_km || 0),
+                maxSpeed: parseFloat(historyStats.max_speed_kmh || 0),
+                overspeedEvents: parseInt(historyStats.overspeed_events || 0, 10) || 0,
+                movingSec: Math.max(0, parseInt(historyStats.moving_time_seconds || 0, 10) || 0),
+                stoppedSec: Math.max(0, parseInt(historyStats.stopped_time_seconds || 0, 10) || 0),
+                idleSec: Math.max(0, parseInt(historyStats.idle_time_seconds || 0, 10) || 0),
+                parkingSec: Math.max(0, parseInt(historyStats.parking_time_seconds || 0, 10) || 0),
+                totalSec: Math.max(0, parseInt(historyStats.total_duration_seconds || 0, 10) || 0),
+                stops: (historyStats.stops || []).map((s) => ({
+                    lat: s.lat,
+                    lng: s.lng,
+                    duration: s.duration_seconds ?? s.duration ?? 0,
+                    start: s.start,
+                    end: s.end,
+                })),
+                startTs: historyStats.start_time || null,
+                endTs: historyStats.end_time || null,
+                avgSpeed: parseFloat(historyStats.average_speed_kmh || 0),
+            };
+        }
+
+        const baseStats = analyzeRoute(data);
+        if (!baseStats) return null;
+        return enrichRouteStats(data, baseStats);
+    }
+
     function updatePlaybackAtIndex(index) {
         const p = playbackPoints[index];
         if (!p) return;
         routeScrubUsesMotion = true;
         updateCurrentMarker(p, true);
+        updateTelemetryUI(p, {
+            playback: true,
+            statusDurationSec: statusDurationAtPoint(index),
+        });
+        updateRouteSummaryLive(p);
         setText('pbLiveSpeed', parseFloat(p.speed || 0).toFixed(0));
         setText('pbPointIndex', String(index + 1));
         updatePlaybackProgress();
-        if (followVehicle) map.panTo({ lat: p.lat, lng: p.lng });
+        if (playbackFollow) map.panTo({ lat: p.lat, lng: p.lng });
     }
 
     function animatePlaybackToIndex(nextIndex, onDone) {
@@ -3050,7 +3399,10 @@ ${pts}
             const json = await parseJsonResponse(response);
             if (handleMapAccessDenied(response, json)) return;
             if (!response.ok) throw new Error('HTTP ' + response.status);
-            const historyFallback = response.headers.get('X-History-Fallback') || '';
+            const meta = extractHistoryMeta(json);
+            historyTimeline = meta.timeline;
+            historyStats = meta.stats;
+            const historyFallback = response.headers.get('X-History-Fallback') || json?.history_fallback || '';
             const data = sortHistoryPoints(
                 normalizeResponse(json).map(normalizePoint).filter(Boolean)
             );
@@ -3103,6 +3455,7 @@ ${pts}
             }
 
             historyData = data;
+            renderHistoryTimeline(historyTimeline);
 
             const bounds = renderer.drawRoute(data, {
                 clickable: true,
@@ -3126,12 +3479,24 @@ ${pts}
             }
             lastRealtimePoint = { lat: data[data.length - 1].lat, lng: data[data.length - 1].lng };
             routeScrubUsesMotion = true;
-            updateCurrentMarker(data[data.length - 1], true);
+            const lastPoint = data[data.length - 1];
+            updateCurrentMarker(lastPoint, true);
+            updateTelemetryUI(lastPoint, {
+                playback: true,
+                statusDurationSec: statusDurationAtPoint(data.length - 1, data),
+            });
+            updateRouteSummaryLive(lastPoint);
 
-            if (bounds && data.length < 100) {
-                renderer.fitBounds(bounds, 56);
-            } else {
-                renderer.focusOnVehicle(16);
+            const shouldAutoFitHistory = !historyAutoFitDone && !userViewportLocked;
+            if (shouldAutoFitHistory) {
+                markProgrammaticViewportMove(() => {
+                    if (bounds && data.length < 100) {
+                        renderer.fitBounds(bounds, 56);
+                    } else {
+                        renderer.focusOnVehicle(16);
+                    }
+                });
+                historyAutoFitDone = true;
             }
 
             playbackPoints = data;
@@ -3386,11 +3751,11 @@ ${pts}
         if (!data.length) {
             setHudRouteVisible(false);
             setRouteSummarySheetVisible(false);
+            renderHistoryTimeline([]);
             return;
         }
-        const baseStats = analyzeRoute(data);
-        if (!baseStats) return;
-        const stats = enrichRouteStats(data, baseStats);
+        const stats = routeStatsFromHistory(data);
+        if (!stats) return;
 
         routeStops = stats.stops;
         const startTs = stats.startTs;

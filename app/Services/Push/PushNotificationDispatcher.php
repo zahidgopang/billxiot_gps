@@ -2,18 +2,23 @@
 
 namespace App\Services\Push;
 
+use App\Contracts\Tracking\EventWriterInterface;
 use App\Models\Device;
 use App\Models\User;
 use App\Models\VehicleEvent;
+use App\Services\Notifications\AlertChannelNotifier;
 use App\Services\Tracking\NotificationPreferenceService;
 use App\Support\Push\PushNotificationMapper;
 use App\Support\Push\PushNotificationType;
+use Carbon\Carbon;
 
 class PushNotificationDispatcher
 {
     public function __construct(
         private FirebasePushService $fcm,
         private NotificationPreferenceService $notificationPrefs,
+        private AlertChannelNotifier $alertChannels,
+        private EventWriterInterface $eventWriter,
     ) {}
 
     public function forVehicleEvent(
@@ -33,7 +38,7 @@ class PushNotificationDispatcher
             'event_type' => $event->type,
             'geofence_id' => $event->geofence_id ? (string) $event->geofence_id : '',
             'occurred_at' => $event->occurred_at?->toIso8601String() ?? '',
-        ], requireEventFlag: true);
+        ], pushGate: 'event');
     }
 
     public function forConnectivity(Device $device, string $pushType, string $message): void
@@ -49,7 +54,7 @@ class PushNotificationDispatcher
         $this->send($device, $pushType, $title, $message, [
             'occurred_at' => \App\Support\DateTime\AppDateTime::now()->toIso8601String(),
             'severity' => PushNotificationType::severity($pushType),
-        ], requireEventFlag: true);
+        ], pushGate: 'event');
     }
 
     public function forSmartAlert(Device $device, VehicleEvent $event, string $pushType): void
@@ -59,7 +64,77 @@ class PushNotificationDispatcher
             'event_type' => $event->type,
             'occurred_at' => $event->occurred_at?->toIso8601String() ?? '',
             'severity' => $event->severity(),
-        ], requireEventFlag: true);
+        ], pushGate: 'event');
+    }
+
+    /**
+     * Maintenance reminders — not gated by PUSH_EVENT_NOTIFICATIONS_ENABLED.
+     */
+    public function forMaintenance(Device $device, VehicleEvent $event): void
+    {
+        $this->send($device, PushNotificationType::MAINTENANCE_DUE, $event->title, $event->message, [
+            'event_id' => (string) $event->id,
+            'event_type' => VehicleEvent::TYPE_MAINTENANCE,
+            'occurred_at' => $event->occurred_at?->toIso8601String() ?? '',
+            'severity' => $event->severity(),
+        ], pushGate: 'always');
+    }
+
+    public function dispatchRouteTripCompleted(
+        Device $device,
+        \App\Models\RoutePlan $route,
+        \App\Models\TripLog $trip,
+        ?int $travelMinutes = null,
+    ): void {
+        $vehicleName = $device->mapMarkerTitle();
+        $routeLabel = $route->start_city.' → '.$route->destination_city;
+        $completedAt = $trip->completed_at ?? now();
+        $travelText = $travelMinutes !== null
+            ? sprintf('%d min', $travelMinutes)
+            : __('app.routes.travel_time_unknown');
+
+        $title = __('app.routes.trip_completed_title', ['vehicle' => $vehicleName]);
+        $body = __('app.routes.trip_completed_body', [
+            'route' => $routeLabel,
+            'time' => app_datetime_format($completedAt),
+            'duration' => $travelText,
+        ]);
+
+        $lat = (float) ($trip->last_lat ?? $device->latestLocation?->lat ?? 0);
+        $lng = (float) ($trip->last_lng ?? $device->latestLocation?->lng ?? 0);
+        $at = $completedAt instanceof Carbon ? $completedAt : Carbon::parse($completedAt);
+
+        $eventId = '';
+        try {
+            $event = $this->eventWriter->record(
+                $device,
+                VehicleEvent::TYPE_TRIP_COMPLETED,
+                $title,
+                $body,
+                null,
+                $lat,
+                $lng,
+                $at,
+                null,
+                [
+                    'route_id' => $route->id,
+                    'route_name' => $route->name,
+                    'travel_minutes' => $travelMinutes,
+                ],
+            );
+            $eventId = (string) $event->id;
+        } catch (\Throwable $e) {
+            report($e);
+        }
+
+        $this->send($device, PushNotificationType::TRIP_COMPLETED, $title, $body, [
+            'event_id' => $eventId,
+            'event_type' => VehicleEvent::TYPE_TRIP_COMPLETED,
+            'route_id' => (string) $route->id,
+            'route_name' => $route->name,
+            'occurred_at' => $at->toIso8601String(),
+            'travel_minutes' => (string) ($travelMinutes ?? ''),
+        ], pushGate: 'always');
     }
 
     /**
@@ -93,11 +168,12 @@ class PushNotificationDispatcher
             $extra['event_id'] = (string) $eventId;
         }
 
-        $this->send($device, $pushType, $title, $message, $extra, requireEventFlag: false);
+        $this->send($device, $pushType, $title, $message, $extra, pushGate: 'geofence');
     }
 
     /**
      * @param  array<string, string>  $extra
+     * @param  'event'|'geofence'|'always'  $pushGate
      */
     private function send(
         Device $device,
@@ -105,10 +181,10 @@ class PushNotificationDispatcher
         string $title,
         string $body,
         array $extra = [],
-        bool $requireEventFlag = true,
+        string $pushGate = 'event',
     ): void {
         try {
-            $this->dispatchSend($device, $pushType, $title, $body, $extra, $requireEventFlag);
+            $this->dispatchSend($device, $pushType, $title, $body, $extra, $pushGate);
         } catch (\Throwable $e) {
             report($e);
         }
@@ -116,6 +192,7 @@ class PushNotificationDispatcher
 
     /**
      * @param  array<string, string>  $extra
+     * @param  'event'|'geofence'|'always'  $pushGate
      */
     private function dispatchSend(
         Device $device,
@@ -123,29 +200,14 @@ class PushNotificationDispatcher
         string $title,
         string $body,
         array $extra = [],
-        bool $requireEventFlag = true,
+        string $pushGate = 'event',
     ): void {
-        if (! $this->fcm->enabled()) {
-            return;
-        }
-
-        if ($requireEventFlag && ! config('firebase.event_notifications_enabled', false)) {
-            return;
-        }
-
-        if (! $requireEventFlag && ! config('firebase.geofence_notifications_enabled', true)) {
-            return;
-        }
-
         $userIds = $this->resolveUserIds($device);
-        $eventType = (string) ($extra['event_type'] ?? $pushType);
-        $userIds = array_values(array_filter(
-            $userIds,
-            fn (int $uid) => $this->userAllowsPush($uid, $eventType)
-        ));
         if ($userIds === []) {
             return;
         }
+
+        $eventType = (string) ($extra['event_type'] ?? $pushType);
 
         $displayTitle = PushNotificationType::title($pushType);
         if ($title !== '' && $title !== $displayTitle) {
@@ -170,9 +232,60 @@ class PushNotificationDispatcher
             'time' => \App\Support\DateTime\AppDateTime::toApi($occurredAt),
             'time_display' => $timeDisplay ?? '',
             'severity' => $extra['severity'] ?? PushNotificationType::severity($pushType),
+            'sound' => 'default',
+            'notification_sound' => 'default',
+            'android_channel_id' => 'billxiot_alerts',
         ], $extra);
 
-        $this->fcm->sendToUsers($userIds, $displayTitle, $bodyWithTime, $data);
+        $context = [
+            'device_id' => (int) $device->id,
+            'device_name' => (string) $device->notificationDisplayName(),
+            'time_display' => $timeDisplay ?? '',
+            'event_type' => $eventType,
+            'push_type' => $pushType,
+        ];
+
+        foreach (['route_id', 'geofence_id', 'event_id'] as $ctxKey) {
+            if (isset($extra[$ctxKey]) && $extra[$ctxKey] !== '') {
+                $context[$ctxKey] = is_numeric($extra[$ctxKey])
+                    ? (int) $extra[$ctxKey]
+                    : $extra[$ctxKey];
+            }
+        }
+
+        try {
+            $this->alertChannels->dispatchToUsers(
+                $userIds,
+                $eventType,
+                $displayTitle,
+                $body,
+                $context,
+            );
+        } catch (\Throwable $e) {
+            report($e);
+        }
+
+        if (! $this->fcm->enabled()) {
+            return;
+        }
+
+        if ($pushGate === 'event' && ! config('services.firebase.event_notifications_enabled', false)) {
+            return;
+        }
+
+        if ($pushGate === 'geofence' && ! config('services.firebase.geofence_notifications_enabled', true)) {
+            return;
+        }
+
+        $pushUserIds = array_values(array_filter(
+            $userIds,
+            fn (int $uid) => $this->userAllowsPush($uid, $eventType)
+        ));
+        if ($pushUserIds === []) {
+            return;
+        }
+
+        $this->fcm->sendToUsers($pushUserIds, $displayTitle, $bodyWithTime, $data);
     }
 
     /**

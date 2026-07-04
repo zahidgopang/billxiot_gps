@@ -2,6 +2,7 @@
 
 namespace App\Models\Concerns;
 
+use App\Enums\AppRole;
 use App\Support\Traccar\TraccarAppFields;
 use App\Support\Traccar\TraccarSchema;
 use Illuminate\Database\Eloquent\Builder;
@@ -77,5 +78,48 @@ trait ScopesTraccarUserRole
         }
 
         return $query->orderByDesc($query->qualifyColumn('id'));
+    }
+
+    /** Exclude legacy Traccar administrators (super admins). */
+    public function scopeExcludeSuperAdmins(Builder $query): Builder
+    {
+        return $query->where(function (Builder $q) {
+            $q->where($q->qualifyColumn('administrator'), '!=', 1)
+                ->orWhereNull($q->qualifyColumn('administrator'));
+        });
+    }
+
+    /** Match Laravel app role stored in tc_users.attributes (excludes super admins). */
+    public function scopeWhereAppRole(Builder $query, AppRole $role): Builder
+    {
+        if ($role === AppRole::SuperAdmin) {
+            return $query->whereRaw('0 = 1');
+        }
+
+        $table = $query->getModel()->getTable();
+
+        if (! TraccarSchema::hasColumn($table, 'attributes')) {
+            return $role === AppRole::EndUser
+                ? $query->excludeSuperAdmins()
+                : $query->whereRaw('0 = 1');
+        }
+
+        $path = '$.' . TraccarAppFields::KEY_ROLE;
+
+        return $query->excludeSuperAdmins()->where(function (Builder $q) use ($role, $path) {
+            if ($role === AppRole::EndUser) {
+                $q->whereRaw(
+                    'COALESCE(JSON_UNQUOTE(JSON_EXTRACT(' . $q->qualifyColumn('attributes') . ', ?)), ?) = ?',
+                    [$path, AppRole::EndUser->value, AppRole::EndUser->value]
+                );
+
+                return;
+            }
+
+            $q->whereRaw(
+                'JSON_UNQUOTE(JSON_EXTRACT(' . $q->qualifyColumn('attributes') . ', ?)) = ?',
+                [$path, $role->value]
+            );
+        });
     }
 }

@@ -54,6 +54,7 @@
             this.pulses = new Map();
             this.iconBuilder = null;
             this.clusterIconCache = new Map();
+            this.vehiclePopup = null;
         }
 
         showBootError(message) {
@@ -150,9 +151,41 @@
                 getState: (p) => p.status_key || 'offline',
                 getColor: (state) => STATE_COLORS[state] || STATE_COLORS.offline,
                 getVehicleType: (p) => p.vehicle_type || 'car',
+                getMarkerStyle: (p) => VM.resolveMarkerStyle(p),
+                getMarkerSizeScale: (p) => VM.resolveMarkerSizeScale(p, this.config.mapSpec),
+                getCustomIconUrl: (p) => VM.resolveCustomIconUrl(p),
+                getRotationEnabled: (p) => VM.resolveRotationEnabled(p),
                 shouldShowDirection: (p, state) => state === 'moving' || state === 'running',
                 getShowLiveBadge: () => true,
+                vehicleBodyPx: this.config.mapSpec?.vehicle_body_px,
+                displayScale: this.config.mapSpec?.display_scale,
+                maxIconWidth: this.config.mapSpec?.max_icon_width,
             });
+
+            if (global.VehicleMapPopup) {
+                const i = this.config.i18n || {};
+                this.vehiclePopup = new global.VehicleMapPopup({
+                    getMap: () => this.map,
+                    googleMaps: google,
+                    stateColors: STATE_COLORS,
+                    i18n: {
+                        dash: i.dash || '—',
+                        plate: i.plate || 'Plate',
+                        odometer: i.odometer || 'Odometer',
+                        status: i.status || 'Status',
+                        altitude: i.altitude || 'Altitude',
+                        angle: i.angle || 'Angle',
+                        position: i.position || 'Position',
+                        engine: i.engine || 'Engine',
+                        statusFor: i.statusFor || 'for',
+                        ignitionOn: i.ignitionOn || 'On',
+                        ignitionOff: i.ignitionOff || 'Off',
+                        openMap: i.openMap || 'Open full map',
+                        close: i.close || 'Close',
+                    },
+                });
+                this.map.addListener('click', () => this.vehiclePopup?.close());
+            }
 
             google.maps.event.addListener(this.map, 'zoom_changed', () => {
                 if (this.isGestureActive) return;
@@ -207,14 +240,53 @@
 
         devicePoint(device) {
             return {
+                id: device.id,
                 lat: device.lat,
                 lng: device.lng,
                 heading: device.heading || 0,
                 title: device.title,
                 plate: device.plate || '',
                 vehicle_type: device.vehicle_type || 'car',
+                map_marker_style: device.map_marker_style || 'labeled',
+                map_marker_size: device.map_marker_size || '100',
+                map_marker_size_scale: device.map_marker_size_scale || 1,
+                map_icon_source: device.map_icon_source || 'default',
+                map_custom_icon_url: device.map_custom_icon_url || null,
+                map_icon_rotation_enabled: device.map_icon_rotation_enabled !== false,
                 status_key: device.status_key || 'offline',
+                status_label: device.status_label,
+                status_duration_seconds: device.status_duration_seconds,
+                speed: device.speed,
+                ignition: device.ignition,
+                altitude: device.altitude,
+                odometer: device.odometer,
+                odometer_km: device.odometer_km,
+                launch_map_url: device.launch_map_url,
             };
+        }
+
+        refreshIconKit() {
+            this.iconBuilder?.clearCache?.();
+            this.iconBuilder = null;
+            const VM = global.VehicleMarker;
+            if (!VM || !this.map) return;
+            this.iconBuilder = VM.createIconBuilder({
+                googleMaps: google,
+                getIdentity: (p) => ({ title: p.title, plate: p.plate || '' }),
+                getState: (p) => p.status_key || 'offline',
+                getColor: (state) => STATE_COLORS[state] || STATE_COLORS.offline,
+                getVehicleType: (p) => p.vehicle_type || 'car',
+                getMarkerStyle: (p) => VM.resolveMarkerStyle(p),
+                getMarkerSizeScale: (p) => VM.resolveMarkerSizeScale(p, this.config.mapSpec),
+                getCustomIconUrl: (p) => VM.resolveCustomIconUrl(p),
+                getRotationEnabled: (p) => VM.resolveRotationEnabled(p),
+                shouldShowDirection: (p, state) => state === 'moving' || state === 'running',
+                getShowLiveBadge: () => true,
+                vehicleBodyPx: this.config.mapSpec?.vehicle_body_px,
+                displayScale: this.config.mapSpec?.display_scale,
+                maxIconWidth: this.config.mapSpec?.max_icon_width,
+            });
+            this.renderMarkers();
         }
 
         clearMarkers() {
@@ -305,7 +377,10 @@
                     title: device.title,
                 });
                 marker.addListener('click', () => {
-                    if (device.launch_map_url) {
+                    const point = this.devicePoint(device);
+                    if (this.vehiclePopup && point.lat != null) {
+                        this.vehiclePopup.open(point, marker);
+                    } else if (device.launch_map_url) {
                         window.location.href = device.launch_map_url;
                     }
                 });
@@ -353,6 +428,12 @@
             (payload.devices || []).forEach((d) => this.deviceById.set(d.id, d));
             if (!this.isGestureActive) {
                 this.renderMarkers();
+            }
+            if (this.vehiclePopup?.openId != null) {
+                const d = this.deviceById.get(this.vehiclePopup.openId);
+                if (d) {
+                    this.vehiclePopup.update(this.devicePoint(d));
+                }
             }
             this.updateStats(payload.stats);
         }

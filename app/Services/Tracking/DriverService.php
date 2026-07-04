@@ -73,11 +73,19 @@ class DriverService
             DB::table('tc_device_driver')->insert(['deviceid' => $deviceId, 'driverid' => $driverId]);
         }
 
-        $device->driver_name = DB::table(config('traccar.tables.drivers', 'tc_drivers'))
-            ->where('id', $driverId)->value('name');
-        $device->driver_contact = DB::table(config('traccar.tables.drivers', 'tc_drivers'))
+        $driverRow = DB::table(config('traccar.tables.drivers', 'tc_drivers'))
             ->where('id', $driverId)
-            ->value('attributes');
+            ->first(['name', 'attributes']);
+
+        if (! $driverRow) {
+            return false;
+        }
+
+        $attrs = json_decode((string) ($driverRow->attributes ?? '{}'), true) ?: [];
+        $phone = trim((string) ($attrs['phone'] ?? $attrs['contact'] ?? ''));
+
+        $device->driver_name = (string) ($driverRow->name ?? '');
+        $device->driver_contact = $phone !== '' ? $phone : null;
         $device->save();
 
         return true;

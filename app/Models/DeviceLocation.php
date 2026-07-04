@@ -24,6 +24,7 @@ class DeviceLocation extends Model
         'gps_signal',
         'satellites',
         'odometer',
+        'altitude',
         'power_cut',
         'panic',
     ];

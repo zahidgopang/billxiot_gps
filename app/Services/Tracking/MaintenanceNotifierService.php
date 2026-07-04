@@ -6,7 +6,6 @@ use App\Contracts\Tracking\EventWriterInterface;
 use App\Models\Device;
 use App\Models\VehicleEvent;
 use App\Services\Push\PushNotificationDispatcher;
-use App\Support\Push\PushNotificationType;
 use App\Support\Traccar\TraccarSchema;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Cache;
@@ -101,9 +100,10 @@ class MaintenanceNotifierService
             if ($odometerKm !== null) {
                 $last = (float) ($odo['last'] ?? 0);
                 $interval = (float) $odo['interval'];
-                $threshold = $last + $interval;
+                $cycleInfo = $this->dueOdometerCycle($last, $interval, $odometerKm);
 
-                if ($odometerKm >= $threshold) {
+                if ($cycleInfo !== null) {
+                    $threshold = $cycleInfo['threshold'];
                     $cycle = 'odo.' . (int) round($threshold);
                     $message = (string) __('app.alerts.maintenance_odometer_message', [
                         'device' => $device->notificationDisplayName(),
@@ -111,11 +111,17 @@ class MaintenanceNotifierService
                         'odometer' => number_format($odometerKm, 0),
                         'threshold' => number_format($threshold, 0),
                     ]);
-                    $emitted += $this->emit($maintenanceId, $device, $cycle, $name, $message, $lat, $lng, [
+                    $sent = $this->emit($maintenanceId, $device, $cycle, $name, $message, $lat, $lng, [
                         'trigger' => 'odometer',
                         'odometer_km' => $odometerKm,
                         'threshold_km' => $threshold,
                     ]);
+                    $emitted += $sent;
+
+                    if ($sent > 0 && ! empty($config['update_last_service'])) {
+                        $config['odometer']['last'] = $threshold;
+                        $this->persistConfig($maintenanceId, $config);
+                    }
                 }
             }
         }
@@ -130,20 +136,70 @@ class MaintenanceNotifierService
             }
 
             if ($due && $due->isPast()) {
-                $cycle = 'days.' . $due->format('Ymd');
+                $effectiveDue = $this->effectiveDueDate(
+                    (string) $days['last'],
+                    (int) $days['interval'],
+                    now(),
+                ) ?? $due;
+                $cycle = 'days.' . $effectiveDue->format('Ymd');
                 $message = (string) __('app.alerts.maintenance_days_message', [
                     'device' => $device->notificationDisplayName(),
                     'service' => $name,
-                    'date' => $due->format('Y-m-d'),
+                    'date' => $effectiveDue->format('Y-m-d'),
                 ]);
-                $emitted += $this->emit($maintenanceId, $device, $cycle, $name, $message, $lat, $lng, [
+                $sent = $this->emit($maintenanceId, $device, $cycle, $name, $message, $lat, $lng, [
                     'trigger' => 'days',
-                    'due_date' => $due->format('Y-m-d'),
+                    'due_date' => $effectiveDue->format('Y-m-d'),
                 ]);
+                $emitted += $sent;
+
+                if ($sent > 0 && ! empty($config['update_last_service'])) {
+                    $config['days']['last'] = $effectiveDue->format('Y-m-d');
+                    $this->persistConfig($maintenanceId, $config);
+                }
             }
         }
 
         return $emitted;
+    }
+
+    /**
+     * @return array{threshold: float}|null
+     */
+    public function dueOdometerCycle(float $last, float $interval, float $odometerKm): ?array
+    {
+        if ($interval <= 0 || $odometerKm < ($last + $interval)) {
+            return null;
+        }
+
+        $cyclesCrossed = max(1, (int) floor(($odometerKm - $last) / $interval));
+
+        return [
+            'threshold' => round($last + ($interval * $cyclesCrossed), 1),
+        ];
+    }
+
+    public function effectiveDueDate(string $last, int $intervalDays, Carbon $now): ?Carbon
+    {
+        if ($intervalDays <= 0) {
+            return null;
+        }
+
+        try {
+            $lastDate = Carbon::parse($last)->startOfDay();
+        } catch (\Throwable) {
+            return null;
+        }
+
+        $firstDue = $lastDate->copy()->addDays($intervalDays);
+        if ($firstDue->greaterThan($now)) {
+            return null;
+        }
+
+        $daysOver = max(0, (int) $lastDate->diffInDays($now));
+        $cyclesCrossed = max(1, (int) floor($daysOver / $intervalDays));
+
+        return $lastDate->copy()->addDays($cyclesCrossed * $intervalDays);
     }
 
     /**
@@ -181,13 +237,35 @@ class MaintenanceNotifierService
             array_merge(['maintenance_id' => $maintenanceId, 'service' => $name], $meta),
         );
 
-        $this->push->forSmartAlert($device, $event, PushNotificationType::MAINTENANCE_DUE);
+        $this->push->forMaintenance($device, $event);
 
         // Keep the marker long enough to span the active cycle; a new cycle uses a
         // different key, so updating "last service" re-arms the alert immediately.
         Cache::put($cacheKey, true, now()->addDays(180));
 
         return 1;
+    }
+
+    /**
+     * @param  array<string, mixed>  $config
+     */
+    private function persistConfig(int $maintenanceId, array $config): void
+    {
+        $primary = $this->primaryTrigger($config);
+        $payload = TraccarSchema::filterColumns('tc_maintenances', [
+            'type' => $primary['type'],
+            'start' => $primary['start'],
+            'period' => $primary['period'],
+            'attributes' => json_encode($config),
+        ]);
+
+        if ($payload === []) {
+            return;
+        }
+
+        DB::table('tc_maintenances')
+            ->where('id', $maintenanceId)
+            ->update($payload);
     }
 
     /**
@@ -217,6 +295,35 @@ class MaintenanceNotifierService
         }
 
         return $config;
+    }
+
+    /**
+     * @param  array<string, mixed>  $config
+     * @return array{type:string, start:float, period:float}
+     */
+    private function primaryTrigger(array $config): array
+    {
+        if (! empty($config['odometer']['enabled'])) {
+            return [
+                'type' => 'totalDistance',
+                'start' => (float) ($config['odometer']['last'] ?? 0),
+                'period' => (float) ($config['odometer']['interval'] ?? 0),
+            ];
+        }
+
+        if (! empty($config['hours']['enabled'])) {
+            return [
+                'type' => 'hours',
+                'start' => (float) ($config['hours']['last'] ?? 0),
+                'period' => (float) ($config['hours']['interval'] ?? 0),
+            ];
+        }
+
+        return [
+            'type' => 'days',
+            'start' => 0.0,
+            'period' => (float) ($config['days']['interval'] ?? 0),
+        ];
     }
 
     private function odometerKm(mixed $odometer): ?float

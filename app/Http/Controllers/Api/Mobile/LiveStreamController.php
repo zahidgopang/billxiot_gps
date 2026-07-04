@@ -27,6 +27,7 @@ class LiveStreamController extends Controller
             'port'   => $reverb['options']['port'] ?? 443,
             'scheme' => $reverb['options']['scheme'] ?? 'https',
             'useTLS' => ($reverb['options']['scheme'] ?? 'https') === 'https',
+            'enabled_transports' => ($reverb['options']['scheme'] ?? 'https') === 'https' ? ['wss'] : ['ws'],
         ] : null;
 
         return $this->mobileSuccess([

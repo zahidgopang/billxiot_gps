@@ -2,6 +2,8 @@
 
 @push('styles')
     <link rel="stylesheet" href="{{ asset('css/fleet-map.css') }}?v={{ filemtime(public_path('css/fleet-map.css')) }}">
+    <link rel="stylesheet" href="{{ asset('css/vehicle-map-popup.css') }}?v={{ filemtime(public_path('css/vehicle-map-popup.css')) }}">
+    <link rel="stylesheet" href="{{ asset('css/route-trip-bar.css') }}?v={{ filemtime(public_path('css/route-trip-bar.css')) }}">
     <style>
         :root {
             --map-ui-bg: rgba(255, 255, 255, 0.92);
@@ -23,6 +25,149 @@
             overflow: hidden;
         }
         #map { width: 100%; height: 100%; }
+
+        .route-trip-bar {
+            position: absolute;
+            top: max(72px, calc(env(safe-area-inset-top) + 56px));
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1100;
+            width: min(480px, calc(100% - 96px));
+            pointer-events: auto;
+        }
+        .route-trip-bar[hidden] { display: none !important; }
+        .route-trip-bar__inner {
+            background: var(--map-ui-bg);
+            border: 1px solid var(--map-ui-border);
+            box-shadow: var(--map-ui-shadow);
+            border-radius: 16px;
+            padding: 10px 14px 12px;
+            backdrop-filter: blur(12px);
+        }
+        .route-trip-bar__cities {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            font-size: 12px;
+            font-weight: 700;
+            color: #0f172a;
+            margin-bottom: 8px;
+        }
+        .route-trip-bar__track {
+            position: relative;
+            height: 8px;
+            border-radius: 999px;
+            background: rgba(148, 163, 184, 0.35);
+            overflow: visible;
+        }
+        .route-trip-bar__fill {
+            height: 100%;
+            border-radius: inherit;
+            background: linear-gradient(90deg, #0ea5e9, #2563eb);
+            transition: width 0.8s ease;
+        }
+        .route-trip-bar__bus {
+            position: absolute;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 18px;
+            line-height: 1;
+            filter: drop-shadow(0 2px 4px rgba(15, 23, 42, 0.25));
+            transition: left 0.8s ease;
+        }
+        .route-trip-bar__meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px 14px;
+            margin-top: 8px;
+            font-size: 11px;
+            color: #475569;
+        }
+        .route-trip-bar__meta span:first-child {
+            font-weight: 800;
+            color: #0f172a;
+        }
+        .route-trip-complete-btn,
+        .route-trip-start-btn { margin-top: 0; }
+        .route-trip-bar__actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 8px;
+        }
+        .route-trip-bar .route-trip-bar__card {
+            border-radius: 14px;
+            box-shadow: 0 8px 24px rgba(15, 23, 42, 0.16);
+        }
+        .route-trip-bar .route-trip-bar__compact {
+            gap: 8px;
+            padding: 8px 10px;
+        }
+        .route-trip-bar .route-trip-bar__head {
+            margin-bottom: 4px;
+        }
+        .route-trip-bar .route-trip-bar__head-title {
+            font-size: 10px;
+        }
+        .route-trip-bar .route-trip-bar__pct {
+            font-size: 14px;
+        }
+        .route-trip-bar .route-trip-bar__nav-badge {
+            max-width: 170px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            font-size: 0.66rem;
+            padding: 0.12rem 0.46rem;
+        }
+        .route-trip-bar .route-trip-bar__stats {
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 4px 8px;
+            margin-bottom: 6px;
+        }
+        .route-trip-bar .route-trip-bar__stat-label {
+            font-size: 8px;
+            margin-bottom: 1px;
+        }
+        .route-trip-bar .route-trip-bar__stat-value {
+            font-size: 10px;
+        }
+        .route-trip-bar .route-trip-bar__route-line {
+            height: 30px;
+        }
+        .route-trip-bar .route-trip-bar__line-bg,
+        .route-trip-bar .route-trip-bar__line-fill {
+            top: 8px;
+            height: 4px;
+        }
+        .route-trip-bar .route-trip-bar__vehicle {
+            top: 1px;
+            font-size: 13px;
+        }
+        .route-trip-bar .route-trip-bar__dot {
+            width: 9px;
+            height: 9px;
+            margin-top: 5px;
+        }
+        .route-trip-bar .route-trip-bar__marker--current .route-trip-bar__dot {
+            width: 11px;
+            height: 11px;
+            margin-top: 4px;
+        }
+        .route-trip-bar .route-trip-bar__label {
+            font-size: 8px;
+            max-width: 76px;
+        }
+        .route-trip-bar .route-trip-bar__chevron {
+            width: 24px;
+            height: 24px;
+            border-radius: 7px;
+        }
+        .route-trip-bar.is-expanded .route-trip-bar__details {
+            max-height: 340px;
+        }
+        .route-trip-bar .route-trip-bar__details-inner {
+            padding: 0 10px 10px;
+        }
 
         /* Map floating controls */
         .smart-controls {
@@ -702,6 +847,21 @@
             margin-top: 12px;
             overflow: visible;
         }
+        .map-live-panel__footer {
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid rgba(148, 163, 184, 0.22);
+        }
+        .map-live-panel.is-collapsed .map-live-panel__footer {
+            margin-top: 8px;
+            padding-top: 8px;
+        }
+        .map-live-panel__playback--footer {
+            min-width: 132px;
+        }
 
         /* Route summary bottom sheet (history mode) */
         .route-summary-sheet {
@@ -919,6 +1079,71 @@
             grid-template-columns: repeat(4, minmax(0, 1fr));
             gap: 10px;
         }
+        .map-marker-appearance {
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid rgba(148, 163, 184, 0.25);
+            display: grid;
+            gap: 10px;
+        }
+        .map-marker-appearance__row { display: grid; gap: 4px; }
+        .map-marker-appearance__label { font-size: 0.72rem; color: #64748b; font-weight: 600; }
+        .map-marker-appearance__size-controls {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .map-marker-appearance__size-controls span {
+            min-width: 4.5rem;
+            text-align: center;
+            font-weight: 600;
+            font-size: 0.82rem;
+        }
+        .map-marker-appearance__foot {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .map-marker-appearance__preview-wrap { display: grid; gap: 6px; margin-bottom: 10px; }
+        .map-marker-appearance__preview {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 120px;
+            border-radius: 12px;
+            background: linear-gradient(180deg, #e2e8f0 0%, #cbd5e1 100%);
+            border: 1px solid rgba(15, 23, 42, 0.08);
+        }
+        .map-marker-appearance__preview img { max-width: 96px; max-height: 96px; object-fit: contain; }
+        .map-marker-appearance__icon-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+            gap: 6px;
+            max-height: 180px;
+            overflow: auto;
+            padding: 2px;
+        }
+        .map-marker-appearance__icon-btn {
+            display: grid;
+            gap: 4px;
+            justify-items: center;
+            padding: 6px;
+            border: 1px solid rgba(15, 23, 42, 0.12);
+            border-radius: 10px;
+            background: #fff;
+            cursor: pointer;
+        }
+        .map-marker-appearance__icon-btn.is-active {
+            border-color: #2563eb;
+            box-shadow: 0 0 0 1px #2563eb;
+        }
+        .map-marker-appearance__icon-thumb { width: 40px; height: 40px; display: block; }
+        .map-marker-appearance__icon-name {
+            font-size: 0.62rem;
+            line-height: 1.1;
+            text-align: center;
+            color: #475569;
+        }
         .map-info-chip {
             background: rgba(255,255,255,0.88);
             border: 1px solid rgba(15,23,42,0.06);
@@ -1103,6 +1328,83 @@
         .smart-btn--playback:disabled { opacity: 0.45; cursor: not-allowed; }
         .smart-btn--playback.smart-btn--hidden { display: none; }
 
+        .map-footer-actions {
+            position: absolute;
+            left: 50%;
+            bottom: max(18px, env(safe-area-inset-bottom));
+            transform: translateX(-50%);
+            z-index: 1005;
+            display: flex;
+            justify-content: center;
+            pointer-events: none;
+        }
+        .map-footer-playback {
+            pointer-events: auto;
+            min-height: 46px;
+            min-width: 168px;
+            padding: 0 18px;
+            border: none;
+            border-radius: 999px;
+            background: linear-gradient(135deg, var(--map-accent), #2563eb);
+            color: #fff;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            font-size: 0.86rem;
+            font-weight: 800;
+            letter-spacing: 0.01em;
+            box-shadow: 0 10px 26px var(--map-accent-glow);
+            cursor: pointer;
+            transition: transform 0.2s ease, opacity 0.2s ease, box-shadow 0.2s ease;
+        }
+        .map-footer-playback:hover:not(:disabled) {
+            transform: translateY(-1px);
+            box-shadow: 0 12px 30px var(--map-accent-glow);
+        }
+        .map-footer-playback:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            box-shadow: 0 8px 18px rgba(15, 23, 42, 0.14);
+            background: #94a3b8;
+        }
+        .map-footer-playback.smart-btn--hidden {
+            display: none;
+        }
+        .map-footer-left-actions {
+            position: absolute;
+            left: max(12px, env(safe-area-inset-left));
+            bottom: max(18px, env(safe-area-inset-bottom));
+            z-index: 1006;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            pointer-events: none;
+        }
+        .map-footer-left-btn {
+            pointer-events: auto;
+            width: 46px;
+            height: 46px;
+            border: none;
+            border-radius: 14px;
+            background: rgba(255, 255, 255, 0.96);
+            color: #334155;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 10px 24px rgba(15, 23, 42, 0.18);
+            cursor: pointer;
+            transition: transform 0.18s ease, color 0.18s ease, box-shadow 0.18s ease;
+        }
+        .map-footer-left-btn:hover {
+            color: var(--map-accent);
+            transform: translateY(-1px);
+            box-shadow: 0 12px 28px rgba(15, 23, 42, 0.22);
+        }
+        .map-footer-left-btn i {
+            font-size: 18px;
+        }
+
         .heatmap-legend {
             position: absolute;
             bottom: max(88px, calc(72px + env(safe-area-inset-bottom)));
@@ -1127,7 +1429,7 @@
         .map-tools-left {
             position: absolute;
             left: max(12px, env(safe-area-inset-left));
-            bottom: max(88px, calc(72px + env(safe-area-inset-bottom)));
+            bottom: max(86px, calc(70px + env(safe-area-inset-bottom)));
             z-index: 1000;
             display: flex;
             flex-direction: column;
@@ -1241,7 +1543,7 @@
             .playback-speed-group { justify-content: center; }
             .smart-controls {
                 top: auto;
-                bottom: max(168px, calc(152px + env(safe-area-inset-bottom)));
+                bottom: max(82px, calc(66px + env(safe-area-inset-bottom)));
                 right: max(10px, env(safe-area-inset-right));
                 flex-direction: row;
             }
@@ -1281,11 +1583,18 @@
                 display: none;
             }
             .map-hud {
-                width: min(240px, calc(100vw - 100px));
+                width: min(320px, calc(100vw - 24px));
                 font-size: 0.85rem;
                 top: max(8px, env(safe-area-inset-top));
             }
-            .map-tools-left { bottom: max(168px, calc(152px + env(safe-area-inset-bottom))); }
+            .map-tools-left {
+                top: max(214px, calc(198px + env(safe-area-inset-top)));
+                bottom: auto;
+            }
+            #mapArea.playback-open .map-tools-left {
+                top: auto;
+                bottom: calc(220px + env(safe-area-inset-bottom));
+            }
             .map-live-panel { width: calc(100% - 16px); padding: 8px 12px 10px; }
             .map-live-panel__header { gap: 8px; }
             .map-live-panel__brand { width: 28px; height: 28px; }
@@ -1296,6 +1605,12 @@
             .map-live-panel__playback-label { display: none; }
             .map-live-panel__playback { width: 34px; padding: 0; }
             .map-brand-watermark { right: max(10px, env(safe-area-inset-right)); top: max(8px, env(safe-area-inset-top)); }
+            .map-footer-actions {
+                bottom: max(14px, env(safe-area-inset-bottom));
+            }
+            .map-footer-left-actions {
+                bottom: max(14px, env(safe-area-inset-bottom));
+            }
         }
 
         @media (max-width: 576px) {
@@ -1313,6 +1628,12 @@
             .playback-btn { width: 38px; height: 38px; }
             .speed-btn { min-width: 36px; padding: 5px 8px; font-size: 0.7rem; }
             .navbar-brand span { display: none; }
+            .map-footer-playback {
+                min-width: 148px;
+                min-height: 44px;
+                font-size: 0.8rem;
+                padding: 0 14px;
+            }
         }
         @keyframes slideInRight {
             from { transform: translateX(100%); opacity: 0; }
@@ -1762,6 +2083,8 @@
         <div class="map-area" id="mapArea">
             <div id="map"></div>
 
+            <div id="routeTripProgressBar" class="route-trip-bar" hidden aria-live="polite"></div>
+
             <div class="loading-overlay" id="loadingOverlay">
                 <div class="loading-spinner"></div>
                 <div class="loading-text" id="loadingText">{{ __('app.map.loading_map') }}</div>
@@ -1806,14 +2129,6 @@
                     </div>
                     <div class="map-live-panel__right">
                         <button type="button"
-                                class="map-live-panel__playback js-playback-fab"
-                                data-playback-fab
-                                disabled
-                                aria-label="{{ __('app.map.open_playback') }}">
-                            <i class="fas fa-play" aria-hidden="true"></i>
-                            <span class="map-live-panel__playback-label">{{ __('app.map.play_route') }}</span>
-                        </button>
-                        <button type="button"
                                 class="map-live-panel__toggle"
                                 id="mapLivePanelToggle"
                                 aria-expanded="false"
@@ -1850,10 +2165,49 @@
                             <span class="map-info-chip__value" id="livePanelBattery">{{ __('app.map.dash') }}</span>
                         </div>
                         <div class="map-info-chip">
+                            <span class="map-info-chip__label">{{ __('app.map.status_duration') }}</span>
+                            <span class="map-info-chip__value" id="livePanelStatusDuration">{{ __('app.map.dash') }}</span>
+                        </div>
+                        <div class="map-info-chip">
+                            <span class="map-info-chip__label">{{ __('app.map.heading') }}</span>
+                            <span class="map-info-chip__value" id="livePanelHeading">{{ __('app.map.dash') }}</span>
+                        </div>
+                        <div class="map-info-chip">
+                            <span class="map-info-chip__label">{{ __('app.map.odometer') }}</span>
+                            <span class="map-info-chip__value" id="livePanelOdometer">{{ __('app.map.dash') }}</span>
+                        </div>
+                        <div class="map-info-chip">
+                            <span class="map-info-chip__label">{{ __('app.map.latitude') }}</span>
+                            <span class="map-info-chip__value admin-ltr" dir="ltr" id="livePanelLat">{{ __('app.map.dash') }}</span>
+                        </div>
+                        <div class="map-info-chip">
+                            <span class="map-info-chip__label">{{ __('app.map.longitude') }}</span>
+                            <span class="map-info-chip__value admin-ltr" dir="ltr" id="livePanelLng">{{ __('app.map.dash') }}</span>
+                        </div>
+                        <div class="map-info-chip">
+                            <span class="map-info-chip__label">{{ __('app.map.gps_time') }}</span>
+                            <span class="map-info-chip__value" id="livePanelGpsTime">{{ __('app.map.dash') }}</span>
+                        </div>
+                        <div class="map-info-chip">
+                            <span class="map-info-chip__label">{{ __('app.map.server_time') }}</span>
+                            <span class="map-info-chip__value" id="livePanelServerTime">{{ __('app.map.dash') }}</span>
+                        </div>
+                        <div class="map-info-chip">
                             <span class="map-info-chip__label">{{ __('app.map.updated') }}</span>
                             <span class="map-info-chip__value" id="livePanelUpdated">{{ __('app.map.dash') }}</span>
                         </div>
                     </div>
+                    @include('user.partials.map-marker-appearance-form', ['device' => $device])
+                </div>
+                <div class="map-live-panel__footer">
+                    <button type="button"
+                            class="map-live-panel__playback map-live-panel__playback--footer js-playback-fab"
+                            data-playback-fab
+                            disabled
+                            aria-label="{{ __('app.map.open_playback') }}">
+                        <i class="fas fa-play" aria-hidden="true"></i>
+                        <span class="map-live-panel__playback-label">{{ __('app.map.play_route') }}</span>
+                    </button>
                 </div>
             </div>
 
@@ -2129,7 +2483,7 @@
             <div class="smart-controls">
                 <div class="control-group">
                     <button class="smart-btn" id="btnCenterVehicle" title="{{ __('app.map.center_vehicle') }}"><i class="fas fa-location-crosshairs"></i></button>
-                    <button class="smart-btn active" id="btnFollow" title="{{ __('app.map.follow') }}"><i class="fas fa-satellite"></i></button>
+                    <button class="smart-btn" id="btnFollow" title="{{ __('app.map.follow') }}"><i class="fas fa-satellite"></i></button>
                     <button class="smart-btn" id="btnGeofence" title="{{ __('app.map.geofences') }}"><i class="fas fa-draw-polygon"></i></button>
                     <button class="smart-btn" id="btnClear" title="{{ __('app.map.clear_route') }}"><i class="fas fa-trash-alt"></i></button>
                     <button class="smart-btn" id="btnTraffic" title="{{ __('app.map.traffic') }}"><i class="fas fa-traffic-light"></i></button>
@@ -2139,6 +2493,26 @@
                     <button class="smart-btn" data-layer="satellite" title="{{ __('app.map.satellite_layer') }}"><i class="fas fa-satellite-dish"></i></button>
                 </div>
             </div>
+            <div class="map-footer-actions">
+                <button type="button"
+                        class="map-footer-playback js-playback-fab"
+                        id="playbackFab"
+                        data-playback-fab
+                        disabled
+                        title="{{ __('app.map.open_playback') }}"
+                        aria-label="{{ __('app.map.open_playback') }}">
+                    <i class="fas fa-play" aria-hidden="true"></i>
+                    <span>{{ __('app.map.play_route') }}</span>
+                </button>
+            </div>
+            <div class="map-footer-left-actions">
+                <button class="map-footer-left-btn"
+                        id="btnExportRoute"
+                        title="{{ __('app.map.export_csv_title') }}"
+                        aria-label="{{ __('app.map.export_csv_title') }}">
+                    <i class="fas fa-download" aria-hidden="true"></i>
+                </button>
+            </div>
             <div class="map-tools-left">
                 <div class="control-group">
                     <button class="smart-btn" id="btnRecenter" title="{{ __('app.map.center_vehicle') }}"><i class="fas fa-crosshairs"></i></button>
@@ -2146,17 +2520,7 @@
                     <button class="smart-btn" id="btnEventMarkers" title="{{ __('app.map.route_events') }}"><i class="fas fa-map-pin"></i></button>
                     <button class="smart-btn" id="btnHeatmap" title="{{ __('app.map.heatmap') }}"><i class="fas fa-fire"></i></button>
                     <button class="smart-btn" id="btnNightMode" title="{{ __('app.map.night_mode') }}"><i class="fas fa-moon"></i></button>
-                    <button class="smart-btn" id="btnExportRoute" title="{{ __('app.map.export_csv_title') }}"><i class="fas fa-download"></i></button>
                     <button class="smart-btn" id="btnStops" title="{{ __('app.map.parking_stops') }}"><i class="fas fa-parking"></i></button>
-                    <button type="button"
-                            class="smart-btn smart-btn--playback js-playback-fab"
-                            id="playbackFab"
-                            data-playback-fab
-                            disabled
-                            title="{{ __('app.map.open_playback') }}"
-                            aria-label="{{ __('app.map.open_playback') }}">
-                        <i class="fas fa-play" aria-hidden="true"></i>
-                    </button>
                 </div>
             </div>
         </div>
@@ -2195,12 +2559,67 @@
             vehicleName: @json($device->vehicle_name),
             vehicleNumber: @json($device->vehicle_number),
             vehicleType: @json($device->vehicle_type),
+            mapMarkerStyle: @json($device->map_marker_style),
+            mapMarkerSize: @json($device->map_marker_size),
+            mapMarkerSizeScale: @json($device->mapMarkerSizeScale()),
+            mapIconSource: @json($device->map_icon_source),
+            mapCustomIconUrl: @json($device->usesCustomMapIcon() ? app(\App\Services\Tracking\DeviceVehicleIconService::class)->url($device) : null),
+            mapIconRotationEnabled: @json($device->map_icon_rotation_enabled),
+            mapAppearanceSaveUrl: @json(route('user.devices.map-appearance', $device)),
+            mapCustomIconUploadUrl: @json(route('user.devices.map-custom-icon', $device)),
+            mapCustomIconDeleteUrl: @json(route('user.devices.map-custom-icon.delete', $device)),
+            mapAppearanceI18n: {
+                saved: @json(__('app.map.marker_appearance_saved')),
+                failed: @json(__('app.map.marker_appearance_save_failed')),
+                uploaded: @json(__('app.map.custom_icon_uploaded')),
+                resized: @json(__('app.map.custom_icon_resized_notice')),
+                liveScale: @json(__('app.map.map_live_scale')),
+                sizes: {
+                    @foreach(\App\Support\VehicleIcons\VehicleIconLibrary::sizeScales() as $key => $scale)
+                    '{{ $key }}': @json(__('app.map.marker_size_'.$key)),
+                    @endforeach
+                    small: @json(__('app.map.marker_size_75')),
+                    medium: @json(__('app.map.marker_size_100')),
+                    large: @json(__('app.map.marker_size_150')),
+                },
+            },
             driverName: @json($device->driverDisplayName()),
             driverContact: @json($device->driverContactNumber()),
             driverContactTel: @json($device->driverContactTel()),
             deviceTypeLabel: @json($device->deviceTypeLabel()),
             isAdminMap: @json($isAdminMap ?? false),
             apiRoutes: @json($mapApiRoutes ?? []),
+            completeTripUrl: @json($mapApiRoutes['completeTrip'] ?? ''),
+            startNewTripUrl: @json($mapApiRoutes['startNewTrip'] ?? ''),
+            routeTripI18n: {
+                remaining: @json(__('app.routes.remaining')),
+                eta: @json(__('app.routes.eta')),
+                complete: @json(__('app.routes.complete_trip')),
+                startNew: @json(__('app.routes.start_new_trip')),
+                elapsed: @json(__('app.routes.elapsed')),
+                planned: @json(__('app.routes.planned')),
+                checkpointTotal: @json(__('app.routes.checkpoint_total')),
+                minAbbr: @json(__('app.routes.min_abbr')),
+                pending: @json(__('app.routes.pending')),
+                toggleDetails: @json(__('app.routes.toggle_details')),
+                progressOffRoute: @json(__('app.routes.progress_off_route_zero')),
+                progressFrozen: @json(__('app.routes.progress_frozen_off_route')),
+                waitingForStart: @json(__('app.routes.trip_waiting_for_start')),
+                waitingForStartHint: @json(__('app.routes.trip_waiting_for_start_hint')),
+                offRoute: @json(__('app.routes.off_route_alert')),
+                duration: @json(__('app.routes.duration')),
+                segment: @json(__('app.routes.segment')),
+                progressTitle: @json(__('app.routes.progress_title')),
+                reachedStart: @json(__('app.routes.reached_start')),
+                reachedCheckpoint: @json(__('app.routes.reached_checkpoint')),
+                reachedDestination: @json(__('app.routes.reached_destination')),
+                traveled: @json(__('app.routes.distance_traveled')),
+                currentSpeed: @json(__('app.routes.current_speed')),
+                currentCheckpoint: @json(__('app.routes.current_checkpoint')),
+                nextCheckpoint: @json(__('app.routes.next_checkpoint')),
+                offRouteBadge: @json(__('app.routes.off_route_badge')),
+                kmhUnit: @json(__('app.map.kmh_unit')),
+            },
             baseUrl: @json(url('/')),
             csrfToken: @json(csrf_token()),
             googleMapsKey: @json(config('services.google.maps_key')),
@@ -2257,6 +2676,12 @@
                 ignitionOn: @json(__('app.map.ignition_on')),
                 ignitionOff: @json(__('app.map.ignition_off')),
                 ignition: @json(__('app.map.ignition')),
+                odometer: @json(__('app.map.odometer')),
+                altitude: @json(__('app.tracking.lbl_altitude')),
+                heading: @json(__('app.tracking.lbl_angle')),
+                coords: @json(__('app.tracking.lbl_position')),
+                statusDuration: @json(__('app.tracking.lbl_status_duration')),
+                closePanel: @json(__('app.map.close_panel')),
                 currentStatus: @json(__('app.map.current_status')),
                 vehicleNumber: @json(__('app.forms.vehicle_number')),
                 driverName: @json(__('app.map.driver')),
@@ -2381,7 +2806,11 @@
     <script>window.APP_TIMEZONE = @json(config('app.timezone'));</script>
     <script src="{{ protected_js('app-datetime.js') }}"></script>
     <script src="{{ protected_js('vehicle-marker.js') }}"></script>
+    <script src="{{ protected_js('map-marker-appearance.js') }}"></script>
     <script src="{{ protected_js('fleet-map-renderer.js') }}"></script>
+    <script src="{{ protected_js('history-analytics.js') }}"></script>
+    <script src="{{ protected_js('route-trip-progress.js') }}"></script>
+    <script src="{{ protected_js('vehicle-map-popup.js') }}"></script>
     <script src="{{ protected_js('device-map-tracker.js') }}"></script>
     <script src="{{ protected_js('map-tour.js') }}"></script>
 @endpush

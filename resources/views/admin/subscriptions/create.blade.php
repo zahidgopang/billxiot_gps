@@ -12,14 +12,7 @@
         data-subscription-create="1"
         data-subscription-billing="1"
     >
-        @include('admin.subscriptions._form', [
-            'subscription' => null,
-            'clients' => $clients ?? collect(),
-            'devicesByClient' => $devicesByClient ?? [],
-            'selectedClient' => $selectedClient ?? null,
-            'plans' => $plans ?? collect(),
-            'panel' => $panel,
-        ])
+        @include('admin.subscriptions._form')
 
         <x-slot:footer>
             <a href="{{ route($panel . '.subscriptions.index') }}" class="btn btn-light btn-sm">

@@ -33,6 +33,15 @@
         return Math.abs(a.lat - b.lat) < 1e-6 && Math.abs(a.lng - b.lng) < 1e-6;
     }
 
+    function applyMarkerIcon(marker, icon) {
+        if (global.VehicleMarker?.applyMarkerIcon) {
+            global.VehicleMarker.applyMarkerIcon(marker, icon);
+            return;
+        }
+        if (!marker || !icon || typeof marker.setIcon !== 'function') return;
+        marker.setIcon(icon);
+    }
+
     class GlobalTrackingLive {
         constructor(cfg) {
             this.cfg = cfg;
@@ -45,6 +54,175 @@
             this.pollInFlight = false;
             this.echoChannels = new Map();
             this.initialFitDone = false;
+            this.iconBuilder = null;
+            this.vehiclePopup = null;
+            this.routeTripKit = null;
+            this._routeTripDeviceId = null;
+            this._routeBoundsFitted = false;
+        }
+
+        toast(message, type = 'info') {
+            if (global.Swal) {
+                const icon = type === 'error' ? 'error' : (type === 'success' ? 'success' : (type === 'warning' ? 'warning' : 'info'));
+                global.Swal.fire({ toast: true, position: 'top-end', timer: 4000, showConfirmButton: false, icon, title: message });
+            }
+        }
+
+        ensureRouteTripProgress() {
+            if (this.routeTripKit || !global.RouteTripProgress) return this.routeTripKit;
+            const i = this.cfg.i18n || {};
+            this.routeTripKit = new global.RouteTripProgress({
+                containerId: 'routeTripProgressBar',
+                getMap: () => this.map,
+                googleMaps: global.google,
+                shouldFitRouteBounds: () => !this._routeBoundsFitted,
+                manageRoutesUrl: this.cfg.manageRoutesUrl || null,
+                routeGuidanceUrl: this.cfg.routeGuidanceUrl || null,
+                getDeviceId: () => this._routeTripDeviceId,
+                i18n: {
+                    remaining: i.routeRemaining || 'Remaining',
+                    eta: i.routeEta || 'ETA',
+                    complete: i.routeComplete || 'Complete trip',
+                    startNew: i.routeStartNew || 'Start new trip',
+                    offRoute: i.routeOffRoute || 'Off route',
+                    elapsed: i.routeElapsed || 'Elapsed',
+                    planned: i.routePlanned || 'Planned',
+                    checkpointTotal: i.routeCheckpointTotal || 'Checkpoints',
+                    minAbbr: i.routeMinAbbr || 'min',
+                    pending: i.routePending || '—',
+                    toggleDetails: i.routeToggleDetails || 'Details',
+                    progressOffRoute: i.routeProgressOffRoute || 'On route only',
+                    progressFrozen: i.routeProgressFrozen || 'Last on-route',
+                    waitingForStart: i.routeWaitingForStart || 'Waiting for start area',
+                    waitingForStartHint: i.routeWaitingForStartHint || 'Progress will start automatically when the vehicle enters the start area.',
+                    progressTitle: i.routeProgressTitle || 'Route progress',
+                    reachedStart: i.routeReachedStart || 'Trip started — departed from {city}',
+                    reachedCheckpoint: i.routeReachedCheckpoint || 'Reached checkpoint: {city}',
+                    reachedDestination: i.routeReachedDestination || 'Reached destination: {city}',
+                },
+                onComplete: () => this.completeAssignedTrip(),
+                onStartNew: () => this.startNewAssignedTrip(),
+                onMilestoneReached: (_m, message) => this.toast(message, 'success'),
+            });
+            return this.routeTripKit;
+        }
+
+        selectRouteTripVehicle(id) {
+            if (Number(this._routeTripDeviceId) !== Number(id)) {
+                this._routeBoundsFitted = false;
+            }
+            this._routeTripDeviceId = id;
+            const cached = this.vehicles.get(id)?.route_trip;
+            if (cached?.route) {
+                this.applyRouteTrip(id, cached);
+            } else {
+                this.routeTripKit?.clear();
+            }
+            this.loadRouteTripForDevice(id);
+        }
+
+        async loadRouteTripForDevice(id) {
+            const url = this.cfg.devicePanelUrl;
+            if (!url || Number(this._routeTripDeviceId) !== Number(id)) return;
+            try {
+                const res = await fetch(`${url}?device_id=${encodeURIComponent(id)}&_=${Date.now()}`, {
+                    credentials: 'same-origin',
+                    cache: 'no-store',
+                    headers: { Accept: 'application/json' },
+                });
+                const data = await res.json().catch(() => ({}));
+                const routeTrip = data.panel?.route_trip || data.route_trip;
+                if (routeTrip?.route && Number(this._routeTripDeviceId) === Number(id)) {
+                    const cur = this.vehicles.get(id) || { id };
+                    this.vehicles.set(id, { ...cur, route_trip: routeTrip });
+                    this.applyRouteTrip(id, routeTrip);
+                }
+            } catch (_) { /* ignore */ }
+        }
+
+        clearRouteTripSelection() {
+            this._routeTripDeviceId = null;
+            this._routeBoundsFitted = false;
+            this.routeTripKit?.clear();
+        }
+
+        fitMapToAssignedRoute(payload) {
+            const map = this.map;
+            const google = global.google;
+            if (!map || !google?.maps || !payload?.route) return;
+            const route = payload.route;
+            const pts = (route.assigned_polyline || route.guided_polyline || route.polyline || [])
+                .map((p) => ({ lat: parseFloat(p.lat), lng: parseFloat(p.lng) }))
+                .filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng));
+            if (pts.length < 2) return;
+            const bounds = new google.maps.LatLngBounds();
+            pts.forEach((p) => bounds.extend(p));
+            const v = this.vehicles.get(this._routeTripDeviceId);
+            if (v?.lat != null && v?.lng != null) {
+                bounds.extend({ lat: parseFloat(v.lat), lng: parseFloat(v.lng) });
+            }
+            map.fitBounds(bounds, { top: 72, right: 40, bottom: 140, left: 40 });
+            this._routeBoundsFitted = true;
+        }
+
+        applyRouteTrip(id, payload) {
+            if (this._routeTripDeviceId == null || Number(this._routeTripDeviceId) !== Number(id)) return;
+            if (!payload?.route) {
+                this.routeTripKit?.clear();
+                return;
+            }
+            this.ensureRouteTripProgress()?.update({ route_trip: payload });
+            if (!this._routeBoundsFitted) {
+                this.fitMapToAssignedRoute(payload);
+            }
+        }
+
+        async completeAssignedTrip() {
+            const url = this.cfg.completeTripUrl;
+            const id = this._routeTripDeviceId;
+            if (!url || !id) return;
+            try {
+                const res = await fetch(url, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: {
+                        Accept: 'application/json',
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': this.cfg.csrfToken || '',
+                    },
+                    body: JSON.stringify({ device_id: id }),
+                });
+                const data = await res.json().catch(() => ({}));
+                if (data.success) {
+                    if (data.route_trip) this.applyRouteTrip(id, data.route_trip);
+                    await this.pollLive(true);
+                }
+            } catch (_) { /* ignore */ }
+        }
+
+        async startNewAssignedTrip() {
+            const url = this.cfg.startNewTripUrl;
+            const id = this._routeTripDeviceId;
+            if (!url || !id) return;
+            try {
+                const res = await fetch(url, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: {
+                        Accept: 'application/json',
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': this.cfg.csrfToken || '',
+                    },
+                    body: JSON.stringify({ device_id: id }),
+                });
+                const data = await res.json().catch(() => ({}));
+                if (data.success) {
+                    if (data.route_trip) this.applyRouteTrip(id, data.route_trip);
+                    await this.pollLive(true);
+                } else if (data.message) {
+                    this.toast(data.message, 'error');
+                }
+            } catch (_) { /* ignore */ }
         }
 
         showError(message) {
@@ -113,6 +291,46 @@
                 streetViewControl: false,
                 fullscreenControl: true,
             });
+
+            this.iconBuilder = VM.createIconBuilder({
+                googleMaps: google,
+                getIdentity: (p) => ({ title: p.title || '', plate: p.plate || '' }),
+                getState: (p) => p.status_key || 'offline',
+                getColor: (state) => this.stateColors[state] || this.stateColors.offline || '#94a3b8',
+                getVehicleType: (p) => p.vehicle_type || 'car',
+                getMarkerStyle: (p) => {
+                    if (VM.resolveCustomIconUrl(p)) return 'body';
+                    return VM.resolveMarkerStyle(p);
+                },
+                getMarkerSizeScale: (p) => VM.resolveMarkerSizeScale(p),
+                getCustomIconUrl: (p) => VM.resolveCustomIconUrl(p),
+                getRotationEnabled: (p) => VM.resolveRotationEnabled(p),
+                shouldShowDirection: (_, state) => MOVING_KEYS.has(state),
+            });
+
+            if (global.VehicleMapPopup) {
+                const i = this.cfg.i18n || {};
+                this.vehiclePopup = new global.VehicleMapPopup({
+                    getMap: () => this.map,
+                    googleMaps: google,
+                    stateColors: this.stateColors,
+                    i18n: {
+                        dash: '—',
+                        plate: i.plate || 'Plate',
+                        odometer: i.odometer || 'Odometer',
+                        status: i.status || 'Status',
+                        altitude: i.altitude || 'Altitude',
+                        angle: i.angle || 'Angle',
+                        position: i.position || 'Position',
+                        engine: i.engine || 'Engine',
+                        statusFor: i.statusFor || 'for',
+                        ignitionOn: i.ignitionOn || 'On',
+                        ignitionOff: i.ignitionOff || 'Off',
+                        close: i.close || 'Close',
+                    },
+                });
+                this.map.addListener('click', () => this.vehiclePopup?.close());
+            }
 
             this.bindUi();
             this.renderList();
@@ -219,6 +437,9 @@
                 this.selected.add(id);
                 this.ensureMarker(id);
                 this.subscribePusher(id);
+                if (this.selected.size === 1) {
+                    this.selectRouteTripVehicle(id);
+                }
                 if (!this.initialFitDone) {
                     this.initialFitDone = true;
                     this.fitAll();
@@ -230,9 +451,25 @@
                     this.followId = null;
                     this.updateFollowBtn();
                 }
+                if (Number(this._routeTripDeviceId) === Number(id)) {
+                    const nextId = this.selected.values().next().value;
+                    if (nextId != null) {
+                        this.selectRouteTripVehicle(nextId);
+                    } else {
+                        this.clearRouteTripSelection();
+                    }
+                }
             }
             this.renderList();
             this.startPolling();
+        }
+
+        markerIconFor(v, heading) {
+            const VM = global.VehicleMarker;
+            const color = colorForPoint(v, this.stateColors);
+            const point = { ...v, heading: heading ?? v.heading ?? 0 };
+            const icon = this.iconBuilder?.iconFor(point);
+            return icon || VM.pinIconFor(color, google.maps);
         }
 
         ensureMarker(id) {
@@ -241,16 +478,15 @@
             if (!this.map || !v || st.marker) return;
 
             const VM = global.VehicleMarker;
-            const color = colorForPoint(v, this.stateColors);
             const pos = v.lat != null && v.lng != null ? { lat: v.lat, lng: v.lng } : null;
 
             st.marker = new google.maps.Marker({
                 map: pos ? this.map : null,
                 position: pos || DEFAULT_CENTER,
-                icon: VM.pinIconFor(color, google.maps),
                 zIndex: 500 + id,
                 optimized: false,
             });
+            applyMarkerIcon(st.marker, this.markerIconFor(v, v.heading || 0));
 
             st.pulse = VM.createPulseController({
                 googleMaps: google.maps,
@@ -264,6 +500,14 @@
                 st.lastPoint = { ...v, lat: v.lat, lng: v.lng };
                 st.pulse.update(st.lastPoint);
             }
+
+            st.marker.addListener('click', () => {
+                const cur = this.vehicles.get(id);
+                if (cur?.lat != null) {
+                    this.selectRouteTripVehicle(id);
+                    this.vehiclePopup?.open({ ...cur, id }, st.marker);
+                }
+            });
         }
 
         teardownVehicle(id) {
@@ -331,6 +575,14 @@
             };
             this.vehicles.set(id, merged);
             this.updateRowMeta(id, merged);
+            if (this.vehiclePopup?.isOpenFor(id)) {
+                this.vehiclePopup.update(merged);
+            }
+            if (this._routeTripDeviceId != null
+                && Number(this._routeTripDeviceId) === Number(id)
+                && merged.route_trip) {
+                this.applyRouteTrip(id, merged.route_trip);
+            }
 
             const prev = st.lastPoint;
             const key = merged.status_key || 'offline';
@@ -341,11 +593,10 @@
             if (!prev || samePosition(prev, merged)) {
                 st.marker.setMap(this.map);
                 st.marker.setPosition({ lat: merged.lat, lng: merged.lng });
-                st.marker.setIcon(global.VehicleMarker.pinIconFor(colorForPoint(merged, this.stateColors), google.maps));
+                applyMarkerIcon(st.marker, this.markerIconFor(merged, merged.heading || 0));
                 st.pulse.update(merged);
                 st.lastPoint = merged;
                 if (shouldKeepTrail(key)) this.pushTrailPoint(st, merged);
-                if (this.followId === id) this.map.panTo({ lat: merged.lat, lng: merged.lng });
                 return;
             }
 
@@ -372,12 +623,8 @@
 
                 st.marker.setMap(this.map);
                 st.marker.setPosition({ lat, lng });
-                st.marker.setIcon(global.VehicleMarker.pinIconFor(colorForPoint(frame, this.stateColors), google.maps));
+                applyMarkerIcon(st.marker, this.markerIconFor(frame, heading));
                 st.pulse.update(frame);
-
-                if (this.followId === id && t > 0.4) {
-                    this.map.panTo({ lat, lng });
-                }
 
                 if (t < 1) {
                     st.animFrame = requestAnimationFrame(step);
@@ -481,8 +728,12 @@
                 this.followId = null;
             } else {
                 this.followId = ids[0];
+                this.selectRouteTripVehicle(this.followId);
                 const v = this.vehicles.get(this.followId);
-                if (v?.lat != null) this.map.panTo({ lat: v.lat, lng: v.lng });
+                if (v?.lat != null && v?.lng != null) {
+                    this.map.panTo({ lat: v.lat, lng: v.lng });
+                    this.map.setZoom(17);
+                }
             }
             this.updateFollowBtn();
         }

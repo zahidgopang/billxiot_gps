@@ -24,6 +24,10 @@
         const totalCompanyEl = document.getElementById('subscription-total-company');
         const totalEndUserEl = document.getElementById('subscription-total-end-user');
         const totalProfitEl = document.getElementById('subscription-total-profit');
+        const emailEnabledEl = document.getElementById('subscription-notification-email-enabled');
+        const whatsappEnabledEl = document.getElementById('subscription-notification-whatsapp-enabled');
+        const emailItemsEl = document.getElementById('subscription-notification-email-items');
+        const whatsappItemsEl = document.getElementById('subscription-notification-whatsapp-items');
         const routes = window.subscriptionBillingRoutes || {};
         const $ = window.jQuery;
         let deviceCostValue = 0;
@@ -225,19 +229,104 @@
             refreshTotals();
         }
 
+        function notificationAddonTotal() {
+            let total = 0;
+
+            document.querySelectorAll('.subscription-notif-price').forEach(function (input) {
+                const channel = input.dataset.channel;
+                const toggle = document.getElementById(
+                    channel === 'email'
+                        ? 'subscription-notification-email-enabled'
+                        : 'subscription-notification-whatsapp-enabled'
+                );
+                if (!toggle?.checked) {
+                    return;
+                }
+
+                const item = input.closest('.subscription-notif-item');
+                const check = item?.querySelector('.subscription-notif-type-check');
+                if (!check?.checked) {
+                    return;
+                }
+
+                total += parseFloat(input.value || 0) || 0;
+            });
+
+            return total;
+        }
+
+        function applyNotificationAddonUi() {
+            const emailOn = !!emailEnabledEl?.checked;
+            const whatsappOn = !!whatsappEnabledEl?.checked;
+
+            if (emailItemsEl) {
+                emailItemsEl.classList.toggle('d-none', !emailOn);
+            }
+            if (whatsappItemsEl) {
+                whatsappItemsEl.classList.toggle('d-none', !whatsappOn);
+            }
+
+            document.querySelectorAll('.subscription-notif-channel[data-channel="email"] .subscription-notif-type-check, .subscription-notif-channel[data-channel="email"] .subscription-notif-price').forEach(function (el) {
+                if (!emailOn) {
+                    if (el.classList.contains('subscription-notif-type-check')) {
+                        el.checked = false;
+                    } else {
+                        el.value = '';
+                        el.disabled = true;
+                    }
+                }
+            });
+
+            document.querySelectorAll('.subscription-notif-channel[data-channel="whatsapp"] .subscription-notif-type-check, .subscription-notif-channel[data-channel="whatsapp"] .subscription-notif-price').forEach(function (el) {
+                if (!whatsappOn) {
+                    if (el.classList.contains('subscription-notif-type-check')) {
+                        el.checked = false;
+                    } else {
+                        el.value = '';
+                        el.disabled = true;
+                    }
+                }
+            });
+
+            syncNotificationPriceInputs();
+            refreshTotals();
+        }
+
+        function syncNotificationPriceInputs() {
+            document.querySelectorAll('.subscription-notif-item').forEach(function (item) {
+                const check = item.querySelector('.subscription-notif-type-check');
+                const price = item.querySelector('.subscription-notif-price');
+                if (!check || !price) {
+                    return;
+                }
+                const channel = check.dataset.channel;
+                const toggle = document.getElementById(
+                    channel === 'email'
+                        ? 'subscription-notification-email-enabled'
+                        : 'subscription-notification-whatsapp-enabled'
+                );
+                const channelOn = !!toggle?.checked;
+                price.disabled = !channelOn || !check.checked;
+                if (!channelOn || !check.checked) {
+                    price.value = '';
+                }
+            });
+        }
+
         function refreshTotals() {
             const company = companyPriceValue();
             const subSelling = parseFloat(sellingPriceEl?.value || 0) || 0;
             const devSelling = isNewSubscriptionType()
                 ? (parseFloat(deviceSellingEl?.value || 0) || 0)
                 : 0;
+            const notificationTotal = notificationAddonTotal();
 
             const subProfit = updateSubscriptionProfit();
             const devProfit = isNewSubscriptionType() ? updateDeviceProfit() : 0;
 
             const totalCompany = company;
-            const totalEndUser = subSelling + devSelling;
-            const totalProfit = subProfit + devProfit;
+            const totalEndUser = subSelling + devSelling + notificationTotal;
+            const totalProfit = subProfit + devProfit + notificationTotal;
 
             const hasPlan = !!selectValue(planSelect);
 
@@ -245,10 +334,10 @@
                 totalCompanyEl.textContent = hasPlan ? fmtMoney(totalCompany) : '—';
             }
             if (totalEndUserEl) {
-                totalEndUserEl.textContent = (subSelling > 0 || devSelling > 0) ? fmtMoney(totalEndUser) : '—';
+                totalEndUserEl.textContent = (subSelling > 0 || devSelling > 0 || notificationTotal > 0) ? fmtMoney(totalEndUser) : '—';
             }
             if (totalProfitEl) {
-                const hasAnyPricing = hasPlan || subSelling !== 0 || devSelling !== 0 || (isNewSubscriptionType() && deviceCostValue !== 0);
+                const hasAnyPricing = hasPlan || subSelling !== 0 || devSelling !== 0 || notificationTotal !== 0 || (isNewSubscriptionType() && deviceCostValue !== 0);
                 totalProfitEl.textContent = hasAnyPricing ? fmtMoney(totalProfit) : '—';
 
                 // Visual cue: green for profit, red for loss.
@@ -331,6 +420,17 @@
         subscriptionTypeEl?.addEventListener('change', applySubscriptionTypeUi);
         sellingPriceEl?.addEventListener('input', refreshTotals);
         deviceSellingEl?.addEventListener('input', refreshTotals);
+        emailEnabledEl?.addEventListener('change', applyNotificationAddonUi);
+        whatsappEnabledEl?.addEventListener('change', applyNotificationAddonUi);
+        document.querySelectorAll('.subscription-notif-type-check').forEach(function (el) {
+            el.addEventListener('change', function () {
+                syncNotificationPriceInputs();
+                refreshTotals();
+            });
+        });
+        document.querySelectorAll('.subscription-notif-price').forEach(function (el) {
+            el.addEventListener('input', refreshTotals);
+        });
 
         deviceSelect?.addEventListener('change', fetchDeviceCost);
         if ($ && deviceSelect) {
@@ -353,6 +453,7 @@
         }
 
         applySubscriptionTypeUi();
+        applyNotificationAddonUi();
 
         if (selectValue(planSelect)) {
             onPlanChange();

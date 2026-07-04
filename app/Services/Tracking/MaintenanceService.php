@@ -207,7 +207,7 @@ class MaintenanceService
                 'hours_left' => $bool($data['trigger_hours'] ?? false),
                 'days_left' => $bool($data['trigger_days'] ?? false),
             ],
-            'update_last_service' => $bool($data['update_last_service'] ?? false),
+            'update_last_service' => $bool($data['update_last_service'] ?? true),
         ];
     }
 
@@ -297,7 +297,7 @@ class MaintenanceService
                 'last' => $attrs['last_service'] ?? null,
             ],
             'trigger' => ['odometer_left' => false, 'hours_left' => false, 'days_left' => false],
-            'update_last_service' => false,
+            'update_last_service' => true,
         ];
     }
 

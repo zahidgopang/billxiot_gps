@@ -29,6 +29,7 @@ class ProfileController extends Controller
         return $this->mobileSuccess([
             'user' => $this->mobileUserPayload($user),
             'permissions' => $this->entitlement->permissionsFor($user),
+            'permission_map' => $this->entitlement->permissionMapFor($user),
             'subscription' => $this->entitlement->subscriptionSummaryForUser($user),
         ]);
     }

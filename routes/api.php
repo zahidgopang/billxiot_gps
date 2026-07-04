@@ -14,6 +14,7 @@ use App\Http\Controllers\Api\Mobile\MapController as MobileMapController;
 use App\Http\Controllers\Api\Mobile\NotificationPreferenceController as MobileNotificationPreferenceController;
 use App\Http\Controllers\Api\Mobile\ProfileController as MobileProfileController;
 use App\Http\Controllers\Api\Mobile\PushTokenController as MobilePushTokenController;
+use App\Http\Controllers\Api\Mobile\ReportController as MobileReportController;
 use App\Http\Controllers\Api\Mobile\TrackingSettingsController as MobileTrackingSettingsController;
 use App\Http\Controllers\Api\UserDeviceController;
 use Illuminate\Support\Facades\Route;
@@ -60,41 +61,87 @@ Route::middleware([
     Route::delete('/profile/avatar', [MobileProfileController::class, 'deleteAvatar']);
     Route::post('/change-password', [MobileProfileController::class, 'changePassword']);
 
-    Route::get('/dashboard', [MobileDashboardController::class, 'summary']);
-    Route::get('/dashboard/activity', [MobileDashboardController::class, 'activity']);
-    Route::get('/dashboard/recent-vehicles', [MobileDashboardController::class, 'recentVehicles']);
+    Route::middleware('permission:mobile.nav.home')->group(function () {
+        Route::get('/dashboard', [MobileDashboardController::class, 'summary']);
+        Route::get('/dashboard/activity', [MobileDashboardController::class, 'activity']);
+        Route::get('/dashboard/recent-vehicles', [MobileDashboardController::class, 'recentVehicles']);
+    });
 
-    Route::get('/devices', [MobileDeviceController::class, 'index']);
-    Route::get('/fleet/live', [MobileFleetController::class, 'live']);
-    Route::get('/devices/{id}', [MobileDeviceController::class, 'show'])->whereNumber('id');
-    Route::get('/devices/{id}/live', [MobileDeviceController::class, 'live'])->whereNumber('id');
-    Route::get('/devices/{id}/history', [MobileDeviceController::class, 'history'])->whereNumber('id');
-    Route::get('/devices/{id}/route-summary', [MobileDeviceController::class, 'routeSummary'])->whereNumber('id');
-    Route::get('/devices/{id}/events', [MobileDeviceController::class, 'events'])->whereNumber('id');
-    Route::get('/devices/{id}/live-stream', [MobileLiveStreamController::class, 'show'])->whereNumber('id');
+    Route::get('/devices', [MobileDeviceController::class, 'index'])
+        ->middleware('permission:mobile.map.open');
+    Route::get('/fleet/live', [MobileFleetController::class, 'live'])
+        ->middleware('permission:mobile.map.open');
+    Route::get('/devices/{id}', [MobileDeviceController::class, 'show'])
+        ->middleware('permission:mobile.map.open')
+        ->whereNumber('id');
+    Route::get('/devices/{id}/live', [MobileDeviceController::class, 'live'])
+        ->middleware('permission:mobile.map.open')
+        ->whereNumber('id');
+    Route::post('/devices/{id}/complete-trip', [MobileDeviceController::class, 'completeTrip'])
+        ->middleware('permission:mobile.map.route_progress')
+        ->whereNumber('id');
+    Route::post('/devices/{id}/start-new-trip', [MobileDeviceController::class, 'startNewTrip'])
+        ->middleware('permission:mobile.map.route_progress')
+        ->whereNumber('id');
+    Route::get('/devices/{id}/history', [MobileDeviceController::class, 'history'])
+        ->middleware('permission:mobile.nav.history')
+        ->whereNumber('id');
+    Route::get('/devices/{id}/route-summary', [MobileDeviceController::class, 'routeSummary'])
+        ->middleware('permission:mobile.map.route_progress')
+        ->whereNumber('id');
+    Route::get('/devices/{id}/events', [MobileDeviceController::class, 'events'])
+        ->middleware('permission:mobile.nav.notifications')
+        ->whereNumber('id');
+    Route::get('/map-marker-options', [MobileDeviceController::class, 'mapAppearanceOptions'])
+        ->middleware('permission:mobile.map.custom_icon');
+    Route::patch('/devices/{id}/map-appearance', [MobileDeviceController::class, 'updateMapAppearance'])
+        ->middleware('permission:mobile.map.custom_icon')
+        ->whereNumber('id');
+    Route::post('/devices/{id}/map-custom-icon', [MobileDeviceController::class, 'uploadMapCustomIcon'])
+        ->middleware('permission:mobile.map.custom_icon')
+        ->whereNumber('id');
+    Route::delete('/devices/{id}/map-custom-icon', [MobileDeviceController::class, 'deleteMapCustomIcon'])
+        ->middleware('permission:mobile.map.custom_icon')
+        ->whereNumber('id');
+    Route::get('/devices/{id}/live-stream', [MobileLiveStreamController::class, 'show'])
+        ->middleware('permission:mobile.map.open')
+        ->whereNumber('id');
 
-    Route::get('/devices/{id}/commands', [MobileCommandController::class, 'index'])->whereNumber('id');
-    Route::post('/devices/{id}/commands', [MobileCommandController::class, 'store'])->whereNumber('id');
-    Route::delete('/devices/{id}/commands/{command}', [MobileCommandController::class, 'destroy'])
-        ->whereNumber('id')
-        ->whereNumber('command');
+    Route::middleware('permission:mobile.nav.commands')->group(function () {
+        Route::get('/devices/{id}/commands', [MobileCommandController::class, 'index'])->whereNumber('id');
+        Route::post('/devices/{id}/commands', [MobileCommandController::class, 'store'])->whereNumber('id');
+        Route::delete('/devices/{id}/commands/{command}', [MobileCommandController::class, 'destroy'])
+            ->whereNumber('id')
+            ->whereNumber('command');
+    });
 
-    Route::get('/geofences', [MobileGeofenceController::class, 'index']);
+    Route::get('/geofences', [MobileGeofenceController::class, 'index'])
+        ->middleware('permission:mobile.map.open');
 
-    Route::get('/alerts', [MobileAlertController::class, 'index']);
-    Route::get('/alerts/unread', [MobileAlertController::class, 'unread']);
-    Route::post('/alerts/read', [MobileAlertController::class, 'markRead']);
+    Route::middleware('permission:mobile.nav.notifications')->group(function () {
+        Route::get('/alerts', [MobileAlertController::class, 'index']);
+        Route::get('/alerts/unread', [MobileAlertController::class, 'unread']);
+        Route::post('/alerts/read', [MobileAlertController::class, 'markRead']);
 
-    Route::get('/notification-preferences', [MobileNotificationPreferenceController::class, 'show']);
-    Route::post('/notification-preferences', [MobileNotificationPreferenceController::class, 'update']);
+        Route::get('/notification-preferences', [MobileNotificationPreferenceController::class, 'show']);
+        Route::post('/notification-preferences', [MobileNotificationPreferenceController::class, 'update']);
+    });
 
-    Route::get('/tracking-settings', [MobileTrackingSettingsController::class, 'show']);
-    Route::post('/tracking-settings', [MobileTrackingSettingsController::class, 'update']);
+    Route::middleware('permission:mobile.nav.settings')->group(function () {
+        Route::get('/tracking-settings', [MobileTrackingSettingsController::class, 'show']);
+        Route::post('/tracking-settings', [MobileTrackingSettingsController::class, 'update']);
+    });
 
-    Route::get('/address', [MobileMapController::class, 'address']);
+    Route::get('/address', [MobileMapController::class, 'address'])
+        ->middleware('permission:mobile.map.open');
 
-    Route::get('/export/csv', [MobileExportController::class, 'csv']);
-    Route::get('/export/gpx', [MobileExportController::class, 'gpx']);
+    Route::middleware('permission:mobile.nav.reports')->group(function () {
+        Route::get('/export/csv', [MobileExportController::class, 'csv']);
+        Route::get('/export/gpx', [MobileExportController::class, 'gpx']);
+
+        Route::get('/reports/generate', [MobileReportController::class, 'generate']);
+        Route::get('/reports/export', [MobileReportController::class, 'export']);
+    });
 });
 
 /*

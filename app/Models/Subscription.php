@@ -21,6 +21,12 @@ class Subscription extends Model
         'selling_price',
         'device_unit_cost',
         'device_selling_price',
+        'notification_email_enabled',
+        'notification_whatsapp_enabled',
+        'notification_email_price',
+        'notification_whatsapp_price',
+        'notification_email_config',
+        'notification_whatsapp_config',
         'platform_invoice_id',
         'client_invoice_id',
     ];
@@ -32,6 +38,12 @@ class Subscription extends Model
         'selling_price' => 'decimal:2',
         'device_unit_cost' => 'decimal:2',
         'device_selling_price' => 'decimal:2',
+        'notification_email_enabled' => 'boolean',
+        'notification_whatsapp_enabled' => 'boolean',
+        'notification_email_price' => 'decimal:2',
+        'notification_whatsapp_price' => 'decimal:2',
+        'notification_email_config' => 'array',
+        'notification_whatsapp_config' => 'array',
     ];
 
     public function user()

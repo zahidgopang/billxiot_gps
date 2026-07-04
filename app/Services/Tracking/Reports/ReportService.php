@@ -73,12 +73,15 @@ class ReportService
      */
     private function routeReport(Device $device, Carbon $from, ?Carbon $to): array
     {
+        $collection = $this->loadLocationCollection($device, $from, $to);
         $points = $this->loadPoints($device, $from, $to);
+        $stats = $this->analytics->analyze($collection);
 
         return [
             'device_id' => $device->id,
             'device_name' => $device->mapMarkerTitle(),
             'point_count' => count($points),
+            'total_distance_km' => $stats['total_distance_km'] ?? 0,
             'points' => $points,
         ];
     }
@@ -129,6 +132,7 @@ class ReportService
             'total_distance_km' => $stats['total_distance_km'] ?? 0,
             'moving_time_seconds' => $stats['moving_time_seconds'] ?? 0,
             'stopped_time_seconds' => $stats['stopped_time_seconds'] ?? 0,
+            'idle_time_seconds' => $stats['idle_time_seconds'] ?? 0,
             'max_speed_kmh' => $stats['max_speed_kmh'] ?? 0,
             'average_speed_kmh' => $stats['average_speed_kmh'] ?? 0,
             'overspeed_events' => $stats['overspeed_events'] ?? 0,

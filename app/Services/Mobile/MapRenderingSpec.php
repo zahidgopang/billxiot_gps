@@ -2,6 +2,9 @@
 
 namespace App\Services\Mobile;
 
+use App\Models\Device;
+use App\Support\VehicleIcons\VehicleIconLibrary;
+
 /**
  * Canonical map rendering constants for web (FleetMapRenderer) and mobile native maps.
  */
@@ -54,6 +57,10 @@ class MapRenderingSpec
                 'mode' => 'vehicle_center',
                 'description' => 'Marker anchor at vehicle body center (GPS lat/lng). Pulse centered on same point.',
             ],
+            'marker_styles' => array_keys(Device::MAP_MARKER_STYLES),
+            'marker_sizes' => array_keys(VehicleIconLibrary::sizeScales()),
+            'marker_size_scales' => VehicleIconLibrary::sizeScales(),
+            'custom_map_icon_base_px' => 64,
         ];
     }
 }

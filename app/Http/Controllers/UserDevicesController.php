@@ -6,6 +6,7 @@ use App\Models\Device;
 use App\Services\DeviceSubscriptionService;
 use App\Services\FleetMapDeviceService;
 use App\Services\Mobile\MapRenderingSpec;
+use App\Services\Tracking\DeviceMapAppearanceService;
 use App\Services\Traccar\TraccarTrackingGate;
 use App\Services\Tracking\DevicePositionLoader;
 use App\Services\UserDashboardService;
@@ -166,5 +167,85 @@ class UserDevicesController extends Controller
             'devices' => $devicesPayload,
             'stats' => $dashboard->getDevicePageStats($devices),
         ])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+    }
+
+    public function updateMapAppearance(Request $request, Device $device): JsonResponse
+    {
+        $user = Auth::user();
+        if (! app(\App\Services\Tracking\DeviceMapIconAuthorization::class)->canEditAppearance($user, $device)) {
+            return response()->json(['success' => false, 'message' => __('app.common.not_found')], 404);
+        }
+
+        try {
+            $appearance = app(DeviceMapAppearanceService::class)->update(
+                $user,
+                $device,
+                $request->only([
+                    'vehicle_type',
+                    'map_marker_style',
+                    'map_marker_size',
+                    'map_icon_rotation_enabled',
+                    'map_icon_source',
+                ])
+            );
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => collect($e->errors())->flatten()->first() ?: __('app.map.marker_appearance_save_failed'),
+                'errors' => $e->errors(),
+            ], 422);
+        }
+
+        return response()->json([
+            'success' => true,
+            'appearance' => $appearance,
+            'message' => __('app.map.marker_appearance_saved'),
+        ]);
+    }
+
+    public function uploadMapCustomIcon(Request $request, Device $device): JsonResponse
+    {
+        $user = Auth::user();
+
+        try {
+            $appearance = app(DeviceMapAppearanceService::class)->uploadCustomIcon(
+                $user,
+                $device,
+                $request->file('icon')
+            );
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => collect($e->errors())->flatten()->first(),
+                'errors' => $e->errors(),
+            ], 422);
+        }
+
+        return response()->json([
+            'success' => true,
+            'appearance' => $appearance,
+            'upload_meta' => $appearance['upload_meta'] ?? null,
+            'message' => __('app.map.custom_icon_uploaded'),
+        ]);
+    }
+
+    public function deleteMapCustomIcon(Request $request, Device $device): JsonResponse
+    {
+        $user = Auth::user();
+
+        try {
+            $appearance = app(DeviceMapAppearanceService::class)->revertToDefaultIcon($user, $device);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => collect($e->errors())->flatten()->first(),
+            ], 422);
+        }
+
+        return response()->json([
+            'success' => true,
+            'appearance' => $appearance,
+            'message' => __('app.map.custom_icon_removed'),
+        ]);
     }
 }

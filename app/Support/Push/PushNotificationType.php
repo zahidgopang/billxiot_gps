@@ -49,6 +49,8 @@ final class PushNotificationType
 
     public const MAINTENANCE_DUE = 'maintenance_due';
 
+    public const TRIP_COMPLETED = 'trip_completed';
+
     /** @return array<int, string> */
     public static function all(): array
     {
@@ -73,6 +75,7 @@ final class PushNotificationType
             self::GSM_WEAK,
             self::GPS_WEAK,
             self::MAINTENANCE_DUE,
+            self::TRIP_COMPLETED,
         ];
     }
 
@@ -99,6 +102,7 @@ final class PushNotificationType
             self::GSM_WEAK => 'GSM signal weak',
             self::GPS_WEAK => 'GPS signal weak',
             self::MAINTENANCE_DUE => 'Maintenance due',
+            self::TRIP_COMPLETED => 'Trip completed',
             default => 'Fleet alert',
         };
     }

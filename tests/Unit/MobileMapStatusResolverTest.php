@@ -42,13 +42,13 @@ class MobileMapStatusResolverTest extends TestCase
         $this->assertSame('live', $result['connectivity_tier']);
     }
 
-    /** QA scenario 2: stopped — ignition on, speed 0, 30 sec */
-    public function test_stopped_when_ignition_on_and_speed_zero(): void
+    /** QA scenario 2: idle — ignition on, speed 0, 30 sec */
+    public function test_idle_when_ignition_on_and_speed_zero(): void
     {
         $device = new Device(['status' => 'active']);
         $latest = $this->location(['speed' => 0, 'ignition' => true], 30);
 
-        $this->assertSame('stopped', $this->resolver->resolve($latest, $device)['key']);
+        $this->assertSame('idle', $this->resolver->resolve($latest, $device)['key']);
     }
 
     /** QA scenario 3: parked — ignition off, speed 0, 30 sec */
@@ -124,7 +124,7 @@ class MobileMapStatusResolverTest extends TestCase
 
     public function test_vehicle_status_spec_motion_threshold_is_one_kmh(): void
     {
-        $this->assertSame('stopped', VehicleStatusSpec::motionKey(1, true));
+        $this->assertSame('idle', VehicleStatusSpec::motionKey(1, true));
         $this->assertSame('running', VehicleStatusSpec::motionKey(1.1, true));
         $this->assertSame('parked', VehicleStatusSpec::motionKey(1, false));
         $this->assertSame('moving', VehicleStatusSpec::motionKey(2, false));
