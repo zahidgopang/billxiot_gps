@@ -20,6 +20,21 @@ class DashboardController extends Controller
         private MobileMapStatusResolver $mapStatus,
     ) {}
 
+    public function home(Request $request)
+    {
+        $user = $request->user();
+        $stats = $this->dashboard->getStats($user);
+        $devices = $stats['devices'];
+        $fleet = $this->mapStatus->fleetCounts($devices);
+        $alertIds = $this->dashboard->alertDeviceIds($devices);
+
+        return $this->mobileSuccess([
+            'summary' => $this->summaryPayload($stats, $devices, $fleet),
+            'activity' => $this->activityPayload($stats['activities'])->values(),
+            'recent_vehicles' => $this->recentVehiclePayload($stats['recentDevices'], $alertIds)->values(),
+        ]);
+    }
+
     public function summary(Request $request)
     {
         $user = $request->user();
@@ -27,19 +42,30 @@ class DashboardController extends Controller
         $devices = $stats['devices'];
         $fleet = $this->mapStatus->fleetCounts($devices);
 
+        return $this->mobileSuccess($this->summaryPayload($stats, $devices, $fleet));
+    }
+
+    private function summaryPayload(array $stats, $devices, array $fleet): array
+    {
+
         $geofenceAlerts = 0;
         if ($devices->isNotEmpty()) {
             $deviceIds = $devices->pluck('id');
-            $geofenceAlerts = app(\App\Contracts\Tracking\EventReaderInterface::class)->countForDevices(
-                $deviceIds,
-                now()->subDays(7),
-                [VehicleEvent::TYPE_GEOFENCE_ENTER, VehicleEvent::TYPE_GEOFENCE_EXIT]
-            );
+            try {
+                $geofenceAlerts = app(\App\Contracts\Tracking\EventReaderInterface::class)->countForDevices(
+                    $deviceIds,
+                    now()->subDays(7),
+                    [VehicleEvent::TYPE_GEOFENCE_ENTER, VehicleEvent::TYPE_GEOFENCE_EXIT]
+                );
+            } catch (\Throwable $e) {
+                report($e);
+                $geofenceAlerts = 0;
+            }
         }
 
         $parkedTotal = $fleet['parked'] + $fleet['stopped'] + $fleet['idle'];
 
-        return $this->mobileSuccess([
+        return [
             'total_devices' => $stats['totalDevices'],
             // Recent GPS ping (last 5 min) — "connected now"
             'online_devices' => $stats['onlineNow'],
@@ -53,25 +79,15 @@ class DashboardController extends Controller
             'alerts_count' => $stats['activeAlerts'],
             'total_distance_km' => $stats['totalDistanceKm'],
             'geofence_alerts' => $geofenceAlerts,
-        ]);
+        ];
     }
 
     public function activity(Request $request)
     {
         $user = $request->user();
         $stats = $this->dashboard->getStats($user);
-        $deviceIds = $stats['devices']->pluck('id');
 
-        $activities = $this->dashboard->getRecentActivities($deviceIds)
-            ->map(fn (array $item) => array_merge([
-                'type' => $item['type'],
-                'title' => $item['title'],
-                'description' => $item['description'],
-                'icon' => $item['icon'],
-            ], \App\Support\DateTime\AppDateTime::apiFields($item['time'] ?? null)))
-            ->values();
-
-        return $this->mobileSuccess($activities);
+        return $this->mobileSuccess($this->activityPayload($stats['activities'])->values());
     }
 
     public function recentVehicles(Request $request)
@@ -80,7 +96,23 @@ class DashboardController extends Controller
         $stats = $this->dashboard->getStats($user);
         $alertIds = $this->dashboard->alertDeviceIds($stats['devices']);
 
-        $items = $stats['recentDevices']->map(function ($device) use ($alertIds) {
+        return $this->mobileSuccess($this->recentVehiclePayload($stats['recentDevices'], $alertIds)->values());
+    }
+
+    private function activityPayload($activities)
+    {
+        return $activities
+            ->map(fn (array $item) => array_merge([
+                'type' => $item['type'],
+                'title' => $item['title'],
+                'description' => $item['description'],
+                'icon' => $item['icon'],
+            ], \App\Support\DateTime\AppDateTime::apiFields($item['time'] ?? null)));
+    }
+
+    private function recentVehiclePayload($devices, $alertIds)
+    {
+        return $devices->map(function ($device) use ($alertIds) {
             try {
                 return $this->presenter->listItem($device, $alertIds);
             } catch (\Throwable $e) {
@@ -88,8 +120,6 @@ class DashboardController extends Controller
 
                 return null;
             }
-        })->filter()->values();
-
-        return $this->mobileSuccess($items);
+        })->filter();
     }
 }

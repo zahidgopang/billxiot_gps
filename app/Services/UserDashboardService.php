@@ -57,18 +57,28 @@ class UserDashboardService
             report($e);
             $totalDistanceKm = 0;
         }
-        $activeAlerts = $deviceIds->isEmpty()
-            ? 0
-            : $this->events->countForDevices(
-                $deviceIds,
-                now()->subDays(7),
-                VehicleEvent::dashboardAlertTypes(),
-            );
+        try {
+            $activeAlerts = $deviceIds->isEmpty()
+                ? 0
+                : $this->events->countForDevices(
+                    $deviceIds,
+                    now()->subDays(7),
+                    VehicleEvent::dashboardAlertTypes(),
+                );
+        } catch (\Throwable $e) {
+            report($e);
+            $activeAlerts = 0;
+        }
         $onlineNow = $this->countOnlineDevices($devices);
 
         $vehicleStates = $this->getVehicleStateCounts($devices);
         $recentDevices = $devices->sortByDesc(fn (Device $d) => $d->latestLocation?->recorded_at)->take(5)->values();
-        $activities = $this->getRecentActivities($deviceIds);
+        try {
+            $activities = $this->getRecentActivities($deviceIds);
+        } catch (\Throwable $e) {
+            report($e);
+            $activities = collect();
+        }
 
         return [
             'devices' => $devices,

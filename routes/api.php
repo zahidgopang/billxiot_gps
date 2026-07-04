@@ -62,6 +62,7 @@ Route::middleware([
     Route::post('/change-password', [MobileProfileController::class, 'changePassword']);
 
     Route::middleware('permission:mobile.nav.home')->group(function () {
+        Route::get('/dashboard/home', [MobileDashboardController::class, 'home']);
         Route::get('/dashboard', [MobileDashboardController::class, 'summary']);
         Route::get('/dashboard/activity', [MobileDashboardController::class, 'activity']);
         Route::get('/dashboard/recent-vehicles', [MobileDashboardController::class, 'recentVehicles']);
