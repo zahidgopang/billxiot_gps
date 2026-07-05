@@ -20,10 +20,23 @@ class TraccarForwardController extends Controller
         }
 
         if (! $forward->isEnabled()) {
+            if (config('app.debug')) {
+                \Illuminate\Support\Facades\Log::debug('traccar.forward skipped: mode disabled', [
+                    'mode' => config('traccar.broadcast_mode'),
+                    'positions' => config('traccar.broadcast_positions'),
+                ]);
+            }
+
             return response()->json(['ok' => true, 'skipped' => 'forward mode disabled']);
         }
 
         $handled = $forward->handlePayload($request->all());
+
+        if (config('app.debug') && ! $handled) {
+            \Illuminate\Support\Facades\Log::debug('traccar.forward received but not broadcast', [
+                'keys' => array_keys($request->all()),
+            ]);
+        }
 
         return response()->json([
             'ok' => true,

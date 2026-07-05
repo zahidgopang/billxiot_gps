@@ -417,6 +417,7 @@
             this._echoHooksBound = false;
             this._alertBaselineDone = false;
             this._lastReverbActivityAt = 0;
+            this._lastHttpHeartbeatAt = 0;
             this._reverbWatchTimer = null;
             this.echoChannels = new Map();
             this.initialFitDone = false;
@@ -692,7 +693,9 @@
             this.initCompanyMapCard();
             this.initDriverMapCard();
             this.bindEchoRealtime();
-            if (this._needsHttpLivePoll()) {
+            if (this.isEchoConnected()) {
+                this.realtimeHealthy = true;
+            } else if (this._needsHttpLivePoll()) {
                 this.startPolling();
             }
         }
@@ -1988,8 +1991,20 @@
         _needsHttpLivePoll(force = false) {
             if (force) return true;
             if (document.hidden || this.visible.size === 0) return false;
-            if (!this.realtimeHealthy) return true;
-            return !this._reverbGpsActive();
+            // Reverb socket up → no repeating live-json (watchdog may do rare heartbeat).
+            if (this.realtimeHealthy) return false;
+            return true;
+        }
+
+        /** One-off HTTP poll when Reverb is up but no GPS event for a long time. */
+        _maybeStaleReverbHeartbeat() {
+            if (!this.realtimeHealthy || document.hidden || this.visible.size === 0) return;
+            if (this._reverbEventsRecent()) return;
+            const minGap = this.cfg.reverbStaleMs || 45000;
+            const since = Date.now() - (this._lastHttpHeartbeatAt || 0);
+            if (this._lastHttpHeartbeatAt && since < minGap) return;
+            this._lastHttpHeartbeatAt = Date.now();
+            this.pollLive(true);
         }
 
         stopLivePolling() {
@@ -2007,7 +2022,7 @@
                     console.info(
                         '[traccar-ui] Reverb',
                         wsConnected
-                            ? 'connected — live-json off while GPS events flow'
+                            ? 'connected — live-json polling stopped'
                             : 'unavailable — HTTP polling active',
                     );
                 }
@@ -2052,12 +2067,17 @@
             }
 
             this._reverbWatchTimer = setInterval(() => {
-                if (this._reverbGpsActive()) {
-                    this.stopLivePolling();
-                } else if (!document.hidden && this.visible.size > 0) {
-                    this.startPolling();
+                if (!this.isEchoConnected()) {
+                    this.realtimeHealthy = false;
+                    if (!document.hidden && this.visible.size > 0) {
+                        this.startPolling();
+                    }
+                    return;
                 }
-            }, 15000);
+                this.realtimeHealthy = true;
+                this.stopLivePolling();
+                this._maybeStaleReverbHeartbeat();
+            }, 20000);
 
             setTimeout(sync, 800);
             setTimeout(sync, 2500);
@@ -2091,11 +2111,18 @@
                 this.stopLivePolling();
                 return;
             }
-            if (this.pollTimer) { clearInterval(this.pollTimer); this.pollTimer = null; }
             if (this.visible.size === 0 || document.hidden) return;
             const ms = this.resolveLivePollIntervalMs();
             if (ms <= 0) return;
-            this.pollLive(true);
+
+            const hadTimer = !!this.pollTimer;
+            if (this.pollTimer) {
+                clearInterval(this.pollTimer);
+                this.pollTimer = null;
+            }
+            if (!hadTimer) {
+                this.pollLive(true);
+            }
             this.pollTimer = setInterval(() => this.pollLive(false), ms);
         }
 
@@ -2117,8 +2144,8 @@
         }
 
         async pollLive(force) {
-            if (!this._needsHttpLivePoll(force)) return;
-            if (this.pollInFlight && !force) return;
+            if (!force && !this._needsHttpLivePoll()) return;
+            if (this.pollInFlight) return;
             const ids = [...this.visible];
             if (ids.length === 0) return;
             this.pollInFlight = true;
@@ -2143,19 +2170,25 @@
             try {
                 const channel = global.Echo.private(`device.${id}`);
                 channel.listen('.DeviceLocationUpdated', (payload) => {
-                    const loc = payload.location || payload;
-                    if (loc && loc.id == null) loc.id = id;
-                    if (loc && loc.color == null) {
+                    const loc = payload?.location && payload.location.lat != null
+                        ? payload.location
+                        : payload;
+                    if (!loc || loc.lat == null || loc.lng == null) return;
+                    if (loc.id == null) loc.id = id;
+                    if (loc.color == null) {
                         loc.color = colorForPoint(loc, this.stateColors);
                     }
                     this._lastReverbActivityAt = Date.now();
                     this.applyPoint(id, loc);
-                    if (this._reverbGpsActive()) {
-                        this.stopLivePolling();
-                    }
+                    this.stopLivePolling();
                 });
                 this.echoChannels.set(id, channel);
-                this.syncRealtimePolling();
+                if (this.isEchoConnected()) {
+                    this.realtimeHealthy = true;
+                    this.stopLivePolling();
+                } else {
+                    this.syncRealtimePolling();
+                }
             } catch (err) { console.warn('[traccar-ui] echo subscribe failed', id, err); }
         }
 

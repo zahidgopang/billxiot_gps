@@ -1,0 +1,12 @@
+<!--
+  BillX GPS — Traccar position forward (production)
+  File: /opt/traccar/conf/traccar.xml  OR  /etc/traccar/traccar.xml
+
+  Add INSIDE <properties> — do not remove database / JDBC lines.
+  Replace YOUR_FORWARD_SECRET with the same value as TRACCAR_FORWARD_SECRET in Laravel .env
+  Then: sudo systemctl restart traccar
+-->
+<entry key='forward.enable'>true</entry>
+<entry key='forward.json'>true</entry>
+<entry key='forward.url'>https://gpsbillx.com/api/traccar/forward</entry>
+<entry key='forward.header'>X-Traccar-Token: YOUR_FORWARD_SECRET</entry>
