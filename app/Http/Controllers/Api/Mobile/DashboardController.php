@@ -27,13 +27,25 @@ class DashboardController extends Controller
     public function home(Request $request)
     {
         $user = $request->user();
-        $payload = Cache::remember(
-            $this->homeCacheKey($user),
-            self::HOME_CACHE_SECONDS,
-            fn () => $this->buildHomePayload($user),
-        );
 
-        return $this->mobileSuccess($payload);
+        try {
+            $payload = Cache::remember(
+                $this->homeCacheKey($user),
+                self::HOME_CACHE_SECONDS,
+                fn () => $this->buildHomePayload($user),
+            );
+
+            return $this->mobileSuccess($payload);
+        } catch (\Throwable $e) {
+            report($e);
+            Cache::forget($this->homeCacheKey($user));
+
+            return $this->mobileError(
+                (string) __('app.tracking.report_load_failed'),
+                500,
+                'dashboard_home_failed',
+            );
+        }
     }
 
     public function summary(Request $request)

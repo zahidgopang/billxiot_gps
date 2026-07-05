@@ -42,4 +42,16 @@ return [
 
     /** Satellite count below this triggers a GPS weak warning. */
     'gps_min_satellites' => (int) env('TRACKING_GPS_MIN_SATELLITES', 4),
+
+    /** Only push running / idle / parked / stopped — blocks GSM weak, online, delayed, etc. */
+    'push_major_status_only' => filter_var(env('TRACKING_PUSH_MAJOR_STATUS_ONLY', true), FILTER_VALIDATE_BOOL),
+
+    /** Minimum seconds between map-status push notifications per device. */
+    'push_motion_cooldown_seconds' => (int) env('TRACKING_PUSH_MOTION_COOLDOWN', 300),
+
+    /** GSM/GPS weak alerts on every position (very noisy — keep off in production). */
+    'push_smart_signal_alerts' => filter_var(env('TRACKING_PUSH_SMART_SIGNAL_ALERTS', false), FILTER_VALIDATE_BOOL),
+
+    /** Geofence enter/exit on live-map polling (causes 504s — only run on GPS ingest). */
+    'geofence_on_live_poll' => filter_var(env('TRACKING_GEOFENCE_ON_LIVE_POLL', false), FILTER_VALIDATE_BOOL),
 ];

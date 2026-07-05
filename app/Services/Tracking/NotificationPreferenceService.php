@@ -321,7 +321,8 @@ class NotificationPreferenceService
             'delayed', 'delayed_data' => 'delayed_data',
             'maintenance', 'maintenance_due' => VehicleEvent::TYPE_MAINTENANCE,
             'vehicle_started', 'vehicle_moving', 'vehicle_parked' => 'running',
-            'vehicle_stopped' => 'stopped',
+            'vehicle_stopped', 'idle' => 'stopped',
+            'parked' => 'parked',
             default => $type,
         };
 

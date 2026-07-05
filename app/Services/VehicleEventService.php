@@ -7,9 +7,11 @@ use App\Contracts\Tracking\EventWriterInterface;
 use App\Models\Device;
 use App\Models\DeviceLocation;
 use App\Models\VehicleEvent;
+use App\Services\Mobile\VehicleStatusSpec;
 use App\Services\Push\PushNotificationDispatcher;
 use App\Services\SmartFleetAlertService;
 use App\Services\Tracking\TrackingSettingsService;
+use App\Support\Push\PushNotificationMapper;
 use App\Support\Traccar\GeofenceWkt;
 use Carbon\Carbon;
 
@@ -29,7 +31,7 @@ class VehicleEventService
         $at = $location->recorded_at ?? now();
 
         $this->smartAlerts->onPositionReceived($device, $location);
-        $this->processMotionState($device, $speed, $lat, $lng, $at);
+        $this->processMapStatusChange($device, $speed, (bool) $location->ignition, $lat, $lng, $at);
         $this->processGeofenceFromLocation($device, $lat, $lng, $at);
         $this->processSignals($device, $location, $speed, $lat, $lng, $at, $previous);
     }
@@ -43,55 +45,82 @@ class VehicleEventService
         $this->processGeofence($device, $lat, $lng, $at);
     }
 
-    private function processMotionState(Device $device, float $speed, float $lat, float $lng, Carbon $at): void
-    {
-        $cfg = $this->trackingSettings->forDevice($device);
-        $stopped = (float) ($cfg['stopped_speed_kmh'] ?? config('tracking.stopped_speed_kmh', 5));
-        $slowMax = (float) ($cfg['slow_speed_max_kmh'] ?? config('tracking.slow_speed_max_kmh', 30));
-        $overspeed = (float) ($cfg['overspeed_kmh'] ?? config('tracking.overspeed_kmh', 80));
+    /**
+     * Notify on ignition-aware map status (running / idle / parked) — not raw speed flicker.
+     */
+    private function processMapStatusChange(
+        Device $device,
+        float $speed,
+        bool $ignition,
+        float $lat,
+        float $lng,
+        Carbon $at,
+    ): void {
+        $mapKey = VehicleStatusSpec::normalizeKey(
+            VehicleStatusSpec::motionKey($speed, $ignition),
+        );
 
-        $state = match (true) {
-            $speed > $overspeed => VehicleEvent::TYPE_OVERSPEED,
-            $speed > $slowMax => VehicleEvent::TYPE_RUNNING,
-            $speed > $stopped => VehicleEvent::TYPE_SLOW_SPEED,
-            default => VehicleEvent::TYPE_STOPPED,
-        };
-
-        $cacheKey = "device.{$device->id}.motion_state";
-        $previousState = cache()->get($cacheKey);
-
-        if ($previousState === $state) {
+        if (! in_array($mapKey, ['running', 'idle', 'parked'], true)) {
             return;
         }
 
-        cache()->put($cacheKey, $state, now()->addHours(24));
+        $stateKey = "device.{$device->id}.map_status_notify";
+        $previousKey = cache()->get($stateKey);
 
-        [$title, $message] = match ($state) {
-            VehicleEvent::TYPE_STOPPED => [
-                'Vehicle stopped',
-                sprintf('%s has stopped (speed %.0f km/h).', $device->notificationDisplayName(), $speed),
-            ],
-            VehicleEvent::TYPE_RUNNING => [
+        if ($previousKey === $mapKey) {
+            return;
+        }
+
+        cache()->put($stateKey, $mapKey, now()->addHours(24));
+
+        $cooldown = (int) config(
+            'tracking.push_motion_cooldown_seconds',
+            config('tracking.event_cooldown_seconds', 300),
+        );
+        $cooldownKey = "device.{$device->id}.map_status_push";
+        if (cache()->has($cooldownKey)) {
+            return;
+        }
+        cache()->put($cooldownKey, true, now()->addSeconds($cooldown));
+
+        [$title, $message] = match ($mapKey) {
+            'running' => [
                 'Vehicle running',
-                sprintf('%s is moving at %.0f km/h.', $device->notificationDisplayName(), $speed),
+                sprintf('%s is running.', $device->notificationDisplayName()),
             ],
-            VehicleEvent::TYPE_SLOW_SPEED => [
-                'Slow speed',
-                sprintf('%s is moving slowly at %.0f km/h.', $device->notificationDisplayName(), $speed),
+            'idle' => [
+                'Vehicle idle',
+                sprintf('%s is idle (ignition on).', $device->notificationDisplayName()),
             ],
-            VehicleEvent::TYPE_OVERSPEED => [
-                'Overspeed',
-                sprintf('%s exceeded %.0f km/h limit (current %.0f km/h).', $device->notificationDisplayName(), $overspeed, $speed),
+            'parked' => [
+                'Vehicle parked',
+                sprintf('%s is parked.', $device->notificationDisplayName()),
             ],
-            default => ['Vehicle update', "{$device->notificationDisplayName()} motion state changed."],
+            default => ['Vehicle update', "{$device->notificationDisplayName()} status changed."],
         };
 
-        $event = $this->record($device, $state, $title, $message, $speed, $lat, $lng, $at);
+        $eventType = match ($mapKey) {
+            'running' => VehicleEvent::TYPE_RUNNING,
+            'idle' => 'idle',
+            'parked' => 'parked',
+            default => VehicleEvent::TYPE_STOPPED,
+        };
+
+        $pushType = PushNotificationMapper::mapStatusPushType(
+            is_string($previousKey) ? $previousKey : null,
+            $mapKey,
+        );
+
+        if ($pushType === null) {
+            return;
+        }
+
+        $event = $this->record($device, $eventType, $title, $message, $speed, $lat, $lng, $at);
 
         app(PushNotificationDispatcher::class)->forVehicleEvent(
             $device,
             $event,
-            is_string($previousState) ? $previousState : null,
+            is_string($previousKey) ? $previousKey : null,
         );
     }
 

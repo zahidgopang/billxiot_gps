@@ -39,7 +39,9 @@ class SmartFleetAlertService
         $lng = (float) $location->lng;
         $at = $location->recorded_at ?? now();
 
-        $this->processSignalQuality($device, $location, $speed, $lat, $lng, $at);
+        if (config('tracking.push_smart_signal_alerts', false)) {
+            $this->processSignalQuality($device, $location, $speed, $lat, $lng, $at);
+        }
     }
 
     public function checkConnectivity(Device $device): void

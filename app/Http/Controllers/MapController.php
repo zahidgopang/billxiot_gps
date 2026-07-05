@@ -14,7 +14,6 @@ use App\Services\Mobile\MobileMapStatusResolver;
 use App\Services\Mobile\MobileRouteAnalyticsService;
 use App\Services\Tracking\DeviceHistoryFetcher;
 use App\Services\Tracking\NotificationPreferenceService;
-use App\Services\VehicleEventService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Http;
@@ -234,15 +233,6 @@ class MapController extends Controller
         $device = $this->findMapDevice($token);
 
         $latest = $this->positions->latestForDevice($device);
-
-        if ($latest && config('tracking.laravel_geofence_detection', true)) {
-            app(VehicleEventService::class)->processGeofenceFromLocation(
-                $device,
-                (float) $latest->lat,
-                (float) $latest->lng,
-                $latest->recorded_at ?? now()
-            );
-        }
 
         return response()->json(array_merge(
             $this->formatLocationForDevice($latest, $device) ?? [],

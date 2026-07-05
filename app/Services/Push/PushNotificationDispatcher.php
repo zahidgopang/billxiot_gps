@@ -3,6 +3,7 @@
 namespace App\Services\Push;
 
 use App\Contracts\Tracking\EventWriterInterface;
+use App\Jobs\SendPushNotificationJob;
 use App\Models\Device;
 use App\Models\User;
 use App\Models\VehicleEvent;
@@ -28,6 +29,7 @@ class PushNotificationDispatcher
         ?string $previousMotionState = null,
     ): void {
         $pushType = PushNotificationMapper::fromVehicleEventType($event->type)
+            ?? PushNotificationMapper::mapStatusPushType($previousMotionState, $event->type)
             ?? PushNotificationMapper::motionPushType($previousMotionState, $event->type);
 
         if ($pushType === null) {
@@ -255,13 +257,15 @@ class PushNotificationDispatcher
         }
 
         try {
-            $this->alertChannels->dispatchToUsers(
-                $userIds,
-                $eventType,
-                $displayTitle,
-                $body,
-                $context,
-            );
+            if (PushNotificationType::deliverViaPush($pushType)) {
+                $this->alertChannels->dispatchToUsers(
+                    $userIds,
+                    $eventType,
+                    $displayTitle,
+                    $body,
+                    $context,
+                );
+            }
         } catch (\Throwable $e) {
             report($e);
         }
@@ -278,6 +282,10 @@ class PushNotificationDispatcher
             return;
         }
 
+        if (! PushNotificationType::deliverViaPush($pushType)) {
+            return;
+        }
+
         $pushUserIds = array_values(array_filter(
             $userIds,
             fn (int $uid) => $this->userAllowsPush($uid, $eventType)
@@ -286,7 +294,8 @@ class PushNotificationDispatcher
             return;
         }
 
-        $this->fcm->sendToUsers($pushUserIds, $displayTitle, $bodyWithTime, $data);
+        SendPushNotificationJob::dispatch($pushUserIds, $displayTitle, $bodyWithTime, $data)
+            ->afterResponse();
     }
 
     /**

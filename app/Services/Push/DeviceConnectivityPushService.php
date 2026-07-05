@@ -20,11 +20,15 @@ class DeviceConnectivityPushService
         $wasOnline = (bool) cache()->get($cacheKey, false);
 
         if (! $wasOnline) {
-            $this->dispatcher->forConnectivity(
-                $device,
-                PushNotificationType::DEVICE_ONLINE,
-                sprintf('%s is back online and reporting GPS.', $device->notificationDisplayName()),
-            );
+            $onlineCooldown = "device.{$device->id}.push_online_cooldown";
+            if (! cache()->has($onlineCooldown)) {
+                $this->dispatcher->forConnectivity(
+                    $device,
+                    PushNotificationType::DEVICE_ONLINE,
+                    sprintf('%s is back online and reporting GPS.', $device->notificationDisplayName()),
+                );
+                cache()->put($onlineCooldown, true, now()->addMinutes(30));
+            }
         }
 
         cache()->put($cacheKey, true, now()->addHours(24));

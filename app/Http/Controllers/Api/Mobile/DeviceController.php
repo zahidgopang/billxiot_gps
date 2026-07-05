@@ -74,15 +74,6 @@ class DeviceController extends Controller
         $this->positionLoader->attachLatest($device);
         $latest = $device->latestLocation;
 
-        if ($latest && config('tracking.laravel_geofence_detection', true)) {
-            app(VehicleEventService::class)->processGeofenceFromLocation(
-                $device,
-                (float) $latest->lat,
-                (float) $latest->lng,
-                $latest->recorded_at ?? now()
-            );
-        }
-
         $payload = $this->presenter->livePosition($device);
 
         if (! $payload) {

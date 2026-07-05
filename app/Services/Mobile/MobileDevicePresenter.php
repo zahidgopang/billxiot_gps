@@ -86,7 +86,7 @@ class MobileDevicePresenter
     /**
      * @return array<string, mixed>|null
      */
-    public function livePosition(Device $device): ?array
+    public function livePosition(Device $device, bool $withStatusDuration = true): ?array
     {
         $latest = $device->latestLocation;
 
@@ -99,7 +99,12 @@ class MobileDevicePresenter
             (float) ($latest->speed ?? 0),
             (bool) $latest->ignition,
         );
-        $duration = $this->statusDuration->resolve($device, $latest, $map);
+        $duration = $withStatusDuration
+            ? $this->statusDuration->resolve($device, $latest, $map)
+            : [
+                'since' => $latest->recorded_at?->copy(),
+                'seconds' => null,
+            ];
 
         return [
             'lat' => (float) $latest->lat,

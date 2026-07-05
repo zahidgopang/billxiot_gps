@@ -51,6 +51,39 @@ final class PushNotificationType
 
     public const TRIP_COMPLETED = 'trip_completed';
 
+    /** Push types allowed when TRACKING_PUSH_MAJOR_STATUS_ONLY=true (running/stopped/parked/idle). */
+    public static function majorMotionPushTypes(): array
+    {
+        return [
+            self::VEHICLE_STARTED,
+            self::VEHICLE_STOPPED,
+            self::VEHICLE_MOVING,
+            self::VEHICLE_PARKED,
+        ];
+    }
+
+    /** Security alerts that bypass the major-status-only gate. */
+    public static function criticalBypassTypes(): array
+    {
+        return [
+            self::PANIC,
+            self::POWER_CUT,
+        ];
+    }
+
+    public static function deliverViaPush(string $type): bool
+    {
+        if (! config('tracking.push_major_status_only', true)) {
+            return true;
+        }
+
+        if (in_array($type, self::criticalBypassTypes(), true)) {
+            return true;
+        }
+
+        return in_array($type, self::majorMotionPushTypes(), true);
+    }
+
     /** @return array<int, string> */
     public static function all(): array
     {

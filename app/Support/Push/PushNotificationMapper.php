@@ -7,6 +7,32 @@ use App\Models\VehicleEvent;
 final class PushNotificationMapper
 {
     /**
+     * Map ignition-aware map status (running / idle / parked) to a mobile push type.
+     */
+    public static function mapStatusPushType(?string $previousKey, string $newKey): ?string
+    {
+        $previousKey = $previousKey !== null && $previousKey !== ''
+            ? \App\Services\Mobile\VehicleStatusSpec::normalizeKey($previousKey)
+            : null;
+        $newKey = \App\Services\Mobile\VehicleStatusSpec::normalizeKey($newKey);
+
+        if (! in_array($newKey, ['running', 'idle', 'parked'], true)) {
+            return null;
+        }
+
+        if ($previousKey === $newKey) {
+            return null;
+        }
+
+        return match ($newKey) {
+            'running' => PushNotificationType::VEHICLE_STARTED,
+            'idle' => PushNotificationType::VEHICLE_STOPPED,
+            'parked' => PushNotificationType::VEHICLE_PARKED,
+            default => null,
+        };
+    }
+
+    /**
      * Map motion-state transition to a mobile push type.
      */
     public static function motionPushType(?string $previousState, string $newState): ?string

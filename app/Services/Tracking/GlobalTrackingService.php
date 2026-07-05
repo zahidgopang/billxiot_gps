@@ -477,10 +477,19 @@ class GlobalTrackingService
             $payload['plate'] = $device->mapMarkerPlateLine();
             $payload['icon'] = $device->deviceTypeIconClass();
             $payload['color'] = VehicleStatusSpec::colorForKey((string) ($payload['status_key'] ?? 'offline'));
-            $payload['recorded_at_human'] = app_datetime_format($latest->recorded_at);
-            $payload['route_trip'] = $actor
-                ? $this->routeTripPayloadForActor($actor, $device, $latest)
-                : $this->routeTripPayload($device, $latest);
+            $payload['recorded_at_human'] = $latest
+                ? app_datetime_format($latest->recorded_at)
+                : null;
+            try {
+                $payload['route_trip'] = $latest
+                    ? ($actor
+                        ? $this->routeTripPayloadForActor($actor, $device, $latest)
+                        : $this->routeTripPayload($device, $latest))
+                    : null;
+            } catch (\Throwable $e) {
+                report($e);
+                $payload['route_trip'] = null;
+            }
             if ($includeDriver) {
                 $payload['driver'] = $driverPayloads[$device->id] ?? null;
             }

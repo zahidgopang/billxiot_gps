@@ -42,7 +42,15 @@ class FleetController extends Controller
             if (! $device) {
                 continue;
             }
-            $payload = $this->presenter->livePosition($device);
+
+            try {
+                $payload = $this->presenter->livePosition($device, withStatusDuration: false);
+            } catch (\Throwable $e) {
+                report($e);
+
+                continue;
+            }
+
             if ($payload !== null) {
                 $items[] = array_merge(['id' => $device->id], $payload);
             }
