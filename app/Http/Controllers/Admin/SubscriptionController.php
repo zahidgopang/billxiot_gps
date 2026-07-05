@@ -1017,8 +1017,9 @@ class SubscriptionController extends Controller
         $invoiceIds = [];
         $standaloneIds = [];
 
-        foreach ($groupsPage as $group) {
-            $primary = $primaries->get((int) $group->primary_id);
+        foreach ($groupsPage->getCollection() as $group) {
+            $primaryId = (int) (is_object($group) ? $group->primary_id : ($group['primary_id'] ?? 0));
+            $primary = $primaries->get($primaryId);
             if (! $primary) {
                 continue;
             }
@@ -1056,9 +1057,13 @@ class SubscriptionController extends Controller
         $byInvoice = $allSubs->groupBy('client_invoice_id');
         $byId = $allSubs->keyBy('id');
 
-        return collect($groupsPage)->map(function ($group) use ($primaries, $byInvoice, $byId) {
-            $primary = $byId->get((int) $group->primary_id)
-                ?? $primaries->get((int) $group->primary_id);
+        return $groupsPage->getCollection()->map(function ($group) use ($primaries, $byInvoice, $byId) {
+            $primaryId = (int) (is_object($group) ? $group->primary_id : ($group['primary_id'] ?? 0));
+            if ($primaryId <= 0) {
+                return null;
+            }
+
+            $primary = $byId->get($primaryId) ?? $primaries->get($primaryId);
 
             if (! $primary instanceof Subscription) {
                 return null;
