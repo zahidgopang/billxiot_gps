@@ -70,11 +70,15 @@
                         <p class="mb-1">
                             <strong>{{ __('app.common.subscriptions') }}:</strong>
                             {{ $invoice->subscription->plan }}
-                            @if($invoice->subscription->device)
+                            @if($invoice->subscription->device && !($invoice->isConsolidated() ?? false))
                                 · {{ $invoice->subscription->device->name ?? $invoice->subscription->device->imei }}
                             @endif
                         </p>
                     @endif
+                    @include('admin.billing-invoices._invoice-devices', [
+                        'invoice' => $invoice,
+                        'linkedSubscriptions' => $linkedSubscriptions ?? collect(),
+                    ])
                     <p class="mb-1"><strong>{{ __('app.common.status') }}:</strong>
                         <span class="badge bg-{{ $invoice->statusEnum()->badgeClass() }}">{{ $invoice->statusEnum()->label() }}</span>
                     </p>

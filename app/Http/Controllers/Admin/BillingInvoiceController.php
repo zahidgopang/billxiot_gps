@@ -86,11 +86,13 @@ class BillingInvoiceController extends Controller
         $listTab = $billingInvoice->isPlatformType()
             ? BillingInvoiceType::Platform->value
             : BillingInvoiceType::Client->value;
+        $linkedSubscriptions = $billingInvoice->linkedSubscriptions();
 
         if ($request->query('modal') === '1' || $request->ajax()) {
             return view('admin.billing-invoices._modal', [
                 'invoice' => $billingInvoice,
                 'pairedInvoice' => $pairedInvoice,
+                'linkedSubscriptions' => $linkedSubscriptions,
                 'panel' => $this->panelPrefix(),
                 'listTab' => $listTab,
             ]);
@@ -99,6 +101,7 @@ class BillingInvoiceController extends Controller
         return view('admin.billing-invoices.show', [
             'invoice' => $billingInvoice,
             'pairedInvoice' => $pairedInvoice,
+            'linkedSubscriptions' => $linkedSubscriptions,
             'panel' => $this->panelPrefix(),
             'listTab' => $listTab,
         ]);

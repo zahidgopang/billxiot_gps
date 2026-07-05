@@ -10,9 +10,20 @@ class DeviceSubscriptionService
 {
     public function subscriptionFor(Device $device): ?Subscription
     {
-        return $device->relationLoaded('subscription')
-            ? $device->subscription
-            : $device->subscription()->first();
+        if ($device->relationLoaded('subscription')) {
+            $loaded = $device->subscription;
+
+            if ($loaded && $loaded->status === 'active') {
+                return $loaded;
+            }
+        }
+
+        return Subscription::query()
+            ->where('device_id', $device->id)
+            ->where('status', 'active')
+            ->orderByDesc('ends_at')
+            ->orderByDesc('id')
+            ->first();
     }
 
     public function isActive(Device $device): bool
@@ -29,15 +40,27 @@ class DeviceSubscriptionService
             return false;
         }
 
-        if ($subscription->starts_at && $subscription->starts_at->isFuture()) {
+        if ($subscription->starts_at && $this->startsOnFutureCalendarDay($subscription)) {
             return false;
         }
 
-        if ($subscription->ends_at && $subscription->ends_at->endOfDay()->isPast()) {
+        if ($subscription->ends_at && $subscription->ends_at->copy()->endOfDay()->isPast()) {
             return false;
         }
 
         return true;
+    }
+
+    /**
+     * Subscription start dates are calendar days — active from 00:00 on starts_at.
+     */
+    public function startsOnFutureCalendarDay(Subscription $subscription): bool
+    {
+        if (! $subscription->starts_at) {
+            return false;
+        }
+
+        return now()->startOfDay()->lt($subscription->starts_at->copy()->startOfDay());
     }
 
     public function expireIfNeeded(Subscription $subscription): void
@@ -104,7 +127,7 @@ class DeviceSubscriptionService
             return "The subscription for {$name} ended on {$subscription->ends_at->format('M d, Y')}. Please resubscribe to continue using the map.";
         }
 
-        if ($subscription->starts_at && $subscription->starts_at->isFuture()) {
+        if ($subscription->starts_at && $this->startsOnFutureCalendarDay($subscription)) {
             return "The subscription for {$name} starts on {$subscription->starts_at->format('M d, Y')}. Map access will open on that date.";
         }
 

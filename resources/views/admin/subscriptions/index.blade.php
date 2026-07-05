@@ -82,6 +82,10 @@
                 </tr>
                 </thead>
                 <tbody>
+                @php
+                    $seenClientInvoices = [];
+                    $seenPlatformInvoices = [];
+                @endphp
                 @foreach($subs as $s)
                     @php
                         $displayStatus = $s->status;
@@ -106,19 +110,35 @@
                             @endif
                         </td>
                         <td class="small">
-                            @if($s->clientInvoice)
+                            @php
+                                $clientInvoiceId = $s->clientInvoice?->id;
+                                $platformInvoiceId = $s->platformInvoice?->id;
+                                $showClientInvoice = $s->clientInvoice && ! in_array($clientInvoiceId, $seenClientInvoices, true);
+                                $showPlatformInvoice = $s->platformInvoice && ! in_array($platformInvoiceId, $seenPlatformInvoices, true);
+                                if ($showClientInvoice && $clientInvoiceId) {
+                                    $seenClientInvoices[] = $clientInvoiceId;
+                                }
+                                if ($showPlatformInvoice && $platformInvoiceId) {
+                                    $seenPlatformInvoices[] = $platformInvoiceId;
+                                }
+                            @endphp
+                            @if($showClientInvoice)
                                 <a href="{{ route($panel . '.billing-invoices.show', $s->clientInvoice) }}"
                                    class="d-block text-nowrap invoice-modal-link"
                                    title="{{ __('app.billing.end_user_invoice_summary') }}">
                                     <i class="fas fa-user text-primary me-1"></i>{{ $s->clientInvoice->invoice_no }}
                                 </a>
+                            @elseif($s->clientInvoice)
+                                <span class="d-block text-muted text-nowrap">{{ __('app.billing.same_consolidated_invoice') }}</span>
                             @endif
-                            @if($s->platformInvoice)
+                            @if($showPlatformInvoice)
                                 <a href="{{ route($panel . '.billing-invoices.show', $s->platformInvoice) }}"
                                    class="d-block text-nowrap text-muted invoice-modal-link"
                                    title="{{ __('app.billing.platform_invoice_summary') }}">
                                     <i class="fas fa-building me-1"></i>{{ $s->platformInvoice->invoice_no }}
                                 </a>
+                            @elseif($s->platformInvoice)
+                                <span class="d-block text-muted text-nowrap">{{ __('app.billing.same_consolidated_invoice') }}</span>
                             @endif
                             @if(!$s->clientInvoice && !$s->platformInvoice)
                                 <span class="text-muted">—</span>

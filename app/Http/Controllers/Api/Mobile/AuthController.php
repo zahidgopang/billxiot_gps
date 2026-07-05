@@ -63,7 +63,7 @@ class AuthController extends Controller
         }
 
         if ($this->entitlement->isEndUser($user)) {
-            $access = $this->entitlement->evaluate($user);
+            $access = $this->entitlement->evaluateAccountAccess($user);
         } else {
             $access = $this->entitlement->evaluateStaff($user);
         }

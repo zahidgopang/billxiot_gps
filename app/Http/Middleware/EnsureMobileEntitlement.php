@@ -29,7 +29,7 @@ class EnsureMobileEntitlement
             return $next($request);
         }
 
-        $result = $this->entitlement->evaluate($user);
+        $result = $this->entitlement->evaluateAccountAccess($user);
 
         if (! $result['allowed']) {
             $status = match ($result['code']) {

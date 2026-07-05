@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Enums\BillingInvoiceStatus;
 use App\Enums\BillingInvoiceType;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 
 class BillingInvoice extends Model
 {
@@ -143,5 +144,36 @@ class BillingInvoice extends Model
         }
 
         return $this->pairedInvoice()?->invoice_no;
+    }
+
+    public function isConsolidated(): bool
+    {
+        if (! empty($this->meta['consolidated'])) {
+            return true;
+        }
+
+        return $this->linkedSubscriptions()->count() > 1;
+    }
+
+    /** @return EloquentCollection<int, Subscription> */
+    public function linkedSubscriptions(): EloquentCollection
+    {
+        $ids = $this->meta['subscription_ids'] ?? null;
+        if (is_array($ids) && $ids !== []) {
+            return Subscription::query()
+                ->whereIn('id', $ids)
+                ->with('device')
+                ->orderBy('id')
+                ->get();
+        }
+
+        return Subscription::query()
+            ->where(function ($query) {
+                $query->where('client_invoice_id', $this->id)
+                    ->orWhere('platform_invoice_id', $this->id);
+            })
+            ->with('device')
+            ->orderBy('id')
+            ->get();
     }
 }

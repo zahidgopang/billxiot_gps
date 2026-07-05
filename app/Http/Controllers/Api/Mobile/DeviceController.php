@@ -42,9 +42,16 @@ class DeviceController extends Controller
     public function index(Request $request)
     {
         $user = $request->user();
-        $devices = $this->tracking->devicesForActor($user);
+        $rbac = app(RbacService::class);
+        $devices = $rbac->isEndUser($user)
+            ? $this->tracking->linkedDevicesForActor($user)
+            : $this->tracking->devicesForActor($user);
         $this->positionLoader->attachLatestToMany($devices);
-        $alertIds = $this->dashboard->alertDeviceIds($devices);
+        $alertIds = $this->dashboard->alertDeviceIds(
+            $rbac->isEndUser($user)
+                ? $this->tracking->subscribedDevicesForEndUser($user)
+                : $devices
+        );
 
         $items = $devices->map(function ($device) use ($alertIds) {
             try {
@@ -61,7 +68,7 @@ class DeviceController extends Controller
 
     public function show(Request $request, int $id)
     {
-        $device = $this->findMobileDevice($request->user(), $id);
+        $device = $this->findLinkedMobileDevice($request->user(), $id);
         $this->positionLoader->attachLatest($device);
         $alertIds = $this->dashboard->alertDeviceIds(collect([$device]));
 

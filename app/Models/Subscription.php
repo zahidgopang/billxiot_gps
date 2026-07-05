@@ -32,8 +32,8 @@ class Subscription extends Model
     ];
 
     protected $casts = [
-        'starts_at' => 'datetime',
-        'ends_at' => 'datetime',
+        'starts_at' => 'date',
+        'ends_at' => 'date',
         'company_price' => 'decimal:2',
         'selling_price' => 'decimal:2',
         'device_unit_cost' => 'decimal:2',

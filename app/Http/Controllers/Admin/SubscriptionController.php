@@ -91,26 +91,42 @@ class SubscriptionController extends Controller
     {
         $this->authorizePermission('subscriptions.manage');
 
-        [$data, $billing] = $this->validated($request);
+        $bundles = $this->validatedCreate($request);
+        $subscriptions = collect();
 
-        $subscription = Subscription::create($data);
-        $subscription->load('device');
+        foreach ($bundles as ['data' => $data]) {
+            $subscriptions->push(Subscription::create($data));
+        }
 
-        $this->subscriptionBilling->provisionForSubscription($subscription, $billing, $request->user());
-        $subscription->load('clientInvoice');
+        $this->subscriptionBilling->provisionConsolidatedBatch(
+            $subscriptions,
+            $bundles[0]['billing'],
+            $request->user()
+        );
 
-        $this->applyClientInvoicePaymentFromRequest($request, $subscription);
+        $first = $subscriptions->first();
+        $first?->load('clientInvoice');
+        if ($first) {
+            $this->applyClientInvoicePaymentFromRequest($request, $first);
+        }
 
-        $this->audit->logCreated($subscription, "subscription for device #{$subscription->device_id}", [
-            'plan' => $subscription->plan,
-            'status' => $subscription->status,
-            'starts_at' => $subscription->starts_at?->toDateString(),
-            'ends_at' => $subscription->ends_at?->toDateString(),
-        ]);
+        foreach ($subscriptions as $subscription) {
+            $this->audit->logCreated($subscription, "subscription for device #{$subscription->device_id}", [
+                'plan' => $subscription->plan,
+                'status' => $subscription->status,
+                'starts_at' => $subscription->starts_at?->toDateString(),
+                'ends_at' => $subscription->ends_at?->toDateString(),
+            ]);
+        }
+
+        $count = $subscriptions->count();
+        $message = $count === 1
+            ? __('app.billing.subscription_created')
+            : __('app.billing.subscriptions_created_consolidated', ['count' => $count]);
 
         return redirect()
             ->to($this->panelRoute('subscriptions.index'))
-            ->with('success', __('app.billing.subscription_created'));
+            ->with('success', $message);
     }
 
     public function edit(Subscription $subscription)
@@ -381,6 +397,235 @@ class SubscriptionController extends Controller
             'unit_cost' => $cost,
             'currency' => 'USD',
         ]);
+    }
+
+    public function formUsers(Request $request)
+    {
+        $this->authorizePermission('subscriptions.manage');
+
+        $clientId = $this->isClientPanel()
+            ? $this->tenantScope()->ensureClientForManager($request->user())
+            : (int) $request->integer('client_id');
+
+        return app(ClientController::class)->users($request, Client::query()->findOrFail($clientId));
+    }
+
+    public function formDevices(Request $request)
+    {
+        $this->authorizePermission('subscriptions.manage');
+
+        $clientId = $this->isClientPanel()
+            ? $this->tenantScope()->ensureClientForManager($request->user())
+            : (int) $request->integer('client_id');
+
+        return app(ClientController::class)->devices($request, Client::query()->findOrFail($clientId));
+    }
+
+    /**
+     * @return list<array{data: array<string, mixed>, billing: array<string, mixed>}>
+     */
+    private function validatedCreate(Request $request): array
+    {
+        $rules = [
+            'device_ids' => 'required|array|min:1',
+            'device_ids.*' => 'integer|exists:tc_devices,id',
+            'user_id' => 'nullable|integer|exists:tc_users,id',
+            'starts_at' => 'required|date',
+            'status' => 'required|in:active,cancelled',
+            'subscription_type' => ['required', Rule::in(array_map(fn (SubscriptionType $t) => $t->value, SubscriptionType::cases()))],
+            'subscription_plan_id' => 'required|exists:subscription_plans,id',
+            'selling_price' => 'required|numeric|min:0',
+        ];
+
+        $subscriptionType = SubscriptionType::from((string) $request->input('subscription_type', SubscriptionType::New->value));
+
+        if ($subscriptionType === SubscriptionType::New) {
+            $rules['device_selling_price'] = 'required|numeric|min:0';
+        } else {
+            $rules['device_selling_price'] = 'nullable|numeric|min:0';
+        }
+
+        $rules['notification_email_enabled'] = 'nullable|boolean';
+        $rules['notification_whatsapp_enabled'] = 'nullable|boolean';
+        $rules['notification_email'] = 'nullable|array';
+        $rules['notification_email.types'] = 'nullable|array';
+        $rules['notification_email.types.*.price'] = 'nullable|numeric|min:0';
+        $rules['notification_email.routes'] = 'nullable|array';
+        $rules['notification_email.routes.*.price'] = 'nullable|numeric|min:0';
+        $rules['notification_whatsapp'] = 'nullable|array';
+        $rules['notification_whatsapp.types'] = 'nullable|array';
+        $rules['notification_whatsapp.types.*.price'] = 'nullable|numeric|min:0';
+        $rules['notification_whatsapp.routes'] = 'nullable|array';
+        $rules['notification_whatsapp.routes.*.price'] = 'nullable|numeric|min:0';
+
+        if (! $this->isClientPanel()) {
+            $rules['client_id'] = 'required|integer|exists:clients,id';
+        }
+
+        $request->validate($rules);
+
+        $clientId = $this->resolveClientIdForRequest($request);
+        $selectedUserId = $request->filled('user_id') ? (int) $request->input('user_id') : null;
+        $deviceIds = array_values(array_unique(array_map('intval', (array) $request->input('device_ids', []))));
+
+        if ($selectedUserId === null && $deviceIds !== []) {
+            $assignedUserIds = Device::query()
+                ->whereIn('id', $deviceIds)
+                ->pluck('user_id')
+                ->filter(fn ($userId) => $userId !== null)
+                ->map(fn ($userId) => (int) $userId)
+                ->unique()
+                ->values();
+
+            if ($assignedUserIds->count() > 1) {
+                throw ValidationException::withMessages([
+                    'device_ids' => __('app.forms.subscription_devices_multiple_users'),
+                ]);
+            }
+        }
+
+        $shared = $this->buildSharedSubscriptionFields($request, $subscriptionType, $clientId);
+        $bundles = [];
+
+        foreach ($deviceIds as $deviceId) {
+            $device = Device::query()->findOrFail($deviceId);
+
+            if (! $this->tenantScope()->deviceBelongsToClient($device, $clientId)) {
+                throw ValidationException::withMessages([
+                    'device_ids' => __('app.forms.subscription_device_client_mismatch'),
+                ]);
+            }
+
+            if ($selectedUserId !== null && (int) $device->user_id !== $selectedUserId) {
+                throw ValidationException::withMessages([
+                    'device_ids' => __('app.forms.subscription_device_user_mismatch'),
+                ]);
+            }
+
+            $effectiveUserId = $selectedUserId ?? ($device->user_id !== null ? (int) $device->user_id : null);
+
+            $hasActive = Subscription::query()
+                ->where('device_id', $deviceId)
+                ->where('status', 'active')
+                ->whereDate('ends_at', '>=', now()->toDateString())
+                ->exists();
+
+            if ($hasActive) {
+                throw ValidationException::withMessages([
+                    'device_ids' => __('app.forms.subscription_device_already_active', [
+                        'device' => $device->name ?: $device->imei,
+                    ]),
+                ]);
+            }
+
+            $data = $this->buildSubscriptionRowData($request, $device, $shared, $subscriptionType, $clientId, $effectiveUserId);
+            $bundles[] = [
+                'data' => $data,
+                'billing' => [
+                    'subscription_plan_id' => (int) $shared['subscription_plan_id'],
+                    'selling_price' => (float) $shared['selling_price'],
+                    'device_selling_price' => $subscriptionType === SubscriptionType::New
+                        ? (float) ($shared['device_selling_price'] ?? 0)
+                        : 0.0,
+                    'client_id' => $clientId,
+                    'subscription_type' => $subscriptionType->value,
+                ],
+            ];
+        }
+
+        return $bundles;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function buildSharedSubscriptionFields(Request $request, SubscriptionType $subscriptionType, int $clientId): array
+    {
+        $startsAt = Carbon::parse($request->input('starts_at'))->startOfDay();
+        $plan = SubscriptionPlan::query()->findOrFail((int) $request->input('subscription_plan_id'));
+        $endsAt = $plan->billingCycleEnum()->endDateFrom($startsAt);
+
+        $emailEnabled = $request->boolean('notification_email_enabled');
+        $whatsappEnabled = $request->boolean('notification_whatsapp_enabled');
+
+        $emailConfig = $this->notificationConfig->parseChannelRequest($request, 'email', $emailEnabled);
+        $whatsappConfig = $this->notificationConfig->parseChannelRequest($request, 'whatsapp', $whatsappEnabled);
+
+        if ($emailEnabled) {
+            $this->assertNotificationChannelHasItems($emailConfig, 'notification_email_enabled');
+        }
+        if ($whatsappEnabled) {
+            $this->assertNotificationChannelHasItems($whatsappConfig, 'notification_whatsapp_enabled');
+        }
+
+        return [
+            'subscription_plan_id' => (int) $plan->id,
+            'plan' => $plan->name,
+            'company_price' => (float) $plan->company_price,
+            'selling_price' => (float) $request->input('selling_price'),
+            'device_selling_price' => $subscriptionType === SubscriptionType::New
+                ? (float) ($request->input('device_selling_price') ?? 0)
+                : 0.0,
+            'starts_at' => $startsAt->toDateString(),
+            'ends_at' => $endsAt->toDateString(),
+            'status' => $request->input('status'),
+            'subscription_type' => $subscriptionType->value,
+            'client_id' => $clientId,
+            'notification_email_enabled' => $emailEnabled,
+            'notification_whatsapp_enabled' => $whatsappEnabled,
+            'notification_email_config' => $emailConfig,
+            'notification_whatsapp_config' => $whatsappConfig,
+            'notification_email_price' => $emailEnabled
+                ? ($this->notificationConfig->sumConfigPrices($emailConfig) ?: null)
+                : null,
+            'notification_whatsapp_price' => $whatsappEnabled
+                ? ($this->notificationConfig->sumConfigPrices($whatsappConfig) ?: null)
+                : null,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $shared
+     * @return array<string, mixed>
+     */
+    private function buildSubscriptionRowData(
+        Request $request,
+        Device $device,
+        array $shared,
+        SubscriptionType $subscriptionType,
+        int $clientId,
+        ?int $selectedUserId,
+    ): array {
+        $endsAt = Carbon::parse($shared['ends_at']);
+        $status = (string) $shared['status'];
+
+        if ($status === 'active' && $endsAt->copy()->endOfDay()->isPast()) {
+            $status = 'expired';
+        }
+
+        return [
+            'device_id' => (int) $device->id,
+            'user_id' => $selectedUserId ?? (int) $device->user_id,
+            'subscription_plan_id' => $shared['subscription_plan_id'],
+            'plan' => $shared['plan'],
+            'company_price' => $shared['company_price'],
+            'selling_price' => $shared['selling_price'],
+            'device_unit_cost' => $this->deviceCosts->resolveForClientDevice($device, $clientId),
+            'device_selling_price' => $subscriptionType === SubscriptionType::New
+                ? (float) ($shared['device_selling_price'] ?? 0)
+                : 0.0,
+            'starts_at' => $shared['starts_at'],
+            'ends_at' => $shared['ends_at'],
+            'status' => $status,
+            'subscription_type' => $shared['subscription_type'],
+            'client_id' => $clientId,
+            'notification_email_enabled' => $shared['notification_email_enabled'],
+            'notification_whatsapp_enabled' => $shared['notification_whatsapp_enabled'],
+            'notification_email_config' => $shared['notification_email_config'],
+            'notification_whatsapp_config' => $shared['notification_whatsapp_config'],
+            'notification_email_price' => $shared['notification_email_price'],
+            'notification_whatsapp_price' => $shared['notification_whatsapp_price'],
+        ];
     }
 
     /**

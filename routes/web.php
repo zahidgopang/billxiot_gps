@@ -364,6 +364,10 @@ Route::middleware(['auth', 'panel:client', 'can:client-panel'])
             ->name('subscription-plans.pricing');
         Route::get('subscriptions/device-pricing', [AdminSubscriptionController::class, 'devicePricing'])
             ->name('subscriptions.device-pricing');
+        Route::get('subscriptions/form/users', [AdminSubscriptionController::class, 'formUsers'])
+            ->name('subscriptions.form-users');
+        Route::get('subscriptions/form/devices', [AdminSubscriptionController::class, 'formDevices'])
+            ->name('subscriptions.form-devices');
         Route::resource('subscriptions', AdminSubscriptionController::class)->except(['destroy']);
 
         Route::get('billing-invoices', [\App\Http\Controllers\Admin\BillingInvoiceController::class, 'index'])

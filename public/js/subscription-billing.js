@@ -9,7 +9,8 @@
 
         const planSelect = document.getElementById('subscription-plan-id');
         const clientSelect = document.getElementById('subscription-client-id');
-        const deviceSelect = document.getElementById('subscription-device-id');
+        const deviceSelect = document.getElementById('subscription-device-id')
+            || document.getElementById('subscription-device-ids');
         const companyPriceEl = document.getElementById('subscription-company-price');
         const billingCycleEl = document.getElementById('subscription-billing-cycle');
         const sellingPriceEl = document.getElementById('subscription-selling-price');
@@ -313,6 +314,34 @@
             });
         }
 
+        function selectedDeviceCount() {
+            if (!deviceSelect) {
+                return 0;
+            }
+            if (deviceSelect.multiple) {
+                return Array.from(deviceSelect.selectedOptions).filter(function (o) {
+                    return o.value;
+                }).length;
+            }
+
+            return selectValue(deviceSelect) ? 1 : 0;
+        }
+
+        function firstSelectedDeviceId() {
+            if (!deviceSelect) {
+                return '';
+            }
+            if (deviceSelect.multiple) {
+                const opt = Array.from(deviceSelect.selectedOptions).find(function (o) {
+                    return o.value;
+                });
+
+                return opt ? String(opt.value) : '';
+            }
+
+            return selectValue(deviceSelect);
+        }
+
         function refreshTotals() {
             const company = companyPriceValue();
             const subSelling = parseFloat(sellingPriceEl?.value || 0) || 0;
@@ -320,13 +349,14 @@
                 ? (parseFloat(deviceSellingEl?.value || 0) || 0)
                 : 0;
             const notificationTotal = notificationAddonTotal();
+            const deviceCount = Math.max(selectedDeviceCount(), 1);
 
             const subProfit = updateSubscriptionProfit();
             const devProfit = isNewSubscriptionType() ? updateDeviceProfit() : 0;
 
-            const totalCompany = company;
-            const totalEndUser = subSelling + devSelling + notificationTotal;
-            const totalProfit = subProfit + devProfit + notificationTotal;
+            const totalCompany = company * deviceCount;
+            const totalEndUser = (subSelling + devSelling + notificationTotal) * deviceCount;
+            const totalProfit = (subProfit + devProfit + notificationTotal) * deviceCount;
 
             const hasPlan = !!selectValue(planSelect);
 
@@ -373,7 +403,7 @@
         }
 
         async function fetchDeviceCost() {
-            const deviceId = selectValue(deviceSelect);
+            const deviceId = firstSelectedDeviceId();
             const clientId = selectValue(clientSelect) || (routes.clientId != null ? String(routes.clientId) : '');
 
             if (!deviceId || !clientId || !routes.devicePricing) {

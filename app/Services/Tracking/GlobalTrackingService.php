@@ -11,6 +11,7 @@ use App\Services\Authorization\RbacService;
 use App\Services\Authorization\TenantScopeService;
 use App\Services\Mobile\MobileMapStatusResolver;
 use App\Services\Mobile\VehicleStatusSpec;
+use App\Services\Traccar\TraccarTrackingGate;
 use App\Support\DateTime\AppDateTime;
 use App\Support\Tracking\DeviceLocationPayload;
 use App\Support\Tracking\TelemetryFormatter;
@@ -52,6 +53,7 @@ class GlobalTrackingService
         private \App\Services\Routes\TripManagementService $tripManagement,
         private DriverMapInfoService $driverMapInfo,
         private TrackingUiPermissions $trackingUi,
+        private TraccarTrackingGate $trackingGate,
     ) {}
 
     /**
@@ -349,9 +351,43 @@ class GlobalTrackingService
                 ->get();
         }
 
-        return $actor->trackerDevicesQuery()
-            ->orderBy('name')
-            ->get();
+        return $this->subscribedDevicesForEndUser($actor);
+    }
+
+    /**
+     * All tc-linked devices for end-user listing (includes vehicles without active subscription).
+     *
+     * @return Collection<int, Device>
+     */
+    public function linkedDevicesForActor(User $actor): Collection
+    {
+        if ($this->rbac->canAccessPanel($actor)) {
+            return $this->devicesForActor($actor);
+        }
+
+        return $this->trackingGate->filterTrackable(
+            $actor,
+            $actor->trackerDevicesQuery()
+                ->with(['subscription.clientInvoice'])
+                ->orderBy('name')
+                ->get(),
+            requireSubscription: false,
+        );
+    }
+
+    /**
+     * @return Collection<int, Device>
+     */
+    public function subscribedDevicesForEndUser(User $actor): Collection
+    {
+        return $this->trackingGate->filterTrackable(
+            $actor,
+            $actor->trackerDevicesQuery()
+                ->with(['subscription.clientInvoice'])
+                ->orderBy('name')
+                ->get(),
+            requireSubscription: true,
+        );
     }
 
     /**
@@ -377,6 +413,29 @@ class GlobalTrackingService
         }
 
         $allowed = array_flip($this->allowedDeviceIds($actor));
+
+        return array_values(array_filter(
+            array_map('intval', $requestedIds),
+            fn (int $id) => isset($allowed[$id])
+        ));
+    }
+
+    /**
+     * @param  list<int|string>  $requestedIds
+     * @return list<int>
+     */
+    public function filterLinkedIds(User $actor, array $requestedIds): array
+    {
+        if ($requestedIds === []) {
+            return [];
+        }
+
+        $allowed = array_flip(
+            $this->linkedDevicesForActor($actor)
+                ->pluck('id')
+                ->map(fn ($id) => (int) $id)
+                ->all()
+        );
 
         return array_values(array_filter(
             array_map('intval', $requestedIds),

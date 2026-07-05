@@ -127,7 +127,8 @@ class ClientController extends Controller
         abort_unless(
             Gate::allows('manage-client', $client)
                 || $this->rbac()->hasPermission($request->user(), 'devices.manage')
-                || $this->rbac()->hasPermission($request->user(), 'users.view'),
+                || $this->rbac()->hasPermission($request->user(), 'users.view')
+                || $this->rbac()->hasPermission($request->user(), 'subscriptions.manage'),
             403
         );
 
@@ -151,6 +152,15 @@ class ClientController extends Controller
         );
 
         $devices = $this->tenantScope()->devicesForClient((int) $client->id, $request->user());
+
+        $userId = $request->integer('user_id');
+        $scope = (string) $request->query('scope', '');
+
+        if ($userId > 0) {
+            $devices = $devices->where('user_id', $userId)->values();
+        } elseif ($scope === 'client') {
+            $devices = $devices->filter(fn (Device $d) => $d->user_id === null)->values();
+        }
 
         return response()->json([
             'devices' => $devices->map(fn (Device $d) => [

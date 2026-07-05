@@ -4,7 +4,13 @@
 
     $panel = $panel ?? (request()->routeIs('client.*') ? 'client' : 'admin');
     $selectedClient = $selectedClient ?? old('client_id');
+    $selectedUserId = old('user_id', $subscription->user_id ?? '');
     $selectedDeviceId = old('device_id', $subscription->device_id ?? '');
+    $selectedDeviceIds = old('device_ids', $subscription ? [(string) $subscription->device_id] : []);
+    if (! is_array($selectedDeviceIds)) {
+        $selectedDeviceIds = [(string) $selectedDeviceIds];
+    }
+    $selectedDeviceIds = array_values(array_filter(array_map('strval', $selectedDeviceIds)));
     $devicesByClient = $devicesByClient ?? [];
     $defaultStart = now()->toDateString();
     $selectedPlanId = old('subscription_plan_id', $subscription->subscription_plan_id ?? '');
@@ -63,30 +69,61 @@
         </x-admin.form-col>
     @endif
 
-    <x-admin.form-col>
-        <label class="admin-label" for="subscription-device-id">{{ __('app.forms.device') }} <span class="text-danger">*</span></label>
-        <select name="device_id" id="subscription-device-id"
-            class="form-select form-select-sm"
-            required
-            data-placeholder="{{ __('app.forms.select_device') }}">
-            <option value="">{{ $panel === 'admin' ? __('app.forms.select_client_first') : __('app.forms.select_device_option') }}</option>
-            @if($panel === 'client' && $selectedClient && !empty($devicesByClient[(string) $selectedClient]))
-                @foreach($devicesByClient[(string) $selectedClient] as $d)
-                    <option value="{{ $d['id'] }}" @selected((string) $selectedDeviceId === (string) $d['id'])>{{ $d['text'] }}</option>
-                @endforeach
-            @elseif($selectedClient && !empty($devicesByClient[(string) $selectedClient]))
-                @foreach($devicesByClient[(string) $selectedClient] as $d)
-                    <option value="{{ $d['id'] }}" @selected((string) $selectedDeviceId === (string) $d['id'])>{{ $d['text'] }}</option>
-                @endforeach
-            @endif
-        </select>
-        @if($panel === 'admin')
-            <p class="admin-hint">{{ __('app.forms.subscription_client_first_hint') }}</p>
-        @else
-            <p class="admin-hint">{{ __('app.forms.subscription_device_hint') }}</p>
-        @endif
-        @error('device_id') <p class="admin-field__error text-danger">{{ $message }}</p> @enderror
-    </x-admin.form-col>
+    @if(! $subscription)
+        <x-admin.form-col>
+            <label class="admin-label" for="subscription-user-id">{{ __('app.forms.subscription_end_user') }}</label>
+            <select name="user_id" id="subscription-user-id" class="form-select form-select-sm" data-placeholder="{{ __('app.forms.select_end_user_optional') }}">
+                <option value="">{{ __('app.forms.select_end_user_optional') }}</option>
+            </select>
+            <p class="admin-hint">{{ __('app.forms.subscription_end_user_hint') }}</p>
+            @error('user_id') <p class="admin-field__error text-danger">{{ $message }}</p> @enderror
+        </x-admin.form-col>
+
+        <x-admin.form-col :full="true">
+            <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+                <label class="admin-label mb-0" for="subscription-device-ids">{{ __('app.forms.subscription_devices') }} <span class="text-danger">*</span></label>
+                <div class="d-flex flex-wrap align-items-center gap-2">
+                    <button type="button" id="subscription-select-all-devices" class="btn btn-outline-primary btn-sm">
+                        <i class="fas fa-check-double me-1" aria-hidden="true"></i>{{ __('app.forms.select_all_devices') }}
+                    </button>
+                    <button type="button" id="subscription-clear-devices" class="btn btn-outline-secondary btn-sm">
+                        <i class="fas fa-times me-1" aria-hidden="true"></i>{{ __('app.forms.clear_device_selection') }}
+                    </button>
+                </div>
+            </div>
+            <select name="device_ids[]" id="subscription-device-ids"
+                class="form-select form-select-sm"
+                multiple
+                required
+                size="8"
+                data-placeholder="{{ __('app.forms.select_devices') }}"
+                data-close-on-select="false">
+            </select>
+            <p class="admin-hint">{{ __('app.forms.subscription_devices_multi_hint') }}</p>
+            @error('device_ids') <p class="admin-field__error text-danger">{{ $message }}</p> @enderror
+            @error('device_ids.*') <p class="admin-field__error text-danger">{{ $message }}</p> @enderror
+        </x-admin.form-col>
+    @else
+        <x-admin.form-col>
+            <label class="admin-label" for="subscription-device-id">{{ __('app.forms.device') }} <span class="text-danger">*</span></label>
+            <select name="device_id" id="subscription-device-id"
+                class="form-select form-select-sm"
+                required
+                data-placeholder="{{ __('app.forms.select_device') }}">
+                <option value="">{{ $panel === 'admin' ? __('app.forms.select_client_first') : __('app.forms.select_device_option') }}</option>
+                @if($panel === 'client' && $selectedClient && !empty($devicesByClient[(string) $selectedClient]))
+                    @foreach($devicesByClient[(string) $selectedClient] as $d)
+                        <option value="{{ $d['id'] }}" @selected((string) $selectedDeviceId === (string) $d['id'])>{{ $d['text'] }}</option>
+                    @endforeach
+                @elseif($selectedClient && !empty($devicesByClient[(string) $selectedClient]))
+                    @foreach($devicesByClient[(string) $selectedClient] as $d)
+                        <option value="{{ $d['id'] }}" @selected((string) $selectedDeviceId === (string) $d['id'])>{{ $d['text'] }}</option>
+                    @endforeach
+                @endif
+            </select>
+            @error('device_id') <p class="admin-field__error text-danger">{{ $message }}</p> @enderror
+        </x-admin.form-col>
+    @endif
 
     <x-admin.form-col id="subscription-device-cost-wrap" @class(['d-none' => ! $isNewSubscription])>
         <label class="admin-label" for="subscription-device-cost">{{ __('app.billing.device_purchase_cost') }}</label>

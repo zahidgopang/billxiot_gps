@@ -31,7 +31,11 @@
         'panel' => $panel ?? (request()->routeIs('client.*') ? 'client' : 'admin'),
         'clients' => $clients ?? collect(),
         'devicesByClient' => $devicesByClient ?? [],
+        'selectedClient' => $selectedClient ?? null,
         'selectedDeviceId' => $selectedDeviceId ?? null,
+        'selectedUserId' => $selectedUserId ?? null,
+        'selectedDeviceIds' => $selectedDeviceIds ?? [],
+        'subscription' => null,
     ])
     <script src="{{ protected_js('subscription-payment-modal.js') }}"></script>
     @include('admin.subscriptions._billing-script', ['panel' => $panel])

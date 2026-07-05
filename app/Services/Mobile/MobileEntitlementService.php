@@ -68,9 +68,11 @@ class MobileEntitlementService
     }
 
     /**
+     * Login / account gate — active account only (no subscription required).
+     *
      * @return array{allowed: bool, code: string, message: string}
      */
-    public function evaluate(User $user): array
+    public function evaluateAccountAccess(User $user): array
     {
         if (! $this->isEndUser($user)) {
             return $this->deny(self::CODE_INVALID_ROLE, 'This API is only available for end-user accounts.');
@@ -82,6 +84,22 @@ class MobileEntitlementService
 
         if (! $this->trackerUsers->hasTrackerAccount($user)) {
             return $this->deny(self::CODE_ACCOUNT_INACTIVE, 'Account inactive');
+        }
+
+        return ['allowed' => true, 'code' => self::CODE_OK, 'message' => ''];
+    }
+
+    /**
+     * Full entitlement including at least one subscribed device (legacy strict gate).
+     *
+     * @return array{allowed: bool, code: string, message: string}
+     */
+    public function evaluate(User $user): array
+    {
+        $account = $this->evaluateAccountAccess($user);
+
+        if (! $account['allowed']) {
+            return $account;
         }
 
         $devices = $user->trackerDevicesQuery()->with(['subscription.clientInvoice'])->get();

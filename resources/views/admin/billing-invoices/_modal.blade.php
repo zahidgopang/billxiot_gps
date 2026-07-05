@@ -35,10 +35,15 @@
     <div class="col-md-6">
         @if($invoice->subscription)
             <div><strong>{{ __('app.common.subscriptions') }}:</strong> {{ $invoice->subscription->plan }}</div>
-            @if($invoice->subscription->device)
+            @if($invoice->subscription->device && !($invoice->isConsolidated() ?? false))
                 <div class="text-muted">{{ $invoice->subscription->device->name ?? $invoice->subscription->device->imei }}</div>
             @endif
         @endif
+        @include('admin.billing-invoices._invoice-devices', [
+            'invoice' => $invoice,
+            'linkedSubscriptions' => $linkedSubscriptions ?? collect(),
+            'class' => 'mt-2',
+        ])
     </div>
 </div>
 
