@@ -2228,7 +2228,10 @@
 
         async loadHistory() {
             const id = parseInt(document.getElementById('tcHistVehicle')?.value, 10);
-            if (!id) { alert(this.cfg.i18n?.selectVehicle || 'Select a vehicle.'); return; }
+            if (!id) {
+                this.toast(this.cfg.i18n?.selectVehicle || 'Select a vehicle.', 'warning');
+                return;
+            }
 
             const fromDate = document.getElementById('tcHistDateFrom')?.value || '';
             const toDate = document.getElementById('tcHistDateTo')?.value || '';
@@ -2253,7 +2256,7 @@
                 this.drawHistory((data.vehicles || [])[0] || null);
             } catch (err) {
                 console.error('[traccar-ui] history', err);
-                alert(this.cfg.i18n?.loadFailed || 'Failed to load history.');
+                this.toast(this.cfg.i18n?.loadFailed || 'Failed to load history.', 'error');
             } finally {
                 btn?.removeAttribute('disabled');
             }
@@ -2266,7 +2269,7 @@
 
             const points = vehicle?.points || [];
             if (points.length < 2) {
-                alert(this.cfg.i18n?.noData || 'No data for the selected period.');
+                this.toast(this.cfg.i18n?.noData || 'No data for the selected period.', 'warning');
                 this.exitHistory();
                 return;
             }

@@ -62,6 +62,19 @@
         return events;
     }
 
+    function notify(title, icon = 'error') {
+        if (global.Swal) {
+            global.Swal.fire({
+                icon,
+                title,
+                timer: icon === 'success' ? 1600 : undefined,
+                showConfirmButton: icon !== 'success',
+            });
+        } else {
+            alert(title);
+        }
+    }
+
     class GlobalTrackingHistory {
         constructor(cfg) {
             this.cfg = cfg;
@@ -212,7 +225,7 @@
 
         async loadHistory() {
             if (!this.selectedId) {
-                alert(this.cfg.i18n?.selectVehicle || 'Select a vehicle.');
+                notify(this.cfg.i18n?.selectVehicle || 'Select a vehicle.', 'warning');
                 return;
             }
 
@@ -228,7 +241,7 @@
                 this.drawHistory((data.vehicles || [])[0] || null);
             } catch (err) {
                 console.error('[global-tracking-history]', err);
-                alert(this.cfg.i18n?.loadFailed || 'Failed to load history.');
+                notify(this.cfg.i18n?.loadFailed || 'Failed to load history.', 'error');
             } finally {
                 btn?.removeAttribute('disabled');
             }
