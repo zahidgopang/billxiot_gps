@@ -100,14 +100,8 @@
 </div>
 @endsection
 @push('scripts')
-<script>
-window.TRACKING_REPORTS_CONFIG = {
-    generateUrl: @json($generateUrl),
-    exportUrl: @json($exportUrl),
-    googleMapsKey: @json(config('services.google.maps_key')),
-    googleMapsMapId: @json(config('services.google.maps_map_id')),
-    currentLang: @json(app()->getLocale()),
-    i18n: @json(array_merge(\App\Services\Tracking\Reports\ReportLabels::jsBundle(), [
+@php
+    $reportI18n = array_merge(\App\Services\Tracking\Reports\ReportLabels::jsBundle(), [
         'hourSuffix' => __('app.tracking.report_duration_hours'),
         'minSuffix' => __('app.tracking.report_duration_minutes'),
         'secSuffix' => __('app.tracking.report_duration_seconds'),
@@ -116,7 +110,16 @@ window.TRACKING_REPORTS_CONFIG = {
         'rowsPerPage' => __('app.tracking.report_rows_per_page'),
         'noData' => __('app.tracking.report_no_data'),
         'loadFailed' => __('app.tracking.report_load_failed'),
-    ])),
+    ]);
+@endphp
+<script>
+window.TRACKING_REPORTS_CONFIG = {
+    generateUrl: @json($generateUrl),
+    exportUrl: @json($exportUrl),
+    googleMapsKey: @json(config('services.google.maps_key')),
+    googleMapsMapId: @json(config('services.google.maps_map_id')),
+    currentLang: @json(app()->getLocale()),
+    i18n: @json($reportI18n),
 };
 </script>
 @include('partials.google-maps-platform')

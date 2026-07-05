@@ -8,6 +8,8 @@ use App\Models\ClientDevice;
 use App\Models\ClientMember;
 use App\Models\Device;
 use App\Models\User;
+use App\Models\UserPushToken;
+use App\Services\Mobile\MobileEntitlementService;
 use App\Models\AdminClientScope;
 use App\Support\Traccar\TraccarAppFields;
 use App\Support\Traccar\TraccarSchema;
@@ -487,5 +489,44 @@ class TenantScopeService
         }
 
         return $pivotDeviceIds;
+    }
+
+    /**
+     * Staff/admin mobile users who should receive push alerts for this device
+     * (fleet scope — not only tc_user_device assignees).
+     *
+     * @return list<int>
+     */
+    public function staffPushRecipientIds(Device $device): array
+    {
+        $entitlement = app(MobileEntitlementService::class);
+        $candidateIds = UserPushToken::query()
+            ->distinct()
+            ->pluck('user_id')
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn ($id) => $id > 0)
+            ->all();
+
+        if ($candidateIds === []) {
+            return [];
+        }
+
+        $ids = [];
+
+        foreach (User::query()->whereIn('id', $candidateIds)->get() as $user) {
+            if ($this->rbac->isEndUser($user)) {
+                continue;
+            }
+
+            if (! $entitlement->canAccessMobileApp($user)) {
+                continue;
+            }
+
+            if ($this->canViewDeviceOnMap($user, $device)) {
+                $ids[] = (int) $user->id;
+            }
+        }
+
+        return array_values(array_unique($ids));
     }
 }

@@ -6,6 +6,7 @@ use App\Contracts\Tracking\EventWriterInterface;
 use App\Models\Device;
 use App\Models\User;
 use App\Models\VehicleEvent;
+use App\Services\Authorization\TenantScopeService;
 use App\Services\Notifications\AlertChannelNotifier;
 use App\Services\Tracking\NotificationPreferenceService;
 use App\Support\Push\PushNotificationMapper;
@@ -316,13 +317,16 @@ class PushNotificationDispatcher
             ->filter(fn ($id) => $id > 0)
             ->all();
 
-        if ($ids !== []) {
-            return array_values(array_unique($ids));
+        if ($ids === []) {
+            $ownerId = $device->resolveTraccarOwnerUserId();
+            if ($ownerId) {
+                $ids = [(int) $ownerId];
+            }
         }
 
-        $ownerId = $device->resolveTraccarOwnerUserId();
+        $staffIds = app(TenantScopeService::class)->staffPushRecipientIds($device);
 
-        return $ownerId ? [(int) $ownerId] : [];
+        return array_values(array_unique(array_merge($ids, $staffIds)));
     }
 
     private function screenForType(string $pushType): string
