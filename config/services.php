@@ -42,6 +42,8 @@ return [
         /** Relative to project root or absolute path — see storage/app/firebase/.gitignore */
         'credentials' => env('FIREBASE_CREDENTIALS'),
         'project_id' => env('FIREBASE_PROJECT_ID'),
+        /** Write every FCM attempt to push_notification_logs — off by default (file log only). */
+        'log_to_database' => filter_var(env('PUSH_LOG_TO_DATABASE', false), FILTER_VALIDATE_BOOL),
     ],
 
     'google' => [

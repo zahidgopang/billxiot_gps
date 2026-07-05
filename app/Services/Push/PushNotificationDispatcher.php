@@ -44,6 +44,24 @@ class PushNotificationDispatcher
         ], pushGate: 'event');
     }
 
+    /**
+     * Push-only alert — no vehicle_events / tc_events row (FCM + optional email/WhatsApp).
+     */
+    public function forTransientPush(
+        Device $device,
+        string $pushType,
+        string $title,
+        string $message,
+        string $eventType,
+        \Carbon\CarbonInterface $at,
+        array $extra = [],
+    ): void {
+        $this->send($device, $pushType, $title, $message, array_merge([
+            'event_type' => $eventType,
+            'occurred_at' => $at->toIso8601String(),
+        ], $extra), pushGate: 'event');
+    }
+
     public function forConnectivity(Device $device, string $pushType, string $message): void
     {
         if (! in_array($pushType, [
@@ -62,12 +80,26 @@ class PushNotificationDispatcher
 
     public function forSmartAlert(Device $device, VehicleEvent $event, string $pushType): void
     {
-        $this->send($device, $pushType, $event->title, $event->message, [
-            'event_id' => (string) $event->id,
-            'event_type' => $event->type,
-            'occurred_at' => $event->occurred_at?->toIso8601String() ?? '',
-            'severity' => $event->severity(),
-        ], pushGate: 'event');
+        if ($event->exists && $event->id) {
+            $this->send($device, $pushType, $event->title, $event->message, [
+                'event_id' => (string) $event->id,
+                'event_type' => $event->type,
+                'occurred_at' => $event->occurred_at?->toIso8601String() ?? '',
+                'severity' => $event->severity(),
+            ], pushGate: 'event');
+
+            return;
+        }
+
+        $this->forTransientPush(
+            $device,
+            $pushType,
+            $event->title,
+            $event->message,
+            $event->type,
+            $event->occurred_at ?? \App\Support\DateTime\AppDateTime::now(),
+            ['severity' => $event->severity()],
+        );
     }
 
     /**

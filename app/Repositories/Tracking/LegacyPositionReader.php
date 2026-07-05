@@ -23,6 +23,35 @@ class LegacyPositionReader implements PositionReaderInterface
             ->first();
     }
 
+    /**
+     * @param  list<int>  $deviceIds
+     * @return array<int, DeviceLocation>
+     */
+    public function latestForDevices(array $deviceIds): array
+    {
+        $deviceIds = array_values(array_unique(array_filter(array_map('intval', $deviceIds))));
+        if ($deviceIds === [] || ! $this->tableExists()) {
+            return [];
+        }
+
+        $rows = DeviceLocation::query()
+            ->whereIn('device_id', $deviceIds)
+            ->whereIn('id', function ($query) use ($deviceIds) {
+                $query->selectRaw('MAX(id)')
+                    ->from('device_locations')
+                    ->whereIn('device_id', $deviceIds)
+                    ->groupBy('device_id');
+            })
+            ->get();
+
+        $out = [];
+        foreach ($rows as $row) {
+            $out[(int) $row->device_id] = $row;
+        }
+
+        return $out;
+    }
+
     public function historyForDevice(
         Device $device,
         ?Carbon $from = null,

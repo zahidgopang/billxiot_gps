@@ -26,7 +26,16 @@ class DevicePositionLoader
     {
         $collection = $devices instanceof Collection ? $devices : collect($devices);
 
-        $collection->each(fn (Device $device) => $this->attachLatest($device));
+        if ($collection->isEmpty()) {
+            return $collection;
+        }
+
+        $ids = $collection->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $latestMap = $this->positions->latestForDevices($ids);
+
+        $collection->each(function (Device $device) use ($latestMap) {
+            $device->setRelation('latestLocation', $latestMap[(int) $device->id] ?? null);
+        });
 
         return $collection;
     }

@@ -10,6 +10,7 @@ use App\Services\Tracking\TrackingUiPermissions;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Route;
 use Illuminate\View\View;
 
@@ -55,9 +56,26 @@ class GlobalTrackingController extends Controller
             return $this->noStoreJson(['devices' => []]);
         }
 
-        $devices = $requested === []
-            ? $this->tracking->livePayloadForIds(array_slice($allowed, 0, GlobalTrackingService::MAX_LIVE_DEVICES), $request->user())
-            : $this->tracking->livePayloadForIds($allowed, $request->user());
+        $targetIds = $requested === []
+            ? array_slice($allowed, 0, GlobalTrackingService::MAX_LIVE_DEVICES)
+            : $allowed;
+
+        $sortedIds = $targetIds;
+        sort($sortedIds);
+
+        $cacheSeconds = (int) config('tracking.live_json_cache_seconds', 3);
+        $cacheKey = 'tracking.live_json.'
+            . $user->id
+            . '.'
+            . md5(implode(',', $sortedIds));
+
+        if ($cacheSeconds > 0) {
+            $payload = Cache::remember($cacheKey, $cacheSeconds, fn () => $this->tracking->livePayloadForIds($targetIds, $user));
+
+            return $this->noStoreJson(['devices' => $payload]);
+        }
+
+        $devices = $this->tracking->livePayloadForIds($targetIds, $user);
 
         return $this->noStoreJson(['devices' => $devices]);
     }

@@ -317,17 +317,32 @@ class SmartFleetAlertService
         ?int $geofenceId = null,
         array $meta = [],
     ): VehicleEvent {
-        return $this->events->record(
-            $device,
-            $type,
-            $title,
-            $message,
-            $speed,
-            $lat,
-            $lng,
-            $at,
-            $geofenceId,
-            $meta
-        );
+        if ((bool) config('tracking.persist_notification_events', false)) {
+            return $this->events->record(
+                $device,
+                $type,
+                $title,
+                $message,
+                $speed,
+                $lat,
+                $lng,
+                $at,
+                $geofenceId,
+                $meta
+            );
+        }
+
+        return new VehicleEvent([
+            'device_id' => $device->id,
+            'geofence_id' => $geofenceId,
+            'type' => $type,
+            'title' => $title,
+            'message' => $message,
+            'speed' => $speed,
+            'lat' => $lat,
+            'lng' => $lng,
+            'meta' => $meta ?: null,
+            'occurred_at' => $at,
+        ]);
     }
 }

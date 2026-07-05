@@ -54,4 +54,19 @@ return [
 
     /** Geofence enter/exit on live-map polling (causes 504s — only run on GPS ingest). */
     'geofence_on_live_poll' => filter_var(env('TRACKING_GEOFENCE_ON_LIVE_POLL', false), FILTER_VALIDATE_BOOL),
+
+    /** Seconds to cache fleet live-json responses (reduces poll load with many devices). */
+    'live_json_cache_seconds' => (int) env('TRACKING_LIVE_JSON_CACHE_SECONDS', 3),
+
+    /** Include route_trip in live-json only when a single device is polled. */
+    'live_include_route_trip_single' => filter_var(env('TRACKING_LIVE_INCLUDE_ROUTE_TRIP_SINGLE', true), FILTER_VALIDATE_BOOL),
+
+    /** Default live map poll interval (ms) — increase when fleet is large. */
+    'live_poll_interval_ms' => (int) env('TRACKING_LIVE_POLL_INTERVAL_MS', 6000),
+
+    /**
+     * Persist notification rows to vehicle_events / tc_events.
+     * When false, status/geofence/alert pushes are sent via FCM only (no DB insert).
+     */
+    'persist_notification_events' => filter_var(env('TRACKING_PERSIST_NOTIFICATION_EVENTS', false), FILTER_VALIDATE_BOOL),
 ];

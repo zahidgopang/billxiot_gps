@@ -49,7 +49,17 @@ class StatusDurationResolver
         );
 
         $since = $latest->recorded_at->copy();
-        $from = $latest->recorded_at->copy()->subHours(12);
+        $historyHours = (int) config('tracking.status_duration_history_hours', 2);
+        $from = $latest->recorded_at->copy()->subHours(max(1, $historyHours));
+
+        $cacheKey = "device.{$device->id}.status_duration.{$target}";
+        $cached = cache()->get($cacheKey);
+        if (is_array($cached) && isset($cached['since'], $cached['seconds'])) {
+            return [
+                'since' => Carbon::parse($cached['since']),
+                'seconds' => (int) $cached['seconds'],
+            ];
+        }
 
         $history = $this->positions->historyForDevice($device, $from, null, 'desc');
 
@@ -70,9 +80,16 @@ class StatusDurationResolver
             $since = $position->recorded_at->copy();
         }
 
-        return [
+        $result = [
             'since' => $since,
             'seconds' => max(0, (int) $since->diffInSeconds(now())),
         ];
+
+        cache()->put($cacheKey, [
+            'since' => $since->toIso8601String(),
+            'seconds' => $result['seconds'],
+        ], now()->addSeconds((int) config('tracking.status_duration_cache_seconds', 60)));
+
+        return $result;
     }
 }

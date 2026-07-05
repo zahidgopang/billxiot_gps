@@ -449,6 +449,8 @@ class GlobalTrackingService
         $this->positionLoader->attachLatestToMany($devices);
         $driverPayloads = $this->driverMapInfo->payloadsForDevices($devices);
         $includeDriver = $actor && ($this->trackingUi->forUser($actor)['driver'] ?? false);
+        $includeRouteTrip = count($deviceIds) === 1
+            && (bool) config('tracking.live_include_route_trip_single', true);
 
         $out = [];
 
@@ -480,15 +482,14 @@ class GlobalTrackingService
             $payload['recorded_at_human'] = $latest
                 ? app_datetime_format($latest->recorded_at)
                 : null;
-            try {
-                $payload['route_trip'] = $latest
-                    ? ($actor
+            if ($includeRouteTrip && $latest) {
+                try {
+                    $payload['route_trip'] = $actor
                         ? $this->routeTripPayloadForActor($actor, $device, $latest)
-                        : $this->routeTripPayload($device, $latest))
-                    : null;
-            } catch (\Throwable $e) {
-                report($e);
-                $payload['route_trip'] = null;
+                        : $this->routeTripPayload($device, $latest);
+                } catch (\Throwable $e) {
+                    report($e);
+                }
             }
             if ($includeDriver) {
                 $payload['driver'] = $driverPayloads[$device->id] ?? null;

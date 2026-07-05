@@ -80,6 +80,10 @@ class PushNotificationLogger
     {
         Log::channel($this->channel())->info('FCM send skipped', array_merge(['reason' => $reason], $context));
 
+        if (! config('services.firebase.log_to_database', false)) {
+            return;
+        }
+
         PushNotificationLog::query()->create([
             'status' => PushNotificationLog::STATUS_SKIPPED,
             'title' => $context['title'] ?? null,
@@ -128,6 +132,10 @@ class PushNotificationLogger
         ?string $errorMessage = null,
         ?array $response = null,
     ): void {
+        if (! config('services.firebase.log_to_database', false)) {
+            return;
+        }
+
         PushNotificationLog::query()->create([
             'user_id' => $userId,
             'fcm_token_hash' => $token ? hash('sha256', $token) : null,

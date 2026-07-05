@@ -12,6 +12,14 @@ interface PositionReaderInterface
     public function latestForDevice(Device $device): ?DeviceLocation;
 
     /**
+     * Latest fix per device in one round-trip (fleet live / map poll).
+     *
+     * @param  list<int>  $deviceIds
+     * @return array<int, DeviceLocation> keyed by Laravel device id
+     */
+    public function latestForDevices(array $deviceIds): array;
+
+    /**
      * @return Collection<int, DeviceLocation>
      */
     public function historyForDevice(

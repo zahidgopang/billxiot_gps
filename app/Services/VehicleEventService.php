@@ -115,13 +115,30 @@ class VehicleEventService
             return;
         }
 
-        $event = $this->record($device, $eventType, $title, $message, $speed, $lat, $lng, $at);
+        if ($this->shouldPersistEvents()) {
+            $event = $this->record($device, $eventType, $title, $message, $speed, $lat, $lng, $at);
+            app(PushNotificationDispatcher::class)->forVehicleEvent(
+                $device,
+                $event,
+                is_string($previousKey) ? $previousKey : null,
+            );
 
-        app(PushNotificationDispatcher::class)->forVehicleEvent(
+            return;
+        }
+
+        app(PushNotificationDispatcher::class)->forTransientPush(
             $device,
-            $event,
-            is_string($previousKey) ? $previousKey : null,
+            $pushType,
+            $title,
+            $message,
+            $eventType,
+            $at,
         );
+    }
+
+    private function shouldPersistEvents(): bool
+    {
+        return (bool) config('tracking.persist_notification_events', false);
     }
 
     private function processGeofence(Device $device, float $lat, float $lng, Carbon $at): void
@@ -179,23 +196,27 @@ class VehicleEventService
             ? sprintf('%s entered geofence "%s".', $device->notificationDisplayName(), $zoneName)
             : sprintf('%s exited geofence "%s".', $device->notificationDisplayName(), $zoneName);
 
-        $event = $this->record(
-            $device,
-            $eventType,
-            $recordTitle,
-            $message,
-            null,
-            $lat,
-            $lng,
-            $at,
-            $geofenceId,
-        );
-
         $pushType = $isEnter
             ? \App\Support\Push\PushNotificationType::GEOFENCE_ENTER
             : \App\Support\Push\PushNotificationType::GEOFENCE_EXIT;
 
         $pushTitle = $isEnter ? 'Geofence enter' : 'Geofence exit';
+
+        $eventId = null;
+        if ($this->shouldPersistEvents()) {
+            $event = $this->record(
+                $device,
+                $eventType,
+                $recordTitle,
+                $message,
+                null,
+                $lat,
+                $lng,
+                $at,
+                $geofenceId,
+            );
+            $eventId = $event->id > 0 ? $event->id : null;
+        }
 
         app(PushNotificationDispatcher::class)->forGeofence(
             $device,
@@ -204,7 +225,7 @@ class VehicleEventService
             $message,
             $geofenceId,
             $at,
-            $event->id > 0 ? $event->id : null,
+            $eventId,
         );
     }
 
@@ -326,18 +347,33 @@ class VehicleEventService
         ?int $geofenceId = null,
         array $meta = []
     ): VehicleEvent {
-        return $this->events->record(
-            $device,
-            $type,
-            $title,
-            $message,
-            $speed,
-            $lat,
-            $lng,
-            $at,
-            $geofenceId,
-            $meta
-        );
+        if ($this->shouldPersistEvents()) {
+            return $this->events->record(
+                $device,
+                $type,
+                $title,
+                $message,
+                $speed,
+                $lat,
+                $lng,
+                $at,
+                $geofenceId,
+                $meta
+            );
+        }
+
+        return new VehicleEvent([
+            'device_id' => $device->id,
+            'geofence_id' => $geofenceId,
+            'type' => $type,
+            'title' => $title,
+            'message' => $message,
+            'speed' => $speed,
+            'lat' => $lat,
+            'lng' => $lng,
+            'meta' => $meta ?: null,
+            'occurred_at' => $at,
+        ]);
     }
 
     private function insideGeofence(float $lat, float $lng, int $deviceId): ?int

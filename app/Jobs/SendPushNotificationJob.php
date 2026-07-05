@@ -3,13 +3,13 @@
 namespace App\Jobs;
 
 use App\Services\Push\FirebasePushService;
-use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 
 /**
  * Sends FCM push after the HTTP response (GPS ingest / live poll must not wait on Firebase).
+ * Not queued — runs in terminate callback so it works without queue:work on small servers.
  */
-class SendPushNotificationJob implements ShouldQueue
+class SendPushNotificationJob
 {
     use Queueable;
 

@@ -37,6 +37,40 @@ class DelegatingPositionReader implements PositionReaderInterface
         return $legacyLatest;
     }
 
+    /**
+     * @param  list<int>  $deviceIds
+     * @return array<int, DeviceLocation>
+     */
+    public function latestForDevices(array $deviceIds): array
+    {
+        $deviceIds = array_values(array_unique(array_filter(array_map('intval', $deviceIds))));
+        if ($deviceIds === []) {
+            return [];
+        }
+
+        $legacyMap = $this->legacy->latestForDevices($deviceIds);
+
+        if (! $this->shouldReadTraccar()) {
+            return $legacyMap;
+        }
+
+        $traccarMap = $this->traccar->latestForDevices($deviceIds);
+        $out = [];
+
+        foreach ($deviceIds as $id) {
+            $traccarLatest = $traccarMap[$id] ?? null;
+            $legacyLatest = $legacyMap[$id] ?? null;
+
+            if ($traccarLatest) {
+                $out[$id] = DeviceLocationTelemetryMerger::merge($traccarLatest, $legacyLatest);
+            } elseif ($legacyLatest) {
+                $out[$id] = $legacyLatest;
+            }
+        }
+
+        return $out;
+    }
+
     public function historyForDevice(
         Device $device,
         ?Carbon $from = null,

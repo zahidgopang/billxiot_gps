@@ -44,6 +44,56 @@ class TraccarPositionReader implements PositionReaderInterface
         return $row ? $this->mapper->toDeviceLocation($row, $device->id) : null;
     }
 
+    /**
+     * @param  list<int>  $deviceIds
+     * @return array<int, DeviceLocation>
+     */
+    public function latestForDevices(array $deviceIds): array
+    {
+        $deviceIds = array_values(array_unique(array_filter(array_map('intval', $deviceIds))));
+        if ($deviceIds === [] || ! TraccarSchema::isReady()) {
+            return [];
+        }
+
+        $traccarToLaravel = [];
+        foreach ($deviceIds as $laravelId) {
+            $traccarId = $this->idMap->get(TraccarEntityMap::TYPE_DEVICE, $laravelId);
+            if ($traccarId) {
+                $traccarToLaravel[(int) $traccarId] = (int) $laravelId;
+            }
+        }
+
+        if ($traccarToLaravel === []) {
+            return [];
+        }
+
+        $table = config('traccar.tables.positions', 'tc_positions');
+        $traccarIds = array_keys($traccarToLaravel);
+
+        $rows = DB::table("{$table} as p")
+            ->joinSub(
+                DB::table($table)
+                    ->select('deviceid', DB::raw('MAX(id) as max_id'))
+                    ->whereIn('deviceid', $traccarIds)
+                    ->groupBy('deviceid'),
+                'latest',
+                fn ($join) => $join
+                    ->on('p.deviceid', '=', 'latest.deviceid')
+                    ->on('p.id', '=', 'latest.max_id')
+            )
+            ->get();
+
+        $out = [];
+        foreach ($rows as $row) {
+            $laravelId = $traccarToLaravel[(int) $row->deviceid] ?? null;
+            if ($laravelId) {
+                $out[$laravelId] = $this->mapper->toDeviceLocation($row, $laravelId);
+            }
+        }
+
+        return $out;
+    }
+
     public function historyForDevice(
         Device $device,
         ?Carbon $from = null,

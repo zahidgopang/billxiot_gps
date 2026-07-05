@@ -1983,7 +1983,7 @@
             liveUrl: @json(route($routes['live'])),
             deviceEditUrl: @json($deviceEditUrlTemplate),
             csrfToken: @json(csrf_token()),
-            pollIntervalMs: 2000,
+            pollIntervalMs: @json((int) config('tracking.live_poll_interval_ms', 6000)),
             animDurationMs: 1200,
             stateColors: @json($stateColors),
             appTimezone: @json(config('app.timezone')),

@@ -1587,6 +1587,9 @@
             const st = this.vehicleState(id);
             this.ensureMarker(id);
             const merged = { ...this.vehicles.get(id), ...point, id };
+            if (point.route_trip == null && this.vehicles.get(id)?.route_trip) {
+                merged.route_trip = this.vehicles.get(id).route_trip;
+            }
             if (merged.route_trip) {
                 merged.route_trip = this.sanitizeRouteTrip(merged.route_trip);
             }
@@ -1857,8 +1860,13 @@
         startPolling() {
             if (this.pollTimer) { clearInterval(this.pollTimer); this.pollTimer = null; }
             if (this.visible.size === 0) return;
+            const base = this.cfg.pollIntervalMs || 6000;
+            const count = this.visible.size;
+            const ms = count > 40 ? Math.max(base, 10000)
+                : count > 20 ? Math.max(base, 8000)
+                    : base;
             this.pollLive(true);
-            this.pollTimer = setInterval(() => this.pollLive(false), this.cfg.pollIntervalMs || 4000);
+            this.pollTimer = setInterval(() => this.pollLive(false), ms);
         }
 
         async pollLive(force) {
