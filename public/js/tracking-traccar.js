@@ -59,14 +59,21 @@
             url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
             scaledSize: new g.maps.Size(40, 52),
             anchor: new g.maps.Point(20, 20),
-            labelOrigin: new g.maps.Point(20, 44),
+            labelOrigin: new g.maps.Point(20, -2),
         };
         arrowIconCache[key] = icon;
         return icon;
     }
 
-    function markerLabel(text) {
-        return { text, color: '#1f2937', fontSize: '12px', fontWeight: '600', className: 'tc-mk-label' };
+    function markerLabel(text, markerColor, focused) {
+        return {
+            text,
+            color: '#ffffff',
+            fontSize: '12px',
+            fontWeight: '600',
+            className: focused ? 'tc-mk-label tc-mk-label--focused' : 'tc-mk-label',
+            backgroundColor: markerColor || '#64748b',
+        };
     }
 
     function svgDataUrl(svg) {
@@ -978,7 +985,7 @@
                 const dot = v.color || colorForPoint(v, this.stateColors);
                 const eye = this.visible.has(v.id) ? 'checked' : '';
                 const follow = this.followId === v.id ? 'checked' : '';
-                return `<div class="tc-row ${this.followId === v.id ? 'active' : ''}" data-id="${v.id}">
+                return `<div class="tc-row ${this._panelDeviceId === v.id || this.followId === v.id ? 'active' : ''}" data-id="${v.id}">
                     <input type="checkbox" class="form-check-input tc-check tc-check-eye" data-eye="${v.id}" ${eye} title="${escHtml(i18n.colShow || 'Show on map')}">
                     <input type="checkbox" class="form-check-input tc-check tc-check-follow" data-follow="${v.id}" ${follow} title="${escHtml(i18n.colFollow || 'Follow / zoom')}">
                     <span class="tc-veh-icon" data-veh-icon="${v.id}" style="color:${escHtml(dot)}" title="${escHtml(v.status_label || v.status || '')}"><i class="fas ${escHtml(v.icon || 'fa-location-crosshairs')}"></i></span>
@@ -1085,6 +1092,49 @@
             return `${v.title || v.plate || ('#' + v.id)} (${spd} kph)`;
         }
 
+        applyMarkerLabel(st, v, focused = false) {
+            if (!st?.marker || !v) return;
+            const color = colorForPoint(v, this.stateColors);
+            const label = markerLabel(this.labelFor(v), color, focused);
+            if (typeof st.marker.setLabel === 'function') {
+                st.marker.setLabel(label);
+            }
+        }
+
+        countNearbyVehicles(targetId, radiusMeters = 35) {
+            const target = this.vehicles.get(targetId);
+            if (!target || !hasGeo(target.lat, target.lng)) return 0;
+            const origin = { lat: parseFloat(target.lat), lng: parseFloat(target.lng) };
+            let count = 0;
+            this.visible.forEach((id) => {
+                const v = this.vehicles.get(id);
+                if (!hasGeo(v?.lat, v?.lng)) return;
+                if (distMeters(origin, { lat: parseFloat(v.lat), lng: parseFloat(v.lng) }) <= radiusMeters) {
+                    count++;
+                }
+            });
+            return count;
+        }
+
+        updateMarkerFocusStyles() {
+            const focusedId = this._focusedVehicleId;
+            this.visible.forEach((id) => {
+                const st = this.states.get(id);
+                if (!st?.marker) return;
+                const isFocused = focusedId != null && Number(id) === Number(focusedId);
+                if (typeof st.marker.setZIndex === 'function') {
+                    st.marker.setZIndex(isFocused ? 2500 + Number(id) : 500 + Number(id));
+                }
+                if (typeof st.marker.setFocused === 'function') {
+                    st.marker.setFocused(isFocused);
+                }
+                const v = this.vehicles.get(id);
+                if (v) {
+                    this.applyMarkerLabel(st, v, isFocused);
+                }
+            });
+        }
+
         toggleVisible(id) {
             if (this.visible.has(id)) {
                 this.visible.delete(id);
@@ -1121,6 +1171,7 @@
             if (rt?.route) {
                 this.applyRouteTrip(id, rt);
             }
+            this.renderList();
             this.openDevicePanel(id);
         }
 
@@ -1390,10 +1441,9 @@
             const color = colorForPoint(v, this.stateColors);
             const h = heading != null ? heading : parseFloat(v.heading || 0);
             const point = { ...v, heading: h };
-            const hasCustom = VM?.resolveCustomIconUrl?.(point);
-            st.marker.setLabel(null);
             const icon = this.iconBuilder?.iconFor(point);
             applyMarkerIcon(st.marker, icon || arrowIcon(color, h));
+            this.applyMarkerLabel(st, v);
         }
 
         activeClusterBreakId() {
@@ -1446,12 +1496,27 @@
             this.renderLiveClusters();
 
             if (options.pan !== false && hasGeo(v?.lat, v?.lng)) {
-                this.map.panTo({ lat: parseFloat(v.lat), lng: parseFloat(v.lng) });
-                const minZoom = options.minZoom ?? 15;
+                const lat = parseFloat(v.lat);
+                const lng = parseFloat(v.lng);
+                this.map.panTo({ lat, lng });
+                const nearby = this.countNearbyVehicles(numId);
+                const inCluster = this.clusteredDeviceIds?.has(Number(numId));
+                let minZoom = options.minZoom ?? 15;
+                if (nearby > 1 || inCluster) {
+                    minZoom = Math.max(minZoom, 17);
+                }
+                if (nearby > 3) {
+                    minZoom = Math.max(minZoom, 18);
+                }
+                if (nearby > 6) {
+                    minZoom = Math.max(minZoom, 19);
+                }
                 if ((this.map.getZoom() || 0) < minZoom) {
                     this.map.setZoom(minZoom);
                 }
             }
+
+            this.updateMarkerFocusStyles();
         }
 
         livePositionMap(skipId = null) {
@@ -1673,6 +1738,7 @@
             if (this.historyActive) { st.lastPoint = merged; return; }
 
             st.marker.setTitle(this.labelFor(merged));
+            this.applyMarkerLabel(st, merged);
 
             const moving = MOVING_KEYS.has(key);
             const spd = Math.max(0, parseFloat(merged.speed) || 0);

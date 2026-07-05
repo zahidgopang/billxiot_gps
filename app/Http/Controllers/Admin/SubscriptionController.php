@@ -13,10 +13,12 @@ use App\Services\AdminAuditService;
 use App\Services\Billing\BillingInvoiceService;
 use App\Services\Billing\DeviceCostResolver;
 use App\Services\Billing\SubscriptionBillingService;
+use App\Services\DeviceSubscriptionService;
 use App\Services\SubscriptionRenewalService;
 use App\Support\Billing\SubscriptionNotificationConfig;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Validation\Rule;
 use InvalidArgumentException;
@@ -29,6 +31,7 @@ class SubscriptionController extends Controller
         private AdminAuditService $audit,
         private SubscriptionRenewalService $renewals,
         private SubscriptionBillingService $subscriptionBilling,
+        private DeviceSubscriptionService $deviceSubscriptions,
         private BillingInvoiceService $billingInvoices,
         private DeviceCostResolver $deviceCosts,
         private SubscriptionNotificationConfig $notificationConfig,
@@ -38,34 +41,22 @@ class SubscriptionController extends Controller
     {
         $this->authorizePermission('subscriptions.view');
 
-        $q = Subscription::with([
-            'user',
-            'device',
-            'platformInvoice:id,invoice_no,status,total,currency,subscription_id',
-            'clientInvoice:id,invoice_no,status,total,currency,subscription_id',
-        ])->withCount('histories');
+        $base = $this->subscriptionIndexBaseQuery($request);
 
-        $visibleDeviceIds = $this->tenantScope()->visibleDeviceIdsForPanel($request->user());
-        if ($visibleDeviceIds !== null) {
-            $q->whereIn('device_id', $visibleDeviceIds !== [] ? $visibleDeviceIds : [0]);
-        }
+        $groupsPage = (clone $base)
+            ->selectRaw('COALESCE(client_invoice_id, id) as batch_key')
+            ->selectRaw('MIN(id) as primary_id')
+            ->selectRaw('MAX(created_at) as sort_at')
+            ->groupByRaw('COALESCE(client_invoice_id, id)')
+            ->orderByDesc('sort_at')
+            ->paginate(15)
+            ->withQueryString();
 
-        if ($search = $request->query('q')) {
-            $q->where(function ($query) use ($search) {
-                $query->where('plan', 'like', "%{$search}%")
-                    ->orWhereHas('device', fn ($d) => $d->where('name', 'like', "%{$search}%")->whereImeiLike("%{$search}%"))
-                    ->orWhereHas('user', fn ($u) => $u->where('name', 'like', "%{$search}%")->orWhere('email', 'like', "%{$search}%"));
-            });
-        }
-
-        $subs = $q->orderByDesc('created_at')->paginate(15)->withQueryString();
-
-        $subs->getCollection()->transform(function (Subscription $subscription) {
-            return $this->renewals->syncExpiredStatus($subscription);
-        });
+        $batches = $this->buildSubscriptionBatches($groupsPage);
 
         return view('admin.subscriptions.index', [
-            'subs' => $subs,
+            'batches' => $batches,
+            'groupsPage' => $groupsPage,
             'panel' => $this->panelPrefix(),
         ]);
     }
@@ -95,6 +86,11 @@ class SubscriptionController extends Controller
         $subscriptions = collect();
 
         foreach ($bundles as ['data' => $data]) {
+            $this->deviceSubscriptions->supersedeActiveSubscriptionsForDevice(
+                (int) $data['device_id'],
+                Carbon::parse($data['starts_at'])
+            );
+
             $subscriptions->push(Subscription::create($data));
         }
 
@@ -129,6 +125,20 @@ class SubscriptionController extends Controller
             ->with('success', $message);
     }
 
+    public function show(Subscription $subscription)
+    {
+        $this->authorizePermission('subscriptions.view');
+        $this->authorizeSubscription($subscription);
+
+        $batch = $this->loadSubscriptionBatch($subscription);
+
+        return view('admin.subscriptions.show', [
+            'subscription' => $batch->primary,
+            'batch' => $batch,
+            'panel' => $this->panelPrefix(),
+        ]);
+    }
+
     public function edit(Subscription $subscription)
     {
         $this->authorizePermission('subscriptions.manage');
@@ -146,8 +156,11 @@ class SubscriptionController extends Controller
             $subscription
         );
 
+        $batch = $this->loadSubscriptionBatch($subscription);
+
         return view('admin.subscriptions.edit', [
             'subscription' => $subscription,
+            'batch' => $batch,
             'clients' => $clients,
             'devicesByClient' => $devicesByClient,
             'selectedClient' => $selectedClient,
@@ -504,20 +517,6 @@ class SubscriptionController extends Controller
 
             $effectiveUserId = $selectedUserId ?? ($device->user_id !== null ? (int) $device->user_id : null);
 
-            $hasActive = Subscription::query()
-                ->where('device_id', $deviceId)
-                ->where('status', 'active')
-                ->whereDate('ends_at', '>=', now()->toDateString())
-                ->exists();
-
-            if ($hasActive) {
-                throw ValidationException::withMessages([
-                    'device_ids' => __('app.forms.subscription_device_already_active', [
-                        'device' => $device->name ?: $device->imei,
-                    ]),
-                ]);
-            }
-
             $data = $this->buildSubscriptionRowData($request, $device, $shared, $subscriptionType, $clientId, $effectiveUserId);
             $bundles[] = [
                 'data' => $data,
@@ -695,14 +694,10 @@ class SubscriptionController extends Controller
 
         // Prevent duplicate active subscriptions per device.
         // Allow creating a new subscription if previous is expired (ends_at < today) or cancelled.
-        $hasActive = Subscription::query()
-            ->where('device_id', (int) $device->id)
-            ->when($subscription, fn ($q) => $q->where('id', '!=', (int) $subscription->id))
-            ->where('status', 'active')
-            ->whereDate('ends_at', '>=', now()->toDateString())
-            ->exists();
-
-        if ($hasActive) {
+        if ($this->deviceSubscriptions->deviceHasActiveSubscription(
+            (int) $device->id,
+            $subscription ? (int) $subscription->id : null
+        )) {
             throw ValidationException::withMessages([
                 'device_id' => 'This device already has an active subscription.',
             ]);
@@ -980,5 +975,136 @@ class SubscriptionController extends Controller
             ->orderBy('name')
             ->orderBy('billing_cycle')
             ->get();
+    }
+
+    private function subscriptionIndexBaseQuery(Request $request)
+    {
+        $q = Subscription::query();
+
+        $visibleDeviceIds = $this->tenantScope()->visibleDeviceIdsForPanel($request->user());
+        if ($visibleDeviceIds !== null) {
+            $q->whereIn('device_id', $visibleDeviceIds !== [] ? $visibleDeviceIds : [0]);
+        }
+
+        if ($search = $request->query('q')) {
+            $q->where(function ($query) use ($search) {
+                $query->where('plan', 'like', "%{$search}%")
+                    ->orWhereHas('device', fn ($d) => $d->where('name', 'like', "%{$search}%")->whereImeiLike("%{$search}%"))
+                    ->orWhereHas('user', fn ($u) => $u->where('name', 'like', "%{$search}%")->orWhere('email', 'like', "%{$search}%"))
+                    ->orWhereHas('clientInvoice', fn ($inv) => $inv->where('invoice_no', 'like', "%{$search}%"));
+            });
+        }
+
+        return $q;
+    }
+
+    /**
+     * @param  \Illuminate\Contracts\Pagination\LengthAwarePaginator<int, object{batch_key:int, primary_id:int, sort_at:string}>  $groupsPage
+     * @return Collection<int, object{primary: Subscription, subscriptions: Collection<int, Subscription>, device_count: int, is_consolidated: bool}>
+     */
+    private function buildSubscriptionBatches($groupsPage): Collection
+    {
+        if ($groupsPage->isEmpty()) {
+            return collect();
+        }
+
+        $primaryIds = $groupsPage->pluck('primary_id')->map(fn ($id) => (int) $id)->all();
+        $primaries = Subscription::query()
+            ->whereIn('id', $primaryIds)
+            ->get(['id', 'client_invoice_id'])
+            ->keyBy('id');
+
+        $invoiceIds = [];
+        $standaloneIds = [];
+
+        foreach ($groupsPage as $group) {
+            $primary = $primaries->get((int) $group->primary_id);
+            if (! $primary) {
+                continue;
+            }
+
+            if ($primary->client_invoice_id) {
+                $invoiceIds[(int) $primary->client_invoice_id] = true;
+            } else {
+                $standaloneIds[(int) $primary->id] = true;
+            }
+        }
+
+        $allSubs = Subscription::with([
+            'user',
+            'device',
+            'platformInvoice:id,invoice_no,status,total,currency,subscription_id',
+            'clientInvoice:id,invoice_no,status,total,currency,subscription_id',
+        ])
+            ->withCount('histories')
+            ->where(function ($query) use ($invoiceIds, $standaloneIds) {
+                $first = true;
+                if ($invoiceIds !== []) {
+                    $query->whereIn('client_invoice_id', array_keys($invoiceIds));
+                    $first = false;
+                }
+                if ($standaloneIds !== []) {
+                    $first
+                        ? $query->whereIn('id', array_keys($standaloneIds))
+                        : $query->orWhereIn('id', array_keys($standaloneIds));
+                }
+            })
+            ->get();
+
+        $allSubs->transform(fn (Subscription $subscription) => $this->renewals->syncExpiredStatus($subscription));
+
+        $byInvoice = $allSubs->groupBy('client_invoice_id');
+        $byId = $allSubs->keyBy('id');
+
+        return collect($groupsPage)->map(function ($group) use ($primaries, $byInvoice, $byId) {
+            $primary = $byId->get((int) $group->primary_id)
+                ?? $primaries->get((int) $group->primary_id);
+
+            if (! $primary instanceof Subscription) {
+                return null;
+            }
+
+            $members = $primary->client_invoice_id
+                ? ($byInvoice->get($primary->client_invoice_id) ?? collect([$primary]))->sortBy('id')->values()
+                : collect([$primary]);
+
+            return (object) [
+                'primary' => $members->first(),
+                'subscriptions' => $members,
+                'device_count' => $members->count(),
+                'is_consolidated' => $members->count() > 1,
+            ];
+        })->filter()->values();
+    }
+
+    /**
+     * @return object{primary: Subscription, subscriptions: Collection<int, Subscription>, device_count: int, is_consolidated: bool}
+     */
+    private function loadSubscriptionBatch(Subscription $subscription): object
+    {
+        $subscription->load([
+            'user',
+            'device',
+            'subscriptionPlan',
+            'platformInvoice',
+            'clientInvoice',
+        ]);
+
+        $members = $subscription->client_invoice_id
+            ? Subscription::query()
+                ->with(['device', 'user'])
+                ->where('client_invoice_id', $subscription->client_invoice_id)
+                ->orderBy('id')
+                ->get()
+            : collect([$subscription]);
+
+        $members->transform(fn (Subscription $row) => $this->renewals->syncExpiredStatus($row));
+
+        return (object) [
+            'primary' => $members->first(),
+            'subscriptions' => $members->values(),
+            'device_count' => $members->count(),
+            'is_consolidated' => $members->count() > 1,
+        ];
     }
 }

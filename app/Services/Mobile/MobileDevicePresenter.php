@@ -20,11 +20,17 @@ class MobileDevicePresenter
     /**
      * @return array<string, mixed>
      */
-    public function listItem(Device $device, ?\Illuminate\Support\Collection $alertDeviceIds = null): array
-    {
+    public function listItem(
+        Device $device,
+        ?\Illuminate\Support\Collection $alertDeviceIds = null,
+        ?\App\Models\User $viewer = null,
+    ): array {
         $latest = $device->latestLocation;
         $map = $this->mapStatus->resolve($latest, $device);
         $sub = $this->subscriptions->statusLabel($device);
+        $rbac = app(\App\Services\Authorization\RbacService::class);
+        $subscriptionActive = ($viewer && $rbac->bypassesSubscriptionRestrictions($viewer))
+            || $sub['active'];
 
         return [
             'id' => $device->id,
@@ -58,7 +64,7 @@ class MobileDevicePresenter
             'is_online' => $this->mapStatus->isRecentlyOnline($latest),
             'speed' => $latest ? (float) ($latest->speed ?? 0) : null,
             'subscription_status' => $sub['label'],
-            'subscription_active' => $sub['active'],
+            'subscription_active' => $subscriptionActive,
             'last_update' => app_datetime_api($latest?->recorded_at),
             'last_update_display' => app_datetime_format($latest?->recorded_at),
             'battery' => $latest?->battery_level,
@@ -74,9 +80,12 @@ class MobileDevicePresenter
     /**
      * @return array<string, mixed>
      */
-    public function detail(Device $device, ?\Illuminate\Support\Collection $alertDeviceIds = null): array
-    {
-        return array_merge($this->listItem($device, $alertDeviceIds), [
+    public function detail(
+        Device $device,
+        ?\Illuminate\Support\Collection $alertDeviceIds = null,
+        ?\App\Models\User $viewer = null,
+    ): array {
+        return array_merge($this->listItem($device, $alertDeviceIds, $viewer), [
             'vehicle_name' => $device->vehicle_name ?? null,
             'vehicle_number' => $device->vehicle_number ?? null,
             'description' => $device->description,

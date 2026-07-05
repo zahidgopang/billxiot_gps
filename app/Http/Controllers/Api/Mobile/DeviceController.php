@@ -53,9 +53,9 @@ class DeviceController extends Controller
                 : $devices
         );
 
-        $items = $devices->map(function ($device) use ($alertIds) {
+        $items = $devices->map(function ($device) use ($alertIds, $user) {
             try {
-                return $this->presenter->listItem($device, $alertIds);
+                return $this->presenter->listItem($device, $alertIds, $user);
             } catch (\Throwable $e) {
                 report($e);
 
@@ -72,7 +72,7 @@ class DeviceController extends Controller
         $this->positionLoader->attachLatest($device);
         $alertIds = $this->dashboard->alertDeviceIds(collect([$device]));
 
-        return $this->mobileSuccess($this->presenter->detail($device, $alertIds));
+        return $this->mobileSuccess($this->presenter->detail($device, $alertIds, $request->user()));
     }
 
     public function live(Request $request, int $id)

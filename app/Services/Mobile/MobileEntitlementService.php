@@ -238,9 +238,15 @@ class MobileEntitlementService
      */
     public function accessibleDevices(User $user): Collection
     {
+        if ($this->rbac->canAccessPanel($user)) {
+            return app(\App\Services\Tracking\GlobalTrackingService::class)
+                ->devicesForActor($user);
+        }
+
         return $this->trackingGate->filterTrackable(
             $user,
-            $user->trackerDevicesQuery()->with(['subscription.clientInvoice'])->get()
+            $user->trackerDevicesQuery()->with(['subscription.clientInvoice'])->get(),
+            requireSubscription: ! $this->rbac->bypassesSubscriptionRestrictions($user),
         );
     }
 

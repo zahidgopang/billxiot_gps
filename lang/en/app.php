@@ -338,6 +338,13 @@ return [
         'subscriptions' => [
             'title' => 'Subscriptions',
             'page_title' => 'Subscriptions',
+            'vehicles_column' => 'Vehicles',
+            'attached_vehicles' => 'Attached vehicles',
+            'vehicle_count_label' => ':count vehicle(s)',
+            'view_title' => 'Subscription details',
+            'batch_summary' => 'Subscription summary',
+            'view_details' => 'View details',
+            'print_details' => 'Print',
         ],
         'activity_log' => [
             'title' => 'Activity Log',

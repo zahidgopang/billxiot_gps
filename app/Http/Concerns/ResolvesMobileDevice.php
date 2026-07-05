@@ -60,10 +60,12 @@ trait ResolvesMobileDevice
             ->findOrFail($deviceId);
 
         $entitlement = app(MobileEntitlementService::class);
+        $rbac = app(\App\Services\Authorization\RbacService::class);
         $check = app(DeviceAccessService::class)->evaluate(
             $user,
             $device,
-            requireSubscription: $entitlement->isEndUser($user),
+            requireSubscription: $entitlement->isEndUser($user)
+                && ! $rbac->bypassesSubscriptionRestrictions($user),
         );
 
         if (! $check['allowed']) {

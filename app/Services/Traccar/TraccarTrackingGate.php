@@ -15,6 +15,7 @@ class TraccarTrackingGate
         private TraccarUserAccessService $users,
         private TraccarDeviceAccessService $devices,
         private DeviceSubscriptionService $subscriptions,
+        private \App\Services\Authorization\RbacService $rbac,
     ) {}
 
     public function userIsTrackable(User $user): bool
@@ -49,6 +50,10 @@ class TraccarTrackingGate
 
         if (! $this->userIsTrackable($user)) {
             return ['allowed' => false, 'reason' => 'user_inactive'];
+        }
+
+        if ($this->rbac->bypassesSubscriptionRestrictions($user)) {
+            return ['allowed' => true, 'reason' => 'ok'];
         }
 
         if (! $this->devices->userCanAccessDevice($user, $device)) {

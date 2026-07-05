@@ -306,7 +306,12 @@ class Device extends Model
 
     public function subscription()
     {
-        return $this->hasOne(Subscription::class, 'device_id');
+        return $this->hasOne(Subscription::class, 'device_id')->latestOfMany();
+    }
+
+    public function subscriptions()
+    {
+        return $this->hasMany(Subscription::class, 'device_id')->orderByDesc('id');
     }
 
     public function getVehicleNameAttribute(): ?string

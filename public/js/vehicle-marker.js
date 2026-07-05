@@ -256,6 +256,7 @@
             url: svgDataUrl(svg),
             scaledSize: new g.maps.Size(w, h),
             anchor: new g.maps.Point(w / 2, h),
+            labelOrigin: new g.maps.Point(w / 2, 2),
         };
         pinIconCache[color] = icon;
         return icon;
@@ -426,6 +427,7 @@
                     const ph = Math.round(48 * sizeScale);
                     pin.scaledSize = new google.maps.Size(pw, ph);
                     pin.anchor = new google.maps.Point(Math.round(pw / 2), ph);
+                    pin.labelOrigin = new google.maps.Point(Math.round(pw / 2), 2);
                 }
                 cache[cacheKey] = pin;
                 return pin;

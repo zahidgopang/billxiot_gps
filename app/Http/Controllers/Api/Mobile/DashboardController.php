@@ -71,7 +71,7 @@ class DashboardController extends Controller
         return [
             'summary' => $this->summaryPayload($stats, $devices, $fleet),
             'activity' => $this->activityPayload($stats['activities'])->values(),
-            'recent_vehicles' => $this->recentVehiclePayload($stats['recentDevices'], $alertIds)->values(),
+            'recent_vehicles' => $this->recentVehiclePayload($stats['recentDevices'], $alertIds, $user)->values(),
         ];
     }
 
@@ -131,7 +131,7 @@ class DashboardController extends Controller
         $stats = $this->dashboard->getStats($user);
         $alertIds = $stats['alertDeviceIds'] ?? $this->dashboard->alertDeviceIds($stats['devices']);
 
-        return $this->mobileSuccess($this->recentVehiclePayload($stats['recentDevices'], $alertIds)->values());
+        return $this->mobileSuccess($this->recentVehiclePayload($stats['recentDevices'], $alertIds, $user)->values());
     }
 
     private function activityPayload($activities)
@@ -145,11 +145,11 @@ class DashboardController extends Controller
             ], \App\Support\DateTime\AppDateTime::apiFields($item['time'] ?? null)));
     }
 
-    private function recentVehiclePayload($devices, $alertIds)
+    private function recentVehiclePayload($devices, $alertIds, ?User $viewer = null)
     {
-        return $devices->map(function ($device) use ($alertIds) {
+        return $devices->map(function ($device) use ($alertIds, $viewer) {
             try {
-                return $this->presenter->listItem($device, $alertIds);
+                return $this->presenter->listItem($device, $alertIds, $viewer);
             } catch (\Throwable $e) {
                 report($e);
 

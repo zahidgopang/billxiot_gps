@@ -35,10 +35,11 @@ class UserDevicesController extends Controller
             $fleetMapEligibleCount = $trackingGate
                 ->filterTrackable($user, $allDevices, requireSubscription: true)
                 ->count();
-            $devices = $trackingGate->filterTrackable(
+        $devices = $trackingGate->filterTrackable(
                 $user,
                 $allDevices,
-                requireSubscription: $isEndUser,
+                requireSubscription: $isEndUser
+                    && ! app(\App\Services\Authorization\RbacService::class)->bypassesSubscriptionRestrictions($user),
             );
 
             app(DevicePositionLoader::class)->attachLatestToMany($devices);

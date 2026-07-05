@@ -120,7 +120,7 @@ class UserDashboardService
         return $this->trackingGate->filterTrackable(
             $user,
             $user->trackerDevicesQuery()->with(['subscription'])->get(),
-            requireSubscription: true,
+            requireSubscription: ! $this->rbac->bypassesSubscriptionRestrictions($user),
         );
     }
 

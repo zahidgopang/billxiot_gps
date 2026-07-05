@@ -1395,14 +1395,23 @@
         .tc-info-row span { color: var(--tc-text-muted); }
         .tc-info-row b { color: var(--tc-text); font-weight: 600; }
 
-        /* Google Maps marker label (vehicle name + speed) — Traccar-style box */
+        /* Google Maps marker label (vehicle name + speed) — above marker, status-colored */
         .tc-mk-label {
-            background: rgba(255, 255, 255, 0.92);
-            padding: 1px 6px;
+            padding: 2px 7px;
             border-radius: 4px;
-            border: 1px solid rgba(15, 23, 42, 0.18);
-            box-shadow: 0 1px 3px rgba(15, 23, 42, 0.22);
+            box-shadow: 0 1px 4px rgba(15, 23, 42, 0.28);
             white-space: nowrap;
+            line-height: 1.25;
+            color: #ffffff !important;
+            text-shadow: 0 1px 1px rgba(15, 23, 42, 0.35);
+        }
+        .tc-mk-label--focused,
+        .gmap-adv-marker-wrap--focused .tc-mk-label {
+            box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.85), 0 2px 6px rgba(15, 23, 42, 0.3);
+            font-weight: 700;
+        }
+        .gmap-adv-marker-wrap--focused img {
+            filter: drop-shadow(0 0 5px rgba(245, 158, 11, 0.85));
         }
 
         /* ===== Enhanced vehicle list meta (badges/indicators) ===== */

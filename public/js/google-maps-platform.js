@@ -199,32 +199,7 @@
     }
 
     function urlIconToContent(icon, state) {
-        const { w, h } = scaledSizePx(icon);
-        const { x: ax, y: ay } = anchorPx(icon, w, h);
-
-        return createAnchoredContent((inner, outer) => {
-            inner.style.left = `${-ax}px`;
-            inner.style.top = `${-ay}px`;
-
-            const img = document.createElement('img');
-            img.src = icon.url;
-            img.alt = '';
-            img.draggable = false;
-            img.style.width = `${w}px`;
-            img.style.height = `${h}px`;
-            img.style.display = 'block';
-            img.style.userSelect = 'none';
-
-            const rotation = Number(icon.meta?.rotation ?? state.rotation ?? 0) || 0;
-            const flat = !!(icon.meta?.flat ?? state.flat);
-            if (flat && rotation) {
-                img.style.transformOrigin = 'center center';
-                img.style.transform = `rotate(${rotation}deg)`;
-            }
-
-            inner.appendChild(img);
-            outer._img = img;
-        });
+        return compositeMarkerContent(icon, null, state || { flat: false, rotation: 0 }, false);
     }
 
     function iconToContent(icon, state) {
@@ -240,6 +215,109 @@
         return urlIconToContent(icon, state || { flat: false, rotation: 0 });
     }
 
+    function normalizeLabel(label) {
+        if (!label) {
+            return null;
+        }
+        if (typeof label === 'string') {
+            return { text: label, color: '#1f2937', fontSize: '12px', fontWeight: '600', className: 'tc-mk-label' };
+        }
+        if (label.text) {
+            return {
+                text: String(label.text),
+                color: label.color || '#ffffff',
+                fontSize: label.fontSize || '12px',
+                fontWeight: label.fontWeight || '600',
+                className: label.className || 'tc-mk-label',
+                backgroundColor: label.backgroundColor || null,
+            };
+        }
+        return null;
+    }
+
+    function appendLabelElement(parent, label, focused) {
+        const labelOpt = normalizeLabel(label);
+        if (!labelOpt?.text) {
+            return null;
+        }
+        const badge = document.createElement('div');
+        badge.className = labelOpt.className;
+        badge.textContent = labelOpt.text;
+        badge.style.fontSize = labelOpt.fontSize;
+        badge.style.fontWeight = labelOpt.fontWeight;
+        badge.style.marginBottom = '2px';
+        badge.style.pointerEvents = 'none';
+        if (labelOpt.backgroundColor) {
+            badge.style.background = labelOpt.backgroundColor;
+            badge.style.color = '#ffffff';
+            badge.style.border = '1px solid rgba(255,255,255,0.5)';
+        } else {
+            badge.style.color = labelOpt.color || '#1f2937';
+        }
+        if (focused) {
+            badge.classList.add('tc-mk-label--focused');
+        }
+        parent.appendChild(badge);
+        return badge;
+    }
+
+    function appendIconElement(parent, icon, state) {
+        if (!icon?.url) {
+            return null;
+        }
+        const { w, h } = scaledSizePx(icon);
+        const img = document.createElement('img');
+        img.src = icon.url;
+        img.alt = '';
+        img.draggable = false;
+        img.style.width = `${w}px`;
+        img.style.height = `${h}px`;
+        img.style.display = 'block';
+        img.style.userSelect = 'none';
+
+        const rotation = Number(icon.meta?.rotation ?? state.rotation ?? 0) || 0;
+        const flat = !!(icon.meta?.flat ?? state.flat);
+        if (flat && rotation) {
+            img.style.transformOrigin = 'center center';
+            img.style.transform = `rotate(${rotation}deg)`;
+        }
+
+        parent.appendChild(img);
+        return img;
+    }
+
+    function compositeMarkerContent(icon, label, state, focused) {
+        const labelOpt = normalizeLabel(label);
+        const hasIcon = !!(icon && (icon.url || isSymbolIcon(icon)));
+        if (!hasIcon && !labelOpt) {
+            return undefined;
+        }
+        if (hasIcon && isSymbolIcon(icon)) {
+            return symbolIconToContent(icon);
+        }
+
+        const { w, h } = scaledSizePx(icon || {});
+        const { x: ax, y: ay } = anchorPx(icon || {}, w, h);
+
+        return createAnchoredContent((inner, outer) => {
+            inner.style.left = `${-ax}px`;
+            inner.style.top = `${-ay}px`;
+            inner.style.display = 'flex';
+            inner.style.flexDirection = 'column';
+            inner.style.alignItems = 'center';
+            if (focused) {
+                outer.classList.add('gmap-adv-marker-wrap--focused');
+            }
+
+            if (labelOpt) {
+                outer._labelEl = appendLabelElement(inner, labelOpt, focused);
+            }
+            if (hasIcon) {
+                outer._img = appendIconElement(inner, icon, state || { flat: false, rotation: 0 });
+            }
+        });
+    }
+
     function updateContentRotation(content, rotation, flat) {
         if (!content?._img) {
             return;
@@ -252,31 +330,7 @@
     }
 
     function labelToContent(label) {
-        const text = typeof label === 'string' ? label : label?.text;
-        if (!text) {
-            return undefined;
-        }
-        const color = (typeof label === 'object' && label.color) ? label.color : '#ffffff';
-        return createAnchoredContent((inner) => {
-            inner.style.left = '-14px';
-            inner.style.top = '-14px';
-
-            const badge = document.createElement('div');
-            badge.className = 'gmap-adv-marker gmap-adv-marker--label';
-            badge.textContent = text;
-            badge.style.width = '28px';
-            badge.style.height = '28px';
-            badge.style.borderRadius = '50%';
-            badge.style.background = '#2563eb';
-            badge.style.color = color;
-            badge.style.display = 'flex';
-            badge.style.alignItems = 'center';
-            badge.style.justifyContent = 'center';
-            badge.style.fontWeight = (typeof label === 'object' && label.fontWeight) ? label.fontWeight : '700';
-            badge.style.fontSize = '12px';
-            badge.style.boxShadow = '0 1px 4px rgba(15,23,42,0.35)';
-            inner.appendChild(badge);
-        });
+        return compositeMarkerContent(null, label, { flat: false, rotation: 0 }, false);
     }
 
     function mapAdvancedMarkerEvent(event) {
@@ -329,20 +383,31 @@
 
     function createAdvancedMarker(options) {
         const AdvancedMarkerElement = global.google.maps.marker.AdvancedMarkerElement;
-        const state = { flat: false, rotation: 0 };
-        let content = options.label
-            ? labelToContent(options.label)
-            : iconToContent(options.icon, state);
+        const ctx = {
+            icon: options.icon || null,
+            label: options.label || null,
+            state: { flat: false, rotation: 0 },
+            focused: false,
+            content: null,
+        };
+
+        function rebuildContent() {
+            ctx.content = compositeMarkerContent(ctx.icon, ctx.label, ctx.state, ctx.focused);
+            native.content = ctx.content;
+            updateContentRotation(ctx.content, ctx.state.rotation, ctx.state.flat);
+        }
 
         const native = new AdvancedMarkerElement({
             map: options.map ?? null,
             position: options.position,
             title: options.title,
-            content,
+            content: undefined,
             zIndex: options.zIndex,
             gmpClickable: options.gmpClickable !== false,
             gmpDraggable: !!options.draggable,
         });
+
+        rebuildContent();
 
         const compat = {
             _native: native,
@@ -370,26 +435,34 @@
                 if (!icon) {
                     return;
                 }
-                content = iconToContent(icon, state);
-                native.content = content;
+                ctx.icon = icon;
                 if (icon.meta) {
-                    compat.setFlat(!!icon.meta.flat);
-                    compat.setRotation(Number(icon.meta.rotation) || 0);
+                    ctx.state.flat = !!icon.meta.flat;
+                    ctx.state.rotation = Number(icon.meta.rotation) || 0;
                 }
+                rebuildContent();
             },
             setTitle(title) {
                 native.title = title;
             },
-            setLabel() {
-                // Advanced markers do not support setLabel — no-op.
+            setLabel(label) {
+                ctx.label = label;
+                rebuildContent();
+            },
+            setFocused(focused) {
+                ctx.focused = !!focused;
+                rebuildContent();
             },
             setFlat(flat) {
-                state.flat = !!flat;
-                updateContentRotation(content, state.rotation, state.flat);
+                ctx.state.flat = !!flat;
+                updateContentRotation(ctx.content, ctx.state.rotation, ctx.state.flat);
             },
             setRotation(rotation) {
-                state.rotation = Number(rotation) || 0;
-                updateContentRotation(content, state.rotation, state.flat);
+                ctx.state.rotation = Number(rotation) || 0;
+                updateContentRotation(ctx.content, ctx.state.rotation, ctx.state.flat);
+            },
+            setZIndex(zIndex) {
+                native.zIndex = zIndex;
             },
             addListener(event, fn) {
                 return addAdvancedMarkerListener(native, event, fn);

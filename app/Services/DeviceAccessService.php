@@ -13,6 +13,7 @@ class DeviceAccessService
         private DeviceSubscriptionService $subscriptions,
         private TraccarDeviceAccessService $traccarDevices,
         private TraccarTrackingGate $trackingGate,
+        private \App\Services\Authorization\RbacService $rbac,
     ) {}
 
     /**
@@ -34,6 +35,11 @@ class DeviceAccessService
     ): array {
         if (! $user) {
             return $this->deny('no_owner', 'Device not assigned', 'This device is not linked to an active account.');
+        }
+
+        if ($this->rbac->bypassesSubscriptionRestrictions($user)) {
+            $requireSubscription = false;
+            $allowInactiveDevice = true;
         }
 
         $gate = $this->trackingGate->canShowTracking(

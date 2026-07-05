@@ -315,6 +315,13 @@ return [
         'subscriptions' => [
             'title' => 'الاشتراكات',
             'page_title' => 'الاشتراكات',
+            'vehicles_column' => 'المركبات',
+            'attached_vehicles' => 'المركبات المرفقة',
+            'vehicle_count_label' => ':count مركبة',
+            'view_title' => 'تفاصيل الاشتراك',
+            'batch_summary' => 'ملخص الاشتراك',
+            'view_details' => 'عرض التفاصيل',
+            'print_details' => 'طباعة',
         ],
         'activity_log' => [
             'title' => 'سجل النشاط',

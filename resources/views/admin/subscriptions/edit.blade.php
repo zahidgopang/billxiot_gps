@@ -4,6 +4,11 @@
 
 @section('content')
     @php $panel = $panel ?? (request()->routeIs('client.*') ? 'client' : 'admin'); @endphp
+
+    @if(!empty($batch) && ($batch->device_count ?? 1) > 1)
+        @include('admin.subscriptions._batch-devices', ['batch' => $batch])
+    @endif
+
     <x-admin.form-shell
         :action="route($panel . '.subscriptions.update', $subscription)"
         method="PUT"

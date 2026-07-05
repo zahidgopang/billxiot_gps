@@ -22,6 +22,14 @@ class RbacService
     }
 
     /**
+     * Super admin (platform owner) — no subscription/device tracking restrictions.
+     */
+    public function bypassesSubscriptionRestrictions(User $user): bool
+    {
+        return $this->isSuperAdmin($user);
+    }
+
+    /**
      * Legacy admin panel gate (super admin + vendor admin).
      */
     public function isVendorAdmin(User $user): bool

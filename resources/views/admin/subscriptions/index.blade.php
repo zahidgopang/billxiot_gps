@@ -71,7 +71,7 @@
             <table class="table table-hover align-middle">
                 <thead>
                 <tr>
-                    <th>{{ __('app.forms.device') }}</th>
+                    <th>{{ __('app.admin.subscriptions.vehicles_column') }}</th>
                     <th>{{ __('app.forms.plan') }}</th>
                     <th>{{ __('app.forms.owner') }}</th>
                     <th>{{ __('app.forms.starts') }}</th>
@@ -82,19 +82,23 @@
                 </tr>
                 </thead>
                 <tbody>
-                @php
-                    $seenClientInvoices = [];
-                    $seenPlatformInvoices = [];
-                @endphp
-                @foreach($subs as $s)
+                @forelse($batches as $batch)
                     @php
+                        $s = $batch->primary;
                         $displayStatus = $s->status;
-                        $canRenew = $displayStatus === 'expired';
+                        $canRenew = $batch->device_count === 1 && $displayStatus === 'expired';
+                        $historiesCount = $batch->subscriptions->sum('histories_count');
                     @endphp
                     <tr data-subscription-id="{{ $s->id }}">
                         <td>
-                            <strong>{{ $s->device?->name ?? '—' }}</strong>
-                            <small class="d-block text-muted">{{ $s->device?->imei }}</small>
+                            <a href="{{ route($panel . '.subscriptions.show', $s) }}" class="text-decoration-none">
+                                <strong>{{ __('app.admin.subscriptions.vehicle_count_label', ['count' => $batch->device_count]) }}</strong>
+                            </a>
+                            @if($batch->device_count === 1 && $s->device)
+                                <small class="d-block text-muted">{{ $s->device->name }}</small>
+                            @elseif($batch->is_consolidated)
+                                <small class="d-block text-muted">{{ __('app.admin.subscriptions.view_details') }}</small>
+                            @endif
                         </td>
                         <td>{{ $s->plan }}</td>
                         <td>{{ $s->user?->name ?? '—' }}</td>
@@ -110,35 +114,19 @@
                             @endif
                         </td>
                         <td class="small">
-                            @php
-                                $clientInvoiceId = $s->clientInvoice?->id;
-                                $platformInvoiceId = $s->platformInvoice?->id;
-                                $showClientInvoice = $s->clientInvoice && ! in_array($clientInvoiceId, $seenClientInvoices, true);
-                                $showPlatformInvoice = $s->platformInvoice && ! in_array($platformInvoiceId, $seenPlatformInvoices, true);
-                                if ($showClientInvoice && $clientInvoiceId) {
-                                    $seenClientInvoices[] = $clientInvoiceId;
-                                }
-                                if ($showPlatformInvoice && $platformInvoiceId) {
-                                    $seenPlatformInvoices[] = $platformInvoiceId;
-                                }
-                            @endphp
-                            @if($showClientInvoice)
+                            @if($s->clientInvoice)
                                 <a href="{{ route($panel . '.billing-invoices.show', $s->clientInvoice) }}"
                                    class="d-block text-nowrap invoice-modal-link"
                                    title="{{ __('app.billing.end_user_invoice_summary') }}">
                                     <i class="fas fa-user text-primary me-1"></i>{{ $s->clientInvoice->invoice_no }}
                                 </a>
-                            @elseif($s->clientInvoice)
-                                <span class="d-block text-muted text-nowrap">{{ __('app.billing.same_consolidated_invoice') }}</span>
                             @endif
-                            @if($showPlatformInvoice)
+                            @if($s->platformInvoice)
                                 <a href="{{ route($panel . '.billing-invoices.show', $s->platformInvoice) }}"
                                    class="d-block text-nowrap text-muted invoice-modal-link"
                                    title="{{ __('app.billing.platform_invoice_summary') }}">
                                     <i class="fas fa-building me-1"></i>{{ $s->platformInvoice->invoice_no }}
                                 </a>
-                            @elseif($s->platformInvoice)
-                                <span class="d-block text-muted text-nowrap">{{ __('app.billing.same_consolidated_invoice') }}</span>
                             @endif
                             @if(!$s->clientInvoice && !$s->platformInvoice)
                                 <span class="text-muted">—</span>
@@ -177,18 +165,40 @@
                                     </button>
                                 @endif
 
+                                <a href="{{ route($panel . '.subscriptions.show', $s) }}"
+                                   class="btn btn-sm btn-outline-secondary"
+                                   title="{{ __('app.admin.subscriptions.view_details') }}">
+                                    <i class="fas fa-eye"></i>
+                                </a>
+
                                 <button type="button"
                                         class="btn btn-sm btn-outline-secondary btn-history-sub position-relative"
                                         title="{{ __('app.forms.subscription_history') }}"
                                         data-id="{{ $s->id }}"
                                         data-history-url="{{ route($panel . '.subscriptions.histories', $s) }}">
                                     <i class="fas fa-history"></i>
-                                    @if($s->histories_count > 0)
-                                        <span class="badge rounded-pill bg-primary history-count">{{ $s->histories_count }}</span>
+                                    @if($historiesCount > 0)
+                                        <span class="badge rounded-pill bg-primary history-count">{{ $historiesCount }}</span>
                                     @endif
                                 </button>
 
                                 <a href="{{ route($panel . '.subscriptions.edit', $s) }}" class="btn btn-sm btn-outline-primary">{{ __('app.common.edit') }}</a>
+
+                                @if($clientInvoice)
+                                    <a href="{{ route($panel . '.billing-invoices.show', $clientInvoice) }}"
+                                       target="_blank"
+                                       class="btn btn-sm btn-outline-dark"
+                                       title="{{ __('app.admin.subscriptions.print_details') }}">
+                                        <i class="fas fa-print"></i>
+                                    </a>
+                                @else
+                                    <a href="{{ route($panel . '.subscriptions.show', $s) }}"
+                                       target="_blank"
+                                       class="btn btn-sm btn-outline-dark"
+                                       title="{{ __('app.admin.subscriptions.print_details') }}">
+                                        <i class="fas fa-print"></i>
+                                    </a>
+                                @endif
 
                                 @if($panel === 'admin')
                                 <form action="{{ route('admin.subscriptions.destroy', $s) }}" method="POST" class="d-inline delete-form">
@@ -199,12 +209,16 @@
                             </div>
                         </td>
                     </tr>
-                @endforeach
+                @empty
+                    <tr>
+                        <td colspan="8" class="text-center text-muted py-4">{{ __('app.common.no_data') }}</td>
+                    </tr>
+                @endforelse
                 </tbody>
             </table>
 
             <div class="mt-3">
-                {{ $subs->links() }}
+                {{ $groupsPage->links() }}
             </div>
         </div>
     </div>

@@ -62,7 +62,7 @@ class MobileLoginService
             'expires_at' => $tokenResult->accessToken->expires_at?->toIso8601String(),
             'permissions' => $this->entitlement->permissionsFor($user),
             'accessible_devices' => $devices->map(
-                fn ($d) => $this->presenter->listItem($d)
+                fn ($d) => $this->presenter->listItem($d, null, $user)
             )->values(),
             'subscription' => $this->safeSubscriptionSummary($user),
         ];
