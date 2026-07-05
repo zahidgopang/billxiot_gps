@@ -205,7 +205,10 @@
                         close: i.close || 'Close',
                     },
                 });
-                this.map.addListener('click', () => this.vehiclePopup?.close());
+                this.map.addListener('click', () => {
+                    if (global.GoogleMapsPlatform?.shouldSuppressMapClick?.()) return;
+                    this.vehiclePopup?.close();
+                });
             }
 
             google.maps.event.addListener(this.map, 'zoom_changed', () => {
@@ -398,12 +401,14 @@
                     title: device.title,
                 });
                 marker.addListener('click', () => {
-                    const point = this.devicePoint(device);
-                    if (this.vehiclePopup && point.lat != null) {
-                        this.vehiclePopup.open(point, marker);
-                    } else if (device.launch_map_url) {
-                        window.location.href = device.launch_map_url;
-                    }
+                    global.GoogleMapsPlatform?.runAfterMarkerClick?.(() => {
+                        const point = this.devicePoint(device);
+                        if (this.vehiclePopup && point.lat != null) {
+                            this.vehiclePopup.open(point, marker?.getAnchor?.() || marker);
+                        } else if (device.launch_map_url) {
+                            window.location.href = device.launch_map_url;
+                        }
+                    });
                 });
                 this.markers.set(global.FleetMapCluster.stableMarkerId(item), marker);
 

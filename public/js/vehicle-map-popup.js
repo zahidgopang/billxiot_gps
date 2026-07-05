@@ -43,14 +43,33 @@
         return escHtml(dash(i18n));
     }
 
+    function resolveStatusDurationSeconds(point) {
+        if (point?.status_since) {
+            const since = Date.parse(point.status_since);
+            if (Number.isFinite(since)) {
+                return Math.max(0, Math.round((Date.now() - since) / 1000));
+            }
+        }
+        if (point?.status_duration_seconds != null) {
+            const sec = Number(point.status_duration_seconds);
+            if (Number.isFinite(sec)) {
+                return Math.max(0, Math.round(sec));
+            }
+        }
+        return null;
+    }
+
     function statusText(point, i18n) {
         const label = point.status_label || point.status || point.motion_status || dash(i18n);
-        const dur = point.status_duration_seconds;
-        if (dur != null && dur > 0) {
-            const forLbl = i18n.statusFor || 'for';
-            return `${escHtml(label)} <span class="vehicle-map-popup__dur">${escHtml(forLbl)} ${escHtml(formatDuration(dur))}</span>`;
-        }
         return escHtml(label);
+    }
+
+    function durationText(point, i18n) {
+        const dur = resolveStatusDurationSeconds(point);
+        if (dur == null) {
+            return escHtml(dash(i18n));
+        }
+        return escHtml(formatDuration(dur));
     }
 
     function statusColor(point, stateColors) {
@@ -113,6 +132,7 @@
                 ${plate ? row(i18n.plate || 'Plate', escHtml(plate)) : ''}
                 ${row(i18n.odometer || 'Odometer', odometerText(point, i18n))}
                 ${row(i18n.status || 'Status', `<span class="vehicle-map-popup__status" style="color:${escHtml(color)}">${statusText(point, i18n)}</span>`)}
+                ${row(i18n.statusDuration || 'Duration', `<span class="vehicle-map-popup__dur">${durationText(point, i18n)}</span>`)}
                 ${row(i18n.altitude || 'Altitude', escHtml(alt))}
                 ${row(i18n.angle || 'Angle', escHtml(angle))}
                 ${row(i18n.position || 'Position', positionText(point, i18n))}
@@ -123,12 +143,53 @@
         </div>`;
     }
 
+    function resolveAnchor(anchor) {
+        return global.GoogleMapsPlatform?.resolveNativeMarker?.(anchor)
+            || anchor?._native
+            || anchor
+            || null;
+    }
+
+    function openInfoWindow(iw, map, point, anchor) {
+        const lat = parseFloat(point.lat);
+        const lng = parseFloat(point.lng);
+        const resolved = resolveAnchor(anchor);
+        const isAdvanced = !!anchor?._advanced;
+
+        if (resolved && !isAdvanced && typeof resolved.getPosition === 'function') {
+            try {
+                iw.open({ map, anchor: resolved });
+                return true;
+            } catch (_) {
+                /* fall through */
+            }
+        }
+
+        if (resolved && isAdvanced && resolved.map) {
+            try {
+                iw.open({ map, anchor: resolved });
+                return true;
+            } catch (_) {
+                /* fall through */
+            }
+        }
+
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+            return false;
+        }
+
+        iw.setPosition({ lat, lng });
+        iw.open(map);
+        return true;
+    }
+
     class VehicleMapPopup {
         constructor(options = {}) {
             this.opts = options;
             this.infoWindow = null;
             this.openId = null;
             this.currentPoint = null;
+            this._tickTimer = null;
         }
 
         ensureWindow() {
@@ -147,17 +208,20 @@
         open(point, anchor) {
             const map = typeof this.opts.getMap === 'function' ? this.opts.getMap() : this.opts.map;
             if (!map || !point) return;
+
+            global.GoogleMapsPlatform?.runAfterMarkerClick?.();
+
             this.currentPoint = point;
             this.openId = point.id ?? null;
             const iw = this.ensureWindow();
             iw.setContent(buildHtml(point, this.opts));
-            if (anchor?.getPosition) {
-                iw.open({ map, anchor });
-            } else if (point.lat != null && point.lng != null) {
-                iw.setPosition({ lat: parseFloat(point.lat), lng: parseFloat(point.lng) });
-                iw.open(map);
+
+            if (!openInfoWindow(iw, map, point, anchor)) {
+                return;
             }
+
             this.opts.onOpen?.(point);
+            this._startDurationTick();
         }
 
         update(point) {
@@ -167,13 +231,38 @@
             if (!this.infoWindow?.getMap()) return;
             this.currentPoint = point;
             this.infoWindow.setContent(buildHtml(point, this.opts));
+            this._wireDom();
         }
 
         close() {
+            this._stopDurationTick();
             this.openId = null;
             this.currentPoint = null;
             this.infoWindow?.close();
             this.opts.onClose?.();
+        }
+
+        _startDurationTick() {
+            this._stopDurationTick();
+            const point = this.currentPoint;
+            if (!point || (point.status_since == null && point.status_duration_seconds == null)) {
+                return;
+            }
+            this._tickTimer = global.setInterval(() => {
+                if (!this.infoWindow?.getMap() || !this.currentPoint) {
+                    this._stopDurationTick();
+                    return;
+                }
+                this.infoWindow.setContent(buildHtml(this.currentPoint, this.opts));
+                this._wireDom();
+            }, 1000);
+        }
+
+        _stopDurationTick() {
+            if (this._tickTimer != null) {
+                global.clearInterval(this._tickTimer);
+                this._tickTimer = null;
+            }
         }
 
         isOpenFor(id) {

@@ -354,7 +354,10 @@
                         close: i.close || 'Close',
                     },
                 });
-                this.map.addListener('click', () => this.vehiclePopup?.close());
+                this.map.addListener('click', () => {
+                    if (global.GoogleMapsPlatform?.shouldSuppressMapClick?.()) return;
+                    this.vehiclePopup?.close();
+                });
             }
 
             this.bindUi();
@@ -527,11 +530,16 @@
             }
 
             st.marker.addListener('click', () => {
-                const cur = this.vehicles.get(id);
-                if (cur?.lat != null) {
-                    this.selectRouteTripVehicle(id);
-                    this.vehiclePopup?.open({ ...cur, id }, st.marker);
-                }
+                global.GoogleMapsPlatform?.runAfterMarkerClick?.(() => {
+                    const cur = this.vehicles.get(id);
+                    if (cur?.lat != null) {
+                        this.selectRouteTripVehicle(id);
+                        this.vehiclePopup?.open(
+                            { ...cur, id },
+                            st.marker?.getAnchor?.() || st.marker,
+                        );
+                    }
+                });
             });
         }
 

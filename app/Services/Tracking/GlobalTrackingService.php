@@ -399,6 +399,7 @@ class GlobalTrackingService
         return $devices->map(function (Device $device) use ($actor, $driverPayloads, $includeDriver) {
             $latest = $device->latestLocation;
             $map = $this->mapStatus->resolve($latest, $device);
+            $duration = $this->statusDuration->resolve($device, $latest, $map);
 
             return array_merge([
                 'id' => $device->id,
@@ -408,6 +409,10 @@ class GlobalTrackingService
                 'status_key' => $map['key'],
                 'status_label' => $map['label'],
                 'connectivity_tier' => $map['connectivity_tier'],
+                'status_since' => $duration['since']
+                    ? app_datetime_api($duration['since'])
+                    : null,
+                'status_duration_seconds' => $duration['seconds'],
                 'icon' => $device->deviceTypeIconClass(),
                 'color' => VehicleStatusSpec::colorForKey($map['key']),
                 'lat' => $latest ? (float) $latest->lat : null,

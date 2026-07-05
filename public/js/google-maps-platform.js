@@ -33,6 +33,19 @@
         }
     }
 
+    let suppressMapClickUntil = 0;
+
+    function runAfterMarkerClick(fn) {
+        suppressMapClickUntil = Date.now() + 400;
+        if (typeof fn === 'function') {
+            fn();
+        }
+    }
+
+    function shouldSuppressMapClick() {
+        return Date.now() < suppressMapClickUntil;
+    }
+
     function loadMapsApi(options) {
         const { key, mapId, libraries } = readConfig(options);
         if (!key) {
@@ -150,47 +163,68 @@
     function symbolIconToContent(icon) {
         const scale = Number(icon.scale) || 8;
         const size = Math.max(8, scale * 2);
-        const wrapper = document.createElement('div');
-        wrapper.className = 'gmap-adv-marker gmap-adv-marker--symbol';
-        wrapper.style.width = `${size}px`;
-        wrapper.style.height = `${size}px`;
-        wrapper.style.borderRadius = '50%';
-        wrapper.style.background = icon.fillColor || '#ef4444';
-        wrapper.style.opacity = icon.fillOpacity == null ? 1 : icon.fillOpacity;
-        wrapper.style.border = `${icon.strokeWeight || 2}px solid ${icon.strokeColor || '#ffffff'}`;
-        wrapper.style.boxSizing = 'border-box';
-        wrapper.style.transform = `translate(-${size / 2}px, -${size / 2}px)`;
-        return wrapper;
+
+        return createAnchoredContent((inner) => {
+            inner.style.left = `${-size / 2}px`;
+            inner.style.top = `${-size / 2}px`;
+
+            const dot = document.createElement('div');
+            dot.className = 'gmap-adv-marker gmap-adv-marker--symbol';
+            dot.style.width = `${size}px`;
+            dot.style.height = `${size}px`;
+            dot.style.borderRadius = '50%';
+            dot.style.background = icon.fillColor || '#ef4444';
+            dot.style.opacity = icon.fillOpacity == null ? 1 : icon.fillOpacity;
+            dot.style.border = `${icon.strokeWeight || 2}px solid ${icon.strokeColor || '#ffffff'}`;
+            dot.style.boxSizing = 'border-box';
+            inner.appendChild(dot);
+        });
+    }
+
+    function createAnchoredContent(buildInner) {
+        const outer = document.createElement('div');
+        outer.className = 'gmap-adv-marker-anchor';
+        outer.style.position = 'relative';
+        outer.style.width = '0';
+        outer.style.height = '0';
+        outer.style.overflow = 'visible';
+        outer.style.lineHeight = '0';
+        outer.style.pointerEvents = 'auto';
+
+        const inner = document.createElement('div');
+        inner.style.position = 'absolute';
+        buildInner(inner, outer);
+        outer.appendChild(inner);
+        return outer;
     }
 
     function urlIconToContent(icon, state) {
         const { w, h } = scaledSizePx(icon);
         const { x: ax, y: ay } = anchorPx(icon, w, h);
-        const wrapper = document.createElement('div');
-        wrapper.className = 'gmap-adv-marker';
-        wrapper.style.lineHeight = '0';
-        wrapper.style.transform = `translate(-${ax}px, -${ay}px)`;
 
-        const img = document.createElement('img');
-        img.src = icon.url;
-        img.alt = '';
-        img.draggable = false;
-        img.style.width = `${w}px`;
-        img.style.height = `${h}px`;
-        img.style.display = 'block';
-        img.style.userSelect = 'none';
-        img.style.pointerEvents = 'none';
+        return createAnchoredContent((inner, outer) => {
+            inner.style.left = `${-ax}px`;
+            inner.style.top = `${-ay}px`;
 
-        const rotation = Number(icon.meta?.rotation ?? state.rotation ?? 0) || 0;
-        const flat = !!(icon.meta?.flat ?? state.flat);
-        if (flat && rotation) {
-            img.style.transformOrigin = 'center center';
-            img.style.transform = `rotate(${rotation}deg)`;
-        }
+            const img = document.createElement('img');
+            img.src = icon.url;
+            img.alt = '';
+            img.draggable = false;
+            img.style.width = `${w}px`;
+            img.style.height = `${h}px`;
+            img.style.display = 'block';
+            img.style.userSelect = 'none';
 
-        wrapper.appendChild(img);
-        wrapper._img = img;
-        return wrapper;
+            const rotation = Number(icon.meta?.rotation ?? state.rotation ?? 0) || 0;
+            const flat = !!(icon.meta?.flat ?? state.flat);
+            if (flat && rotation) {
+                img.style.transformOrigin = 'center center';
+                img.style.transform = `rotate(${rotation}deg)`;
+            }
+
+            inner.appendChild(img);
+            outer._img = img;
+        });
     }
 
     function iconToContent(icon, state) {
@@ -223,22 +257,26 @@
             return undefined;
         }
         const color = (typeof label === 'object' && label.color) ? label.color : '#ffffff';
-        const wrapper = document.createElement('div');
-        wrapper.className = 'gmap-adv-marker gmap-adv-marker--label';
-        wrapper.textContent = text;
-        wrapper.style.width = '28px';
-        wrapper.style.height = '28px';
-        wrapper.style.borderRadius = '50%';
-        wrapper.style.background = '#2563eb';
-        wrapper.style.color = color;
-        wrapper.style.display = 'flex';
-        wrapper.style.alignItems = 'center';
-        wrapper.style.justifyContent = 'center';
-        wrapper.style.fontWeight = (typeof label === 'object' && label.fontWeight) ? label.fontWeight : '700';
-        wrapper.style.fontSize = '12px';
-        wrapper.style.boxShadow = '0 1px 4px rgba(15,23,42,0.35)';
-        wrapper.style.transform = 'translate(-14px, -14px)';
-        return wrapper;
+        return createAnchoredContent((inner) => {
+            inner.style.left = '-14px';
+            inner.style.top = '-14px';
+
+            const badge = document.createElement('div');
+            badge.className = 'gmap-adv-marker gmap-adv-marker--label';
+            badge.textContent = text;
+            badge.style.width = '28px';
+            badge.style.height = '28px';
+            badge.style.borderRadius = '50%';
+            badge.style.background = '#2563eb';
+            badge.style.color = color;
+            badge.style.display = 'flex';
+            badge.style.alignItems = 'center';
+            badge.style.justifyContent = 'center';
+            badge.style.fontWeight = (typeof label === 'object' && label.fontWeight) ? label.fontWeight : '700';
+            badge.style.fontSize = '12px';
+            badge.style.boxShadow = '0 1px 4px rgba(15,23,42,0.35)';
+            inner.appendChild(badge);
+        });
     }
 
     function mapAdvancedMarkerEvent(event) {
@@ -258,19 +296,35 @@
 
     function addAdvancedMarkerListener(native, event, fn) {
         const mapped = mapAdvancedMarkerEvent(event);
-
-        if (typeof native.addListener === 'function') {
-            return native.addListener(mapped, fn);
-        }
+        const handler = (e) => {
+            if (mapped === 'gmp-click' && typeof e?.stop === 'function') {
+                e.stop();
+            }
+            fn(e);
+        };
 
         if (typeof native.addEventListener === 'function') {
-            native.addEventListener(mapped, fn);
+            native.addEventListener(mapped, handler);
             return {
-                remove: () => native.removeEventListener(mapped, fn),
+                remove: () => native.removeEventListener(mapped, handler),
             };
         }
 
+        if (typeof native.addListener === 'function') {
+            return native.addListener(mapped, handler);
+        }
+
         return null;
+    }
+
+    function resolveNativeMarker(marker) {
+        if (!marker) {
+            return null;
+        }
+        if (marker._native) {
+            return marker._native;
+        }
+        return marker;
     }
 
     function createAdvancedMarker(options) {
@@ -286,6 +340,7 @@
             title: options.title,
             content,
             zIndex: options.zIndex,
+            gmpClickable: options.gmpClickable !== false,
             gmpDraggable: !!options.draggable,
         });
 
@@ -339,6 +394,12 @@
             addListener(event, fn) {
                 return addAdvancedMarkerListener(native, event, fn);
             },
+            getAnchor() {
+                return native;
+            },
+            getMap() {
+                return native.map ?? null;
+            },
         };
 
         if (options.icon?.meta) {
@@ -376,5 +437,8 @@
         canUseAdvancedMarkers,
         ensureAsyncUrl,
         createMarker,
+        resolveNativeMarker,
+        runAfterMarkerClick,
+        shouldSuppressMapClick,
     };
 })(typeof window !== 'undefined' ? window : globalThis);

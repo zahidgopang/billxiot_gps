@@ -197,7 +197,9 @@
                 });
                 this._applyIconRotation(icon);
                 this.vehicleMarker.addListener('click', () => {
-                    this.opts.onVehicleClick?.(point);
+                    global.GoogleMapsPlatform?.runAfterMarkerClick?.(() => {
+                        this.opts.onVehicleClick?.(point);
+                    });
                 });
                 if (this.followVehicle) {
                     this._panTo(position, options.focusZoom);

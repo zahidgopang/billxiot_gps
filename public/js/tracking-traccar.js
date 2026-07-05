@@ -593,6 +593,7 @@
                         plate: i.lblPlate || 'Plate',
                         odometer: i.lblOdometer || 'Odometer',
                         status: i.lblStatus || 'Status',
+                        statusDuration: i.lblDuration || 'Duration',
                         altitude: i.lblAltitude || 'Altitude',
                         angle: i.lblAngle || 'Angle',
                         position: i.lblPosition || 'Position',
@@ -609,7 +610,10 @@
                         this.sendCommandFromPopup(deviceId, type, btn);
                     },
                 });
-                this.map.addListener('click', () => this.vehiclePopup?.close());
+                this.map.addListener('click', () => {
+                    if (global.GoogleMapsPlatform?.shouldSuppressMapClick?.()) return;
+                    this.vehiclePopup?.close();
+                });
             }
 
             if (document.querySelector('.tc-tab')) {
@@ -1133,9 +1137,12 @@
                 this.startPolling();
             }
             this.selectRouteTripVehicle(id);
-            this.renderLiveClusters();
             this.closeNavigationOnVehicleSelect();
-            this.vehiclePopup.open({ ...v, id }, st.marker);
+            this.vehiclePopup.open(
+                { ...v, id },
+                st.marker?.getAnchor?.() || st.marker,
+            );
+            this.renderLiveClusters();
         }
 
         async sendCommandFromPopup(deviceId, type, btn) {
@@ -1507,7 +1514,9 @@
                 optimized: false,
             });
             this.setVehicleMarkerIcon(st, v, v.heading || 0);
-            st.marker.addListener('click', () => this.openVehiclePopup(id));
+            st.marker.addListener('click', () => {
+                global.GoogleMapsPlatform?.runAfterMarkerClick?.(() => this.openVehiclePopup(id));
+            });
             if (pos) {
                 st.lastPoint = { ...v };
                 st.renderPos = pos;

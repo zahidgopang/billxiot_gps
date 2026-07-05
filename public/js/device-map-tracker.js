@@ -219,7 +219,9 @@
                 startIconUrl: cfg.startIcon,
                 endIconUrl: cfg.endIcon,
                 onVehicleClick: () => {
-                    if (lastTelemetry) openLiveVehiclePopup(lastTelemetry);
+                    global.GoogleMapsPlatform?.runAfterMarkerClick?.(() => {
+                        if (lastTelemetry) openLiveVehiclePopup(lastTelemetry);
+                    });
                 },
             });
             fleetRenderer.attachMap(map);
@@ -542,7 +544,7 @@
                 title: identity.title,
                 plate: identity.plate || point.plate,
                 id: deviceId,
-            }, currentPositionMarker);
+            }, currentPositionMarker.getAnchor?.() || currentPositionMarker);
         }
     }
 
@@ -567,7 +569,7 @@
             title: identity.title,
             plate: identity.plate || point.plate,
             id: deviceId,
-        }, currentPositionMarker);
+        }, currentPositionMarker.getAnchor?.() || currentPositionMarker);
         updateVehiclePulseOverlay(point);
     }
 
@@ -2716,6 +2718,7 @@ ${pts}
             closeLiveVehiclePopup();
         });
         map.addListener('click', () => {
+            if (global.GoogleMapsPlatform?.shouldSuppressMapClick?.()) return;
             if (vehiclePopupPinned) {
                 closeLiveVehiclePopup();
             }
