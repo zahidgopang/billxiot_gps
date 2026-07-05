@@ -202,7 +202,11 @@ final class PermissionCatalog
             || str_starts_with($k, 'web.map.')
             || str_starts_with($k, 'web.history.')
             || str_starts_with($k, 'web.events.')
-            || str_starts_with($k, 'web.trips.view')
+            || str_starts_with($k, 'web.reports.')
+            || str_starts_with($k, 'web.geofence.')
+            || str_starts_with($k, 'web.settings.')
+            || str_starts_with($k, 'web.tracking.hub.')
+            || str_starts_with($k, 'web.trips.')
             || str_starts_with($k, 'pref.')
         ));
 
@@ -212,6 +216,27 @@ final class PermissionCatalog
             'client' => array_values(array_filter($clientKeys, fn ($k) => ! str_starts_with($k, 'pref.'))),
             'user' => $endUserKeys,
         ];
+    }
+
+    /**
+     * Permissions every end-user account gets on web + mobile without admin assignment.
+     *
+     * @return list<string>
+     */
+    public static function endUserBaselinePermissionKeys(): array
+    {
+        return self::defaultRoleGrants()['user'] ?? [];
+    }
+
+    public static function isEndUserBaselinePermission(string $permission): bool
+    {
+        static $lookup = null;
+
+        if ($lookup === null) {
+            $lookup = array_fill_keys(self::endUserBaselinePermissionKeys(), true);
+        }
+
+        return isset($lookup[$permission]);
     }
 
     /**

@@ -51,6 +51,7 @@ class MobileLoginService
             ? null
             : now()->addHours((int) config('mobile_auth.session_hours', 12));
 
+        // Issue a new token per device; do not revoke existing mobile sessions.
         $tokenResult = $user->createToken($deviceName, ['*'], $expiresAt);
         $devices = $this->loadAccessibleDevices($user);
 

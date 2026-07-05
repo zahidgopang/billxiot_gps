@@ -4,6 +4,7 @@ namespace App\Services\Authorization;
 
 use App\Enums\AppRole;
 use App\Models\User;
+use App\Support\Authorization\PermissionCatalog;
 use App\Support\Traccar\TraccarAppFields;
 
 class RbacService
@@ -55,6 +56,12 @@ class RbacService
     public function hasPermission(User $user, string $permission): bool
     {
         if ($this->isSuperAdmin($user)) {
+            return true;
+        }
+
+        // End users always get fleet tracking (live map, history, mobile) without
+        // per-user permission assignment. Device scope is enforced separately.
+        if ($this->isEndUser($user) && PermissionCatalog::isEndUserBaselinePermission($permission)) {
             return true;
         }
 

@@ -3,6 +3,7 @@
 namespace App\Auth;
 
 use App\Models\User;
+use App\Services\Authorization\RbacService;
 use App\Support\Traccar\TraccarPassword;
 use App\Support\Traccar\TraccarSchema;
 use Illuminate\Auth\EloquentUserProvider;
@@ -59,6 +60,22 @@ class TcAwareUserProvider extends EloquentUserProvider
         } catch (\Throwable) {
             return null;
         }
+    }
+
+    /**
+     * End users may stay signed in on many browsers/devices at once.
+     * Do not rotate the shared remember token when one browser logs in or out.
+     */
+    public function updateRememberToken(Authenticatable $user, #[\SensitiveParameter] $token): void
+    {
+        if ($user instanceof User
+            && app(RbacService::class)->isEndUser($user)
+            && ! empty($user->getRememberToken())) {
+            return;
+        }
+
+        $user->setRememberToken($token);
+        $user->save();
     }
 
     public function validateCredentials(Authenticatable $user, #[\SensitiveParameter] array $credentials): bool

@@ -4,12 +4,10 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\LoginRequest;
-use App\Models\User;
 use App\Services\Authorization\RbacService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\View\View;
 
 class AuthenticatedSessionController extends Controller
@@ -37,33 +35,17 @@ class AuthenticatedSessionController extends Controller
     }
 
     /**
-     * Destroy an authenticated session.
+     * Destroy the authenticated session on this browser only.
      *
-     * Multi-device aware: logging out on this device must NOT sign the same
-     * account out on other laptops/phones. Laravel's guard logout rotates the
-     * shared remember_token, which would invalidate "remember me" everywhere, so
-     * we capture and restore it after invalidating only the current session.
+     * Uses logoutCurrentDevice() so other browsers/tabs for the same account
+     * stay signed in (no shared remember_token rotation).
      */
     public function destroy(Request $request): RedirectResponse
     {
-        $guard = Auth::guard('web');
-        $user = $guard->user();
-        $rememberToken = $user?->getRememberToken();
-
-        $guard->logout();
+        Auth::guard('web')->logoutCurrentDevice();
 
         $request->session()->invalidate();
-
         $request->session()->regenerateToken();
-
-        if ($user && ! empty($rememberToken)) {
-            try {
-                $user->setRememberToken($rememberToken);
-                $user->save();
-            } catch (\Throwable $e) {
-                report($e);
-            }
-        }
 
         return redirect('/');
     }
