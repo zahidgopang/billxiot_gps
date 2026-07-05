@@ -241,6 +241,38 @@
         return wrapper;
     }
 
+    function mapAdvancedMarkerEvent(event) {
+        switch (event) {
+            case 'click':
+                return 'gmp-click';
+            case 'drag':
+                return 'gmp-drag';
+            case 'dragend':
+                return 'gmp-dragend';
+            case 'dragstart':
+                return 'gmp-dragstart';
+            default:
+                return event;
+        }
+    }
+
+    function addAdvancedMarkerListener(native, event, fn) {
+        const mapped = mapAdvancedMarkerEvent(event);
+
+        if (typeof native.addListener === 'function') {
+            return native.addListener(mapped, fn);
+        }
+
+        if (typeof native.addEventListener === 'function') {
+            native.addEventListener(mapped, fn);
+            return {
+                remove: () => native.removeEventListener(mapped, fn),
+            };
+        }
+
+        return null;
+    }
+
     function createAdvancedMarker(options) {
         const AdvancedMarkerElement = global.google.maps.marker.AdvancedMarkerElement;
         const state = { flat: false, rotation: 0 };
@@ -305,7 +337,7 @@
                 updateContentRotation(content, state.rotation, state.flat);
             },
             addListener(event, fn) {
-                return native.addListener(event, fn);
+                return addAdvancedMarkerListener(native, event, fn);
             },
         };
 
