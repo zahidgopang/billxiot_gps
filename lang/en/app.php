@@ -951,6 +951,7 @@ return [
         'ft_data' => 'Data',
         'ft_graph' => 'Graph',
         'ft_messages' => 'Messages',
+        'resize_panel' => 'Drag to resize panel',
         'lbl_plate' => 'Plate',
         'lbl_status' => 'Status',
         'lbl_speed' => 'Speed',

@@ -1133,13 +1133,31 @@
         const panel = document.getElementById('mapLivePanel');
         const toggle = document.getElementById('mapLivePanelToggle');
         if (!panel) return;
+        const bodyH = expanded ? (parseInt(panel.style.getPropertyValue('--map-live-panel-body-h'), 10) || 340) : 0;
+        setMapLivePanelBodyHeight(bodyH, persist);
+        toggle?.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+    }
+
+    function setMapLivePanelBodyHeight(bodyH, persist) {
+        const panel = document.getElementById('mapLivePanel');
+        const toggle = document.getElementById('mapLivePanelToggle');
+        if (!panel) return;
+        const minH = 0;
+        const maxH = 420;
+        const h = Math.min(Math.max(bodyH, minH), maxH);
+        const expanded = h > 48;
         panel.classList.toggle('is-expanded', expanded);
         panel.classList.toggle('is-collapsed', !expanded);
+        panel.style.setProperty('--map-live-panel-body-h', `${h}px`);
         toggle?.setAttribute('aria-expanded', expanded ? 'true' : 'false');
         if (persist) {
             try {
+                localStorage.setItem('mapLivePanelBodyH.' + deviceId, String(h));
                 localStorage.setItem('mapLivePanelExpanded.' + deviceId, expanded ? '1' : '0');
             } catch (e) { /* ignore */ }
+        }
+        if (typeof window.deviceMapResize === 'function') {
+            window.deviceMapResize();
         }
     }
 
@@ -1150,34 +1168,62 @@
         const header = panel?.querySelector('.map-live-panel__header-main');
         if (!panel) return;
 
-        let startExpanded = false;
+        let restoredH = null;
         try {
-            startExpanded = localStorage.getItem('mapLivePanelExpanded.' + deviceId) === '1';
+            const storedH = parseInt(localStorage.getItem('mapLivePanelBodyH.' + deviceId), 10);
+            if (Number.isFinite(storedH)) {
+                restoredH = storedH;
+            } else if (localStorage.getItem('mapLivePanelExpanded.' + deviceId) === '1') {
+                restoredH = 340;
+            }
         } catch (e) { /* ignore */ }
-        setMapLivePanelExpanded(startExpanded, false);
+        if (restoredH != null) {
+            setMapLivePanelBodyHeight(restoredH, false);
+        } else {
+            setMapLivePanelBodyHeight(0, false);
+        }
 
         const flip = (e) => {
             e?.preventDefault();
             e?.stopPropagation();
-            setMapLivePanelExpanded(!panel.classList.contains('is-expanded'), true);
+            const expanded = panel.classList.contains('is-expanded');
+            setMapLivePanelBodyHeight(expanded ? 0 : (parseInt(panel.style.getPropertyValue('--map-live-panel-body-h'), 10) || 340), true);
         };
 
         toggle?.addEventListener('click', flip);
-        handle?.addEventListener('click', flip);
         header?.addEventListener('click', flip);
 
         let dragStartY = null;
+        let startBodyH = 0;
+
         handle?.addEventListener('pointerdown', (e) => {
             dragStartY = e.clientY;
+            startBodyH = parseInt(panel.style.getPropertyValue('--map-live-panel-body-h'), 10)
+                || (panel.classList.contains('is-expanded') ? 340 : 0);
             handle.setPointerCapture?.(e.pointerId);
+            e.preventDefault();
         });
-        handle?.addEventListener('pointerup', (e) => {
+
+        handle?.addEventListener('pointermove', (e) => {
+            if (dragStartY == null) return;
+            setMapLivePanelBodyHeight(startBodyH + (dragStartY - e.clientY), false);
+        });
+
+        const finishDrag = (e) => {
             if (dragStartY == null) return;
             const delta = dragStartY - e.clientY;
             dragStartY = null;
-            if (Math.abs(delta) < 24) return;
-            setMapLivePanelExpanded(delta > 0, true);
-        });
+            if (Math.abs(delta) < 12) {
+                flip(e);
+                return;
+            }
+            const h = parseInt(panel.style.getPropertyValue('--map-live-panel-body-h'), 10)
+                || (panel.classList.contains('is-expanded') ? 340 : 0);
+            setMapLivePanelBodyHeight(h, true);
+        };
+
+        handle?.addEventListener('pointerup', finishDrag);
+        handle?.addEventListener('pointercancel', finishDrag);
     }
 
     function initMapHudToggle() {

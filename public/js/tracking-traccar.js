@@ -429,6 +429,7 @@
             this.routeTripKit = null;
             this._routeTripDeviceId = null;
             this._routeBoundsFitted = false;
+            this._focusedVehicleId = null;
 
             // vehicle marker popup
             this.vehiclePopup = null;
@@ -637,6 +638,7 @@
             }
             if (document.getElementById('tcFooter')) {
                 this.bindFooterTabs();
+                this.bindFooterResize();
             }
             this.bindModules();
             if (document.getElementById('tcNavToggle')) {
@@ -1110,18 +1112,14 @@
         }
 
         locateVehicle(id) {
-            const v = this.vehicles.get(id);
-            if (!this.visible.has(id)) this.toggleVisible(id);
             this.closeNavigationOnVehicleSelect();
             this._routeBoundsFitted = false;
+            this._panelDeviceId = id;
+            this.focusVehicleOnMap(id);
             this.selectRouteTripVehicle(id);
-            this.renderLiveClusters();
             const rt = this.vehicles.get(id)?.route_trip;
             if (rt?.route) {
                 this.applyRouteTrip(id, rt);
-            } else if (v?.lat != null && v?.lng != null) {
-                this.map.panTo({ lat: v.lat, lng: v.lng });
-                if (this.map.getZoom() < 14) this.map.setZoom(15);
             }
             this.openDevicePanel(id);
         }
@@ -1130,19 +1128,13 @@
             const v = this.vehicles.get(id);
             const st = this.vehicleState(id);
             if (!v || v.lat == null || v.lng == null || !this.vehiclePopup) return;
-            if (!this.visible.has(id)) {
-                this.visible.add(id);
-                this.ensureMarker(id);
-                this.subscribePusher(id);
-                this.startPolling();
-            }
+            this.focusVehicleOnMap(id, { pan: false });
             this.selectRouteTripVehicle(id);
             this.closeNavigationOnVehicleSelect();
             this.vehiclePopup.open(
                 { ...v, id },
                 st.marker?.getAnchor?.() || st.marker,
             );
-            this.renderLiveClusters();
         }
 
         async sendCommandFromPopup(deviceId, type, btn) {
@@ -1187,11 +1179,7 @@
                 this.followId = id;
                 this.closeNavigationOnVehicleSelect();
                 this.selectRouteTripVehicle(id);
-                const v = this.vehicles.get(id);
-                if (v?.lat != null && v?.lng != null) {
-                    this.map.panTo({ lat: v.lat, lng: v.lng });
-                    this.map.setZoom(17);
-                }
+                this.focusVehicleOnMap(id);
             } else if (this.followId === id) {
                 this.followId = null;
                 if (this._panelDeviceId) {
@@ -1409,12 +1397,61 @@
         }
 
         activeClusterBreakId() {
-            const candidates = [this._panelDeviceId, this.followId, this._routeTripDeviceId];
+            const candidates = [this._focusedVehicleId, this._panelDeviceId, this.followId, this._routeTripDeviceId];
             for (const raw of candidates) {
                 const id = raw == null ? null : Number(raw);
                 if (id != null && this.visible.has(id)) return id;
             }
             return null;
+        }
+
+        /**
+         * Ensure the selected vehicle marker is visible and the map is centered on it.
+         */
+        focusVehicleOnMap(id, options = {}) {
+            const numId = Number(id);
+            if (!Number.isFinite(numId) || !this.vehicles.has(numId) || !this.map) return;
+
+            this._focusedVehicleId = numId;
+
+            if (!this.visible.has(numId)) {
+                this.visible.add(numId);
+                this.subscribePusher(numId);
+                this.startPolling();
+            }
+            this.ensureMarker(numId);
+
+            if (options.merge && typeof options.merge === 'object') {
+                const cur = this.vehicles.get(numId) || { id: numId };
+                this.vehicles.set(numId, { ...cur, ...options.merge, id: numId });
+            }
+
+            const v = this.vehicles.get(numId);
+            const st = this.vehicleState(numId);
+
+            if (hasGeo(v?.lat, v?.lng)) {
+                const lat = parseFloat(v.lat);
+                const lng = parseFloat(v.lng);
+                const pos = { lat, lng };
+                if (st.marker) {
+                    st.marker.setPosition(pos);
+                    st.marker.setMap(this.historyActive ? null : this.map);
+                    this.setVehicleMarkerIcon(st, v, v.heading ?? v.angle ?? 0);
+                }
+                st.lastPoint = { ...v, lat, lng };
+                st.renderPos = pos;
+                st.renderHeading = parseFloat(v.heading ?? v.angle ?? 0);
+            }
+
+            this.renderLiveClusters();
+
+            if (options.pan !== false && hasGeo(v?.lat, v?.lng)) {
+                this.map.panTo({ lat: parseFloat(v.lat), lng: parseFloat(v.lng) });
+                const minZoom = options.minZoom ?? 15;
+                if ((this.map.getZoom() || 0) < minZoom) {
+                    this.map.setZoom(minZoom);
+                }
+            }
         }
 
         livePositionMap(skipId = null) {
@@ -2199,11 +2236,13 @@
                 if (f) f.hidden = true;
                 this._footerMode = null;
                 this._panelDeviceId = null;
+                this._focusedVehicleId = null;
                 if (this.followId) {
                     this.selectRouteTripVehicle(this.followId);
                 } else {
                     this.clearRouteTripSelection();
                 }
+                this.renderLiveClusters();
                 this.resizeMapSoon();
             });
         }
@@ -2441,6 +2480,58 @@
             });
         }
 
+        bindFooterResize() {
+            const footer = document.getElementById('tcFooter');
+            const handle = document.getElementById('tcFooterResize');
+            if (!footer || !handle) return;
+
+            const minH = 120;
+            const maxRatio = 0.72;
+
+            const applyHeight = (px) => {
+                const maxH = Math.max(minH, Math.floor(window.innerHeight * maxRatio));
+                const h = Math.min(Math.max(px, minH), maxH);
+                footer.style.setProperty('--tc-footer-height', `${h}px`);
+                this.resizeMapSoon();
+                return h;
+            };
+
+            try {
+                const stored = parseInt(localStorage.getItem('tcFooterHeight'), 10);
+                if (Number.isFinite(stored) && stored >= minH) {
+                    applyHeight(stored);
+                }
+            } catch (_) { /* ignore */ }
+
+            let startY = null;
+            let startH = 0;
+
+            handle.addEventListener('pointerdown', (e) => {
+                startY = e.clientY;
+                startH = footer.getBoundingClientRect().height;
+                handle.setPointerCapture?.(e.pointerId);
+                e.preventDefault();
+            });
+
+            handle.addEventListener('pointermove', (e) => {
+                if (startY == null) return;
+                applyHeight(startH + (startY - e.clientY));
+            });
+
+            const finishDrag = () => {
+                if (startY == null) return;
+                const h = footer.getBoundingClientRect().height;
+                try {
+                    localStorage.setItem('tcFooterHeight', String(Math.round(h)));
+                } catch (_) { /* ignore */ }
+                startY = null;
+                this.resizeMapSoon();
+            };
+
+            handle.addEventListener('pointerup', finishDrag);
+            handle.addEventListener('pointercancel', finishDrag);
+        }
+
         showFooter(title) {
             const footer = document.getElementById('tcFooter');
             const wasHidden = footer ? footer.hidden : true;
@@ -2524,6 +2615,7 @@
             this._panelDeviceId = id;
             this.closeNavigationOnVehicleSelect();
             this.selectRouteTripVehicle(id);
+            this.focusVehicleOnMap(id, { pan: false });
             this.showFooter(this.labelFor(v) || ('#' + id));
             this.switchFooterTab('data');
             const dataEl = document.getElementById('tcFooterData');
@@ -2542,6 +2634,21 @@
                 this._panelGraphRows = (data.panel.positions || []).map((p) => ({ label: String(p.time || '').slice(11, 16), speed: Math.round(p.speed || 0) }));
                 this.renderPanelData(data.panel);
                 this.renderPanelMessages(data.panel.positions || []);
+                if (data.panel?.lat != null && data.panel?.lng != null) {
+                    this.focusVehicleOnMap(id, {
+                        merge: {
+                            lat: data.panel.lat,
+                            lng: data.panel.lng,
+                            speed: data.panel.speed,
+                            heading: data.panel.angle,
+                            status_label: data.panel.status,
+                            status_key: data.panel.status_key,
+                            color: data.panel.color,
+                        },
+                    });
+                } else {
+                    this.renderLiveClusters();
+                }
                 if (data.panel?.route_trip) {
                     const sanitized = this.sanitizeRouteTrip(data.panel.route_trip);
                     const cur = this.vehicles.get(id);

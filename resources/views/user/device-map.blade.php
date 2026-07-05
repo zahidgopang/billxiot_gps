@@ -620,11 +620,11 @@
         }
         .map-live-panel__handle {
             width: 44px;
-            height: 4px;
+            height: 8px;
             border-radius: 999px;
             background: rgba(100, 116, 139, 0.35);
             margin: 0 auto 8px;
-            cursor: grab;
+            cursor: ns-resize;
             touch-action: none;
         }
         .map-live-panel.is-expanded .map-live-panel__handle {
@@ -839,13 +839,13 @@
             overflow: hidden;
             max-height: 0;
             opacity: 0;
-            transition: max-height 0.35s ease, opacity 0.28s ease, margin-top 0.28s ease;
+            transition: max-height 0.2s ease, opacity 0.2s ease, margin-top 0.2s ease;
         }
         .map-live-panel.is-expanded .map-live-panel__body {
-            max-height: 340px;
+            max-height: var(--map-live-panel-body-h, 340px);
             opacity: 1;
             margin-top: 12px;
-            overflow: visible;
+            overflow: auto;
         }
         .map-live-panel__footer {
             display: flex;

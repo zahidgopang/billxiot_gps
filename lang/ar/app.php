@@ -905,6 +905,7 @@ return [
         'ft_data' => 'البيانات',
         'ft_graph' => 'الرسم البياني',
         'ft_messages' => 'الرسائل',
+        'resize_panel' => 'اسحب لتغيير حجم اللوحة',
         'lbl_plate' => 'اللوحة',
         'lbl_status' => 'الحالة',
         'lbl_speed' => 'السرعة',

@@ -1212,7 +1212,9 @@
 
         /* Footer info panel (Data / Graph / Messages) */
         .tc-footer {
-            height: 250px;
+            height: var(--tc-footer-height, 250px);
+            min-height: 120px;
+            max-height: 72vh;
             flex-shrink: 0;
             display: flex;
             flex-direction: column;
@@ -1221,6 +1223,29 @@
             box-shadow: 0 -8px 20px rgba(0, 0, 0, 0.18);
             z-index: 5;
             color: #FFFFFF;
+            position: relative;
+        }
+        .tc-footer-resize {
+            flex-shrink: 0;
+            height: 10px;
+            cursor: ns-resize;
+            touch-action: none;
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02));
+            border-bottom: 1px solid #061E49;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .tc-footer-resize::after {
+            content: '';
+            width: 44px;
+            height: 4px;
+            border-radius: 999px;
+            background: rgba(214, 220, 230, 0.55);
+        }
+        .tc-footer-resize:hover::after,
+        .tc-footer-resize:active::after {
+            background: rgba(255, 255, 255, 0.85);
         }
         .tc-footer[hidden] { display: none !important; }
         .tc-footer-head {
@@ -1919,6 +1944,7 @@
 
                 @if(! empty($ui['vehicle_footer']))
                 <div class="tc-footer" id="tcFooter" hidden>
+                    <div class="tc-footer-resize" id="tcFooterResize" role="separator" aria-orientation="horizontal" aria-label="{{ __('app.tracking.resize_panel') }}"></div>
                     <div class="tc-footer-head">
                         <div class="tc-footer-tabs">
                             <button type="button" class="tc-ftab active" data-ftab="data">{{ __('app.tracking.ft_data') }}</button>
