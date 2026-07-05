@@ -22,6 +22,125 @@ class ReportExportService
 
     /**
      * @param  array<string, mixed>  $report
+     * @return list<list<string|int|float>>
+     */
+    public function tableRows(array $report, ?string $type = null): array
+    {
+        $type = $type ?? (string) ($report['type'] ?? 'summary');
+        $rows = [ReportLabels::columnsForType($type)];
+
+        foreach ($report['devices'] ?? [] as $device) {
+            $name = (string) ($device['device_name'] ?? $device['device_id'] ?? '');
+            $plate = (string) ($device['plate'] ?? '');
+            $driver = (string) ($device['driver'] ?? '');
+
+            if ($type === 'summary') {
+                $rows[] = [
+                    $name,
+                    $plate,
+                    $driver,
+                    $this->num($device['total_distance_km'] ?? 0),
+                    ReportLabels::formatDuration((int) ($device['moving_time_seconds'] ?? 0)),
+                    ReportLabels::formatDuration((int) ($device['stopped_time_seconds'] ?? 0)),
+                    ReportLabels::formatDuration((int) ($device['idle_time_seconds'] ?? 0)),
+                    ReportLabels::formatDuration((int) ($device['parking_time_seconds'] ?? 0)),
+                    ReportLabels::formatDuration((int) ($device['offline_time_seconds'] ?? 0)),
+                    $this->num($device['max_speed_kmh'] ?? 0),
+                    $this->num($device['average_speed_kmh'] ?? 0),
+                    (int) ($device['stop_count'] ?? 0),
+                    (int) ($device['trip_count'] ?? 0),
+                    (int) ($device['overspeed_events'] ?? 0),
+                    (string) ($device['start_time'] ?? ''),
+                    (string) ($device['end_time'] ?? ''),
+                    ReportLabels::formatDuration((int) ($device['total_duration_seconds'] ?? 0)),
+                ];
+            } elseif ($type === 'trips') {
+                foreach ($device['trips'] ?? [] as $trip) {
+                    $rows[] = [
+                        $name,
+                        $plate,
+                        $driver,
+                        (string) ($trip['start_time'] ?? ''),
+                        (string) ($trip['end_time'] ?? ''),
+                        $this->coord($trip['start_lat'] ?? null),
+                        $this->coord($trip['start_lng'] ?? null),
+                        $this->coord($trip['end_lat'] ?? null),
+                        $this->coord($trip['end_lng'] ?? null),
+                        $this->num($trip['distance_km'] ?? 0),
+                        ReportLabels::formatDuration((int) ($trip['duration_seconds'] ?? 0)),
+                        ReportLabels::formatDuration((int) ($trip['moving_time_seconds'] ?? 0)),
+                        $this->num($trip['max_speed_kmh'] ?? 0),
+                        $this->num($trip['average_speed_kmh'] ?? 0),
+                    ];
+                }
+            } elseif ($type === 'stops') {
+                foreach ($device['stops'] ?? [] as $stop) {
+                    $rows[] = [
+                        $name,
+                        $plate,
+                        (string) ($stop['status_label'] ?? ''),
+                        (string) ($stop['start_display'] ?? $stop['start'] ?? ''),
+                        (string) ($stop['end_display'] ?? $stop['end'] ?? ''),
+                        ReportLabels::formatDuration((int) ($stop['duration_seconds'] ?? 0)),
+                        $this->coord($stop['lat'] ?? null),
+                        $this->coord($stop['lng'] ?? null),
+                    ];
+                }
+            } elseif ($type === 'events') {
+                foreach ($device['events'] ?? [] as $event) {
+                    $rows[] = [
+                        $name,
+                        $plate,
+                        (string) ($event['time_display'] ?? $event['time'] ?? ''),
+                        (string) ($event['event_type'] ?? $event['type'] ?? ''),
+                        (string) ($event['title'] ?? ''),
+                        (string) ($event['message'] ?? ''),
+                        (string) ($event['geofence'] ?? ''),
+                        $this->coord($event['lat'] ?? null),
+                        $this->coord($event['lng'] ?? null),
+                        $this->num($event['speed'] ?? ''),
+                    ];
+                }
+            } elseif ($type === 'positions') {
+                foreach ($device['positions'] ?? [] as $position) {
+                    $rows[] = [
+                        $name,
+                        $plate,
+                        (string) ($position['time_display'] ?? $position['time'] ?? ''),
+                        $this->coord($position['lat'] ?? null),
+                        $this->coord($position['lng'] ?? null),
+                        $this->num($position['speed'] ?? 0),
+                        $this->coord($position['heading'] ?? null),
+                        ReportLabels::formatIgnition($position['ignition'] ?? null),
+                        (string) ($position['status'] ?? ''),
+                    ];
+                }
+            } elseif ($type === 'route') {
+                $rows[] = [
+                    $name,
+                    $plate,
+                    (int) ($device['point_count'] ?? 0),
+                    $this->num($device['total_distance_km'] ?? 0),
+                    ReportLabels::formatDuration((int) ($device['moving_time_seconds'] ?? 0)),
+                    ReportLabels::formatDuration((int) ($device['stopped_time_seconds'] ?? 0)),
+                    ReportLabels::formatDuration((int) ($device['idle_time_seconds'] ?? 0)),
+                    ReportLabels::formatDuration((int) ($device['parking_time_seconds'] ?? 0)),
+                    ReportLabels::formatDuration((int) ($device['offline_time_seconds'] ?? 0)),
+                    $this->num($device['max_speed_kmh'] ?? 0),
+                    $this->num($device['average_speed_kmh'] ?? 0),
+                    (int) ($device['trip_count'] ?? 0),
+                    (string) ($device['start_time'] ?? ''),
+                    (string) ($device['end_time'] ?? ''),
+                    ReportLabels::formatDuration((int) ($device['total_duration_seconds'] ?? 0)),
+                ];
+            }
+        }
+
+        return $rows;
+    }
+
+    /**
+     * @param  array<string, mixed>  $report
      */
     private function exportCsv(array $report): StreamedResponse
     {
@@ -68,89 +187,17 @@ class ReportExportService
     private function exportPdf(array $report): Response
     {
         $locale = app()->getLocale();
+        $type = (string) ($report['type'] ?? 'summary');
         $html = view('tracking.exports.report-pdf', [
             'report' => $report,
-            'columns' => ReportLabels::columnsForType((string) ($report['type'] ?? 'summary')),
+            'rows' => $this->tableRows($report, $type),
             'dir' => $locale === 'ar' ? 'rtl' : 'ltr',
             'align' => $locale === 'ar' ? 'right' : 'left',
         ])->render();
-        $type = (string) ($report['type'] ?? 'summary');
 
         return Pdf::loadHTML($html)
             ->setPaper('a4', 'landscape')
             ->download("report-{$type}-" . now()->format('Ymd_His') . '.pdf');
-    }
-
-    /**
-     * @param  array<string, mixed>  $report
-     * @return list<list<string|int|float>>
-     */
-    private function tableRows(array $report, string $type): array
-    {
-        $rows = [ReportLabels::columnsForType($type)];
-
-        foreach ($report['devices'] ?? [] as $device) {
-            $name = (string) ($device['device_name'] ?? $device['device_id'] ?? '');
-
-            if ($type === 'summary') {
-                $rows[] = [
-                    $name,
-                    $this->num($device['total_distance_km'] ?? 0),
-                    ReportLabels::formatDuration((int) ($device['moving_time_seconds'] ?? 0)),
-                    ReportLabels::formatDuration((int) ($device['stopped_time_seconds'] ?? 0)),
-                    $this->num($device['max_speed_kmh'] ?? 0),
-                    $this->num($device['average_speed_kmh'] ?? 0),
-                    (int) ($device['stop_count'] ?? 0),
-                    (int) ($device['overspeed_events'] ?? 0),
-                    (string) ($device['start_time'] ?? ''),
-                    (string) ($device['end_time'] ?? ''),
-                    ReportLabels::formatDuration((int) ($device['total_duration_seconds'] ?? 0)),
-                ];
-            } elseif ($type === 'trips') {
-                foreach ($device['trips'] ?? [] as $trip) {
-                    $rows[] = [
-                        $name,
-                        (string) ($trip['start_time'] ?? ''),
-                        (string) ($trip['end_time'] ?? ''),
-                        $this->num($trip['distance_km'] ?? 0),
-                        ReportLabels::formatDuration((int) ($trip['duration_seconds'] ?? 0)),
-                        ReportLabels::formatDuration((int) ($trip['moving_time_seconds'] ?? 0)),
-                        $this->num($trip['max_speed_kmh'] ?? 0),
-                        $this->num($trip['average_speed_kmh'] ?? 0),
-                    ];
-                }
-            } elseif ($type === 'stops') {
-                foreach ($device['stops'] ?? [] as $stop) {
-                    $rows[] = [
-                        $name,
-                        (string) ($stop['start_display'] ?? $stop['start'] ?? ''),
-                        (string) ($stop['end_display'] ?? $stop['end'] ?? ''),
-                        ReportLabels::formatDuration((int) ($stop['duration_seconds'] ?? 0)),
-                        $this->coord($stop['lat'] ?? null),
-                        $this->coord($stop['lng'] ?? null),
-                    ];
-                }
-            } elseif ($type === 'events') {
-                foreach ($device['events'] ?? [] as $event) {
-                    $rows[] = [
-                        $name,
-                        (string) ($event['time_display'] ?? $event['time'] ?? ''),
-                        (string) ($event['event_type'] ?? $event['type'] ?? ''),
-                        (string) ($event['title'] ?? ''),
-                        (string) ($event['message'] ?? ''),
-                        $this->num($event['speed'] ?? ''),
-                    ];
-                }
-            } elseif ($type === 'route') {
-                $rows[] = [
-                    $name,
-                    (int) ($device['point_count'] ?? 0),
-                    $this->num($device['total_distance_km'] ?? 0),
-                ];
-            }
-        }
-
-        return $rows;
     }
 
     private function num(mixed $value): string

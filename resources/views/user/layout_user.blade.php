@@ -752,6 +752,7 @@
 <script src="{{ protected_js('app-datetime.js') }}"></script>
 <script src="{{ protected_js('form-enhancements.js') }}"></script>
 <script src="{{ protected_js('map-session-guard.js') }}"></script>
+@include('partials.session-expired-handler')
 @include('partials.reverb-echo')
 
 <script>

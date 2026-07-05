@@ -33,17 +33,58 @@
         font-size: 0.9rem;
     }
     .gt-report-empty[hidden] { display: none !important; }
-    #gtReportTable td, #gtReportTable th { white-space: nowrap; }
+    #gtReportTable td, #gtReportTable th { white-space: nowrap; font-size: 0.8125rem; }
     #gtReportTable { direction: inherit; }
     .gt-report-num { display: inline-block; direction: ltr; unicode-bidi: embed; }
     html[dir="rtl"] .gt-report-pager { flex-direction: row-reverse; }
+    .gt-report-kpis {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+        gap: 0.65rem;
+        margin-bottom: 0.85rem;
+    }
+    .gt-report-kpis[hidden] { display: none !important; }
+    .gt-report-kpi {
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        padding: 0.55rem 0.7rem;
+    }
+    .gt-report-kpi-label {
+        display: block;
+        font-size: 0.68rem;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+        color: #64748b;
+        margin-bottom: 0.15rem;
+    }
+    .gt-report-kpi-value {
+        font-size: 0.95rem;
+        font-weight: 700;
+        color: #0f172a;
+        direction: ltr;
+        unicode-bidi: embed;
+    }
+    #gtReportMap {
+        height: 280px;
+        border-radius: 8px;
+        border: 1px solid #e2e8f0;
+    }
+    .gt-report-vehicle-actions {
+        display: flex;
+        gap: 0.35rem;
+        margin-bottom: 0.35rem;
+    }
+    .gt-report-vehicle-actions .btn { font-size: 0.72rem; padding: 0.15rem 0.45rem; }
+    .gt-report-subtitle { color: #64748b; font-size: 0.875rem; margin-bottom: 1rem; }
 </style>
 @endpush
 @section('content')
 <div class="gt-module-page">
     @include('tracking.partials.hub-nav')
     <div class="gt-module-card">
-        <h5 class="mb-3">{{ __('app.tracking.reports_title') }}</h5>
+        <h5 class="mb-1">{{ __('app.tracking.reports_title') }}</h5>
+        <p class="gt-report-subtitle">{{ __('app.tracking.report_subtitle') }}</p>
         <div class="row g-3">
             <div class="col-lg-3">
                 <label class="form-label small">{{ __('app.tracking.report_type') }}</label>
@@ -53,6 +94,7 @@
                     <option value="stops">{{ __('app.tracking.report_stops') }}</option>
                     <option value="events">{{ __('app.tracking.report_events') }}</option>
                     <option value="route">{{ __('app.tracking.report_route') }}</option>
+                    <option value="positions">{{ __('app.tracking.report_positions') }}</option>
                 </select>
                 <label class="form-label small mt-2">{{ __('app.tracking.report_language') }}</label>
                 <select id="gtReportLang" class="form-select form-select-sm">
@@ -60,10 +102,14 @@
                     <option value="ar" @selected(app()->getLocale() === 'ar')>{{ __('app.tracking.report_lang_ar') }}</option>
                 </select>
                 <label class="form-label small mt-2">{{ __('app.tracking.date_from') }}</label>
-                <input type="date" id="gtReportFrom" class="form-control form-control-sm admin-ltr" dir="ltr">
+                <input type="datetime-local" id="gtReportFrom" class="form-control form-control-sm admin-ltr" dir="ltr">
                 <label class="form-label small mt-2">{{ __('app.tracking.date_to') }}</label>
-                <input type="date" id="gtReportTo" class="form-control form-control-sm admin-ltr" dir="ltr">
+                <input type="datetime-local" id="gtReportTo" class="form-control form-control-sm admin-ltr" dir="ltr">
                 <label class="form-label small mt-2">{{ __('app.tracking.vehicles') }}</label>
+                <div class="gt-report-vehicle-actions">
+                    <button type="button" class="btn btn-outline-secondary btn-sm" id="gtReportSelectAll">{{ __('app.tracking.report_select_all') }}</button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm" id="gtReportSelectNone">{{ __('app.tracking.report_select_none') }}</button>
+                </div>
                 <div class="gt-vehicle-picker" id="gtReportVehicles">
                     @foreach($vehicles as $v)
                         <label><input type="checkbox" value="{{ $v['id'] }}"> {{ $v['title'] ?? $v['plate'] ?? '#'.$v['id'] }}</label>
@@ -77,6 +123,7 @@
                 </div>
             </div>
             <div class="col-lg-9">
+                <div id="gtReportKpis" class="gt-report-kpis" hidden></div>
                 <div id="gtReportMap" class="mb-3" hidden></div>
                 <div class="gt-report-toolbar">
                     <span id="gtReportCount" class="text-muted small"></span>
@@ -110,6 +157,8 @@
         'rowsPerPage' => __('app.tracking.report_rows_per_page'),
         'noData' => __('app.tracking.report_no_data'),
         'loadFailed' => __('app.tracking.report_load_failed'),
+        'ignitionOn' => __('app.tracking.report_ignition_on'),
+        'ignitionOff' => __('app.tracking.report_ignition_off'),
     ]);
 @endphp
 <script>

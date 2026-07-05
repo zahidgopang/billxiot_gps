@@ -118,8 +118,8 @@ class ReportController extends Controller
             return $start ? $date : $date->copy()->endOfDay();
         }
 
-        if (preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}/', $value)) {
-            return Carbon::parse($value, $tz);
+        if (preg_match('/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/', $value)) {
+            return Carbon::parse(str_replace('T', ' ', $value), $tz);
         }
 
         return $start

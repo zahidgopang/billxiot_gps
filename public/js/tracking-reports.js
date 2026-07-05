@@ -13,6 +13,7 @@
         page: 1,
         pageSize: 50,
         loading: false,
+        lastPayload: null,
     };
 
     const $ = (id) => document.getElementById(id);
@@ -38,6 +39,17 @@
         return parts.join(' ');
     }
 
+    function formatCoord(value) {
+        if (value === null || value === undefined || value === '') return '';
+        const num = Number(value);
+        return Number.isFinite(num) ? num.toFixed(6) : String(value);
+    }
+
+    function formatIgnition(value) {
+        if (value === null || value === undefined || value === '') return '';
+        return value ? (i18n.ignitionOn || 'On') : (i18n.ignitionOff || 'Off');
+    }
+
     function numCell(value) {
         return `<span class="gt-report-num" dir="ltr">${escapeHtml(value)}</span>`;
     }
@@ -51,11 +63,17 @@
         return el ? el.value : (cfg.currentLang || 'en');
     }
 
+    function dateTimeParam(id) {
+        const raw = $(id)?.value || '';
+        if (!raw) return '';
+        return raw.replace('T', ' ');
+    }
+
     function queryParams() {
         const p = new URLSearchParams();
         p.set('type', $('gtReportType').value);
-        p.set('from', $('gtReportFrom').value);
-        p.set('to', $('gtReportTo').value);
+        p.set('from', dateTimeParam('gtReportFrom'));
+        p.set('to', dateTimeParam('gtReportTo'));
         p.set('ids', selectedIds().join(','));
         p.set('lang', reportLang());
         return p;
@@ -75,12 +93,18 @@
         if (type === 'summary') {
             devices.forEach((d) => rows.push([
                 d.device_name,
+                d.plate || '',
+                d.driver || '',
                 d.total_distance_km,
                 formatDuration(d.moving_time_seconds),
                 formatDuration(d.stopped_time_seconds),
+                formatDuration(d.idle_time_seconds),
+                formatDuration(d.parking_time_seconds),
+                formatDuration(d.offline_time_seconds),
                 d.max_speed_kmh,
                 d.average_speed_kmh,
                 d.stop_count,
+                d.trip_count,
                 d.overspeed_events,
                 d.start_time || '',
                 d.end_time || '',
@@ -89,8 +113,14 @@
         } else if (type === 'trips') {
             devices.forEach((d) => (d.trips || []).forEach((t) => rows.push([
                 d.device_name,
+                d.plate || '',
+                d.driver || '',
                 t.start_time || '',
                 t.end_time || '',
+                formatCoord(t.start_lat),
+                formatCoord(t.start_lng),
+                formatCoord(t.end_lat),
+                formatCoord(t.end_lng),
                 t.distance_km,
                 formatDuration(t.duration_seconds),
                 formatDuration(t.moving_time_seconds),
@@ -100,30 +130,115 @@
         } else if (type === 'stops') {
             devices.forEach((d) => (d.stops || []).forEach((s) => rows.push([
                 d.device_name,
+                d.plate || '',
+                s.status_label || '',
                 s.start_display || s.start || '',
                 s.end_display || s.end || '',
                 formatDuration(s.duration_seconds),
-                s.lat,
-                s.lng,
+                formatCoord(s.lat),
+                formatCoord(s.lng),
             ])));
         } else if (type === 'events') {
             devices.forEach((d) => (d.events || []).forEach((e) => rows.push([
                 d.device_name,
+                d.plate || '',
                 e.time_display || e.time || '',
                 e.event_type || e.type || '',
                 e.title || '',
                 e.message || '',
+                e.geofence || '',
+                formatCoord(e.lat),
+                formatCoord(e.lng),
                 e.speed ?? '',
+            ])));
+        } else if (type === 'positions') {
+            devices.forEach((d) => (d.positions || []).forEach((p) => rows.push([
+                d.device_name,
+                d.plate || '',
+                p.time_display || p.time || '',
+                formatCoord(p.lat),
+                formatCoord(p.lng),
+                p.speed ?? 0,
+                formatCoord(p.heading),
+                formatIgnition(p.ignition),
+                p.status || '',
             ])));
         } else if (type === 'route') {
             devices.forEach((d) => rows.push([
                 d.device_name,
+                d.plate || '',
                 d.point_count,
                 d.total_distance_km ?? 0,
+                formatDuration(d.moving_time_seconds),
+                formatDuration(d.stopped_time_seconds),
+                formatDuration(d.idle_time_seconds),
+                formatDuration(d.parking_time_seconds),
+                formatDuration(d.offline_time_seconds),
+                d.max_speed_kmh ?? 0,
+                d.average_speed_kmh ?? 0,
+                d.trip_count ?? 0,
+                d.start_time || '',
+                d.end_time || '',
+                formatDuration(d.total_duration_seconds),
             ]));
         }
 
-        return { columns, rows, type, devices };
+        return { columns, rows, type, devices, totals: data.totals || {} };
+    }
+
+    function renderKpis(flat) {
+        const wrap = $('gtReportKpis');
+        if (!wrap) return;
+
+        const totals = flat.totals || {};
+        const type = flat.type;
+        let items = [];
+
+        if (type === 'summary' || type === 'route') {
+            items = [
+                [i18n.kpiDevices, totals.device_count ?? flat.devices.length],
+                [i18n.kpiDistance, `${totals.total_distance_km ?? 0} km`],
+                [i18n.kpiMoving, formatDuration(totals.moving_time_seconds)],
+                [i18n.kpiStopped, formatDuration(totals.stopped_time_seconds)],
+                [i18n.kpiTrips, totals.trip_count ?? 0],
+                [i18n.kpiStops, totals.stop_count ?? 0],
+                [i18n.kpiMaxSpeed, `${totals.max_speed_kmh ?? 0} km/h`],
+            ];
+            if (type === 'route') {
+                items.push([i18n.kpiPoints, totals.point_count ?? 0]);
+            }
+        } else if (type === 'trips') {
+            items = [
+                [i18n.kpiDevices, totals.device_count ?? flat.devices.length],
+                [i18n.kpiTrips, totals.trip_count ?? flat.rows.length],
+            ];
+        } else if (type === 'stops') {
+            items = [
+                [i18n.kpiDevices, totals.device_count ?? flat.devices.length],
+                [i18n.kpiStops, totals.stop_count ?? flat.rows.length],
+            ];
+        } else if (type === 'events') {
+            items = [
+                [i18n.kpiDevices, totals.device_count ?? flat.devices.length],
+                [i18n.kpiEvents, totals.event_count ?? flat.rows.length],
+            ];
+        } else if (type === 'positions') {
+            items = [
+                [i18n.kpiDevices, totals.device_count ?? flat.devices.length],
+                [i18n.kpiPoints, totals.position_count ?? flat.rows.length],
+            ];
+        }
+
+        if (!items.length) {
+            wrap.hidden = true;
+            wrap.innerHTML = '';
+            return;
+        }
+
+        wrap.hidden = false;
+        wrap.innerHTML = items.map(([label, value]) => (
+            `<div class="gt-report-kpi"><span class="gt-report-kpi-label">${escapeHtml(label)}</span><span class="gt-report-kpi-value">${escapeHtml(value)}</span></div>`
+        )).join('');
     }
 
     function renderHead() {
@@ -216,6 +331,8 @@
         $('gtReportBody').innerHTML = '';
         $('gtReportPager').innerHTML = '';
         $('gtReportCount').textContent = '';
+        const kpis = $('gtReportKpis');
+        if (kpis) { kpis.hidden = true; kpis.innerHTML = ''; }
     }
 
     function loadMap(points) {
@@ -253,6 +370,7 @@
             });
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             const data = await res.json();
+            state.lastPayload = data;
             const flat = flatten(data);
             state.columns = flat.columns;
             state.rows = flat.rows;
@@ -267,6 +385,7 @@
                 showEmpty(i18n.noData || 'No data for the selected report and period.');
             } else {
                 showEmpty(null);
+                renderKpis(flat);
                 renderHead();
                 renderPage();
             }
@@ -282,12 +401,33 @@
         window.location.href = `${cfg.exportUrl}?${queryParams()}&format=${fmt}`;
     }
 
+    function setVehicleChecks(checked) {
+        document.querySelectorAll('#gtReportVehicles input[type="checkbox"]').forEach((el) => {
+            el.checked = checked;
+        });
+    }
+
+    function pad(n) {
+        return String(n).padStart(2, '0');
+    }
+
+    function initDateTimes() {
+        const now = new Date();
+        const start = new Date(now);
+        start.setHours(0, 0, 0, 0);
+        const end = new Date(now);
+        end.setHours(23, 59, 0, 0);
+        const fmt = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+        $('gtReportFrom').value = fmt(start);
+        $('gtReportTo').value = fmt(end);
+    }
+
     $('gtReportRun')?.addEventListener('click', runReport);
     $('gtReportCsv')?.addEventListener('click', () => exportFmt('csv'));
     $('gtReportXlsx')?.addEventListener('click', () => exportFmt('xlsx'));
     $('gtReportPdf')?.addEventListener('click', () => exportFmt('pdf'));
+    $('gtReportSelectAll')?.addEventListener('click', () => setVehicleChecks(true));
+    $('gtReportSelectNone')?.addEventListener('click', () => setVehicleChecks(false));
 
-    const today = new Date().toISOString().slice(0, 10);
-    $('gtReportFrom').value = today;
-    $('gtReportTo').value = today;
+    initDateTimes();
 })(window);

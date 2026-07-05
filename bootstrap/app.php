@@ -8,6 +8,7 @@ use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
+use Illuminate\Session\TokenMismatchException;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
@@ -73,6 +74,31 @@ return Application::configure(basePath: dirname(__DIR__))
         });
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        $exceptions->render(function (TokenMismatchException $e, Request $request) {
+            $message = (string) __('app.auth.please_login_again');
+            $loginUrl = route('login');
+
+            if ($request->is('api/*')) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $message,
+                    'code' => 'session_expired',
+                ], 419);
+            }
+
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $message,
+                    'code' => 'session_expired',
+                    'redirect' => $loginUrl,
+                ], 419);
+            }
+
+            return redirect()->guest($loginUrl)
+                ->with('session_expired', $message);
+        });
+
         $exceptions->render(function (\Throwable $e, Request $request) {
             if (! $request->is('api/*') && ! $request->expectsJson()) {
                 return null;

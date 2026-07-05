@@ -1,6 +1,13 @@
 <x-guest-layout>
+    @if (session('session_expired'))
+        <div class="mb-4 font-medium text-sm text-amber-600">
+            {{ session('session_expired') }}
+        </div>
+    @endif
+
     <!-- Session Status -->
     <x-auth-session-status class="mb-4" :status="session('status')" />
+    <div id="jsSessionExpiredMsg" class="mb-4 font-medium text-sm text-amber-600 hidden"></div>
 
     <div class="premium-login-container">
         <!-- Premium Header with Custom Logo -->
@@ -356,4 +363,18 @@
             }
         }
     </style>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            try {
+                var msg = sessionStorage.getItem('login_flash');
+                if (!msg) return;
+                sessionStorage.removeItem('login_flash');
+                var el = document.getElementById('jsSessionExpiredMsg');
+                if (!el) return;
+                el.textContent = msg;
+                el.classList.remove('hidden');
+            } catch (e) {}
+        });
+    </script>
 </x-guest-layout>
