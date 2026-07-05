@@ -42,6 +42,10 @@ class AppServiceProvider extends ServiceProvider
             return Limit::perMinute(10)->by($key);
         });
 
+        RateLimiter::for('traccar-forward', function (Request $request) {
+            return Limit::perMinute(600)->by($request->ip());
+        });
+
         Paginator::useBootstrapFive();
 
         Auth::provider('tc_aware', function ($app, array $config) {

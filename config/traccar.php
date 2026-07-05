@@ -53,10 +53,57 @@ return [
     /*
     | Poll tc_positions and broadcast DeviceLocationUpdated for map realtime (Pusher/Echo).
     | Requires `php artisan schedule:work` or cron + schedule:run.
+    |
+    | Modes (TRACCAR_BROADCAST_MODE):
+    |   off    — disabled (maps use HTTP polling only; lowest CPU)
+    |   forward — Traccar HTTP POST → Reverb instantly (realtime, no DB poll scheduler) ★ recommended
+    |   light  — WebSocket push every ~30s via scheduler (fallback if forward not configured)
+    |   full   — legacy scheduler: every row + inline alerts (high CPU)
     */
     'broadcast_positions' => env('TRACCAR_BROADCAST_POSITIONS', true),
 
-    'broadcast_positions_limit' => (int) env('TRACCAR_BROADCAST_POSITIONS_LIMIT', 200),
+    'broadcast_mode' => env('TRACCAR_BROADCAST_MODE', 'light'),
+
+    /** Traccar position forward (traccar.xml forward.url → POST /api/traccar/forward). */
+    'forward' => [
+        'secret' => env('TRACCAR_FORWARD_SECRET'),
+        /** Min seconds between Reverb broadcasts per device (burst GPS reports). */
+        'broadcast_min_interval_seconds' => (int) env('TRACCAR_FORWARD_BROADCAST_MIN_INTERVAL_SECONDS', 2),
+        /** Geofence/push logic debounced per device (runs after HTTP response). */
+        'process_events' => filter_var(env('TRACCAR_FORWARD_PROCESS_EVENTS', true), FILTER_VALIDATE_BOOL),
+        'events_debounce_seconds' => (int) env('TRACCAR_FORWARD_EVENTS_DEBOUNCE_SECONDS', 30),
+    ],
+
+    /** How often schedule runs traccar:broadcast-positions (seconds). Light default: 30. */
+    'broadcast_interval_seconds' => (int) env('TRACCAR_BROADCAST_INTERVAL_SECONDS', 30),
+
+    /** In full mode, run VehicleEventService on each new row. Ignored in light mode. */
+    'broadcast_process_events' => filter_var(
+        env('TRACCAR_BROADCAST_PROCESS_EVENTS', false),
+        FILTER_VALIDATE_BOOL,
+    ),
+
+    /** Only push the newest tc_positions row per device per batch (large CPU saver). */
+    'broadcast_latest_per_device' => filter_var(
+        env('TRACCAR_BROADCAST_LATEST_PER_DEVICE', true),
+        FILTER_VALIDATE_BOOL,
+    ),
+
+    'broadcast_positions_limit' => (int) env('TRACCAR_BROADCAST_POSITIONS_LIMIT', 80),
+
+    /** Light mode: how often traccar:process-position-events runs (minutes). */
+    'broadcast_events_interval_minutes' => (int) env('TRACCAR_BROADCAST_EVENTS_INTERVAL_MINUTES', 2),
+
+    /*
+    | When broadcast is off (poll-only maps), still run geofence/status logic on a slow
+    | schedule — much lighter CPU than traccar:broadcast-positions.
+    */
+    'schedule_position_events' => filter_var(
+        env('TRACCAR_SCHEDULE_POSITION_EVENTS', true),
+        FILTER_VALIDATE_BOOL,
+    ),
+
+    'position_events_interval_minutes' => (int) env('TRACCAR_POSITION_EVENTS_INTERVAL_MINUTES', 5),
 
     'sync_users' => env('TRACCAR_SYNC_USERS', true),
 

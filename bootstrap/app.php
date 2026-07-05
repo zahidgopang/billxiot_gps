@@ -24,10 +24,56 @@ return Application::configure(basePath: dirname(__DIR__))
         },
     )
     ->withSchedule(function (Schedule $schedule): void {
-        if (config('traccar.broadcast_positions', true)) {
-            $schedule->command('traccar:broadcast-positions')
-                ->everyFiveSeconds()
-                ->withoutOverlapping(2);
+        $broadcastMode = config('traccar.broadcast_mode', 'light');
+
+        if ($broadcastMode === 'forward' && blank(config('traccar.forward.secret'))) {
+            $broadcastMode = 'light';
+        }
+
+        if (config('traccar.broadcast_positions', true)
+            && ! in_array($broadcastMode, ['off', 'forward'], true)) {
+            $interval = max(15, min(120, (int) config('traccar.broadcast_interval_seconds', 30)));
+            $overlap = max(2, (int) ceil($interval / 10));
+
+            $broadcast = $schedule->command('traccar:broadcast-positions')
+                ->withoutOverlapping($overlap);
+
+            if ($interval <= 15) {
+                $broadcast->everyFifteenSeconds();
+            } elseif ($interval <= 30) {
+                $broadcast->everyThirtySeconds();
+            } else {
+                $broadcast->everyMinute();
+            }
+
+            if ($broadcastMode === 'light') {
+                $eventMinutes = max(1, (int) config('traccar.broadcast_events_interval_minutes', 2));
+                $events = $schedule->command('traccar:process-position-events')
+                    ->withoutOverlapping(max(3, $eventMinutes + 1));
+
+                if ($eventMinutes === 1) {
+                    $events->everyMinute();
+                } else {
+                    $events->cron("*/{$eventMinutes} * * * *");
+                }
+            }
+        }
+
+        $broadcastOff = ! config('traccar.broadcast_positions', true)
+            || in_array($broadcastMode, ['off', 'forward'], true);
+
+        if ($broadcastOff
+            && $broadcastMode !== 'forward'
+            && filter_var(config('traccar.schedule_position_events', true), FILTER_VALIDATE_BOOL)) {
+            $eventMinutes = max(1, (int) config('traccar.position_events_interval_minutes', 5));
+            $events = $schedule->command('traccar:process-position-events')
+                ->withoutOverlapping(max(3, $eventMinutes + 1));
+
+            if ($eventMinutes === 1) {
+                $events->everyMinute();
+            } else {
+                $events->cron("*/{$eventMinutes} * * * *");
+            }
         }
 
         if (config('firebase.enabled') && config('firebase.event_notifications_enabled')) {

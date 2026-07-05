@@ -25,6 +25,9 @@ use Illuminate\Http\Request;
 Route::post('/device/data', [DeviceDataController::class, 'receive'])
     ->middleware('throttle:device-ingest');
 
+Route::post('/traccar/forward', [\App\Http\Controllers\Api\TraccarForwardController::class, 'receive'])
+    ->middleware('throttle:traccar-forward');
+
 /*
 |--------------------------------------------------------------------------
 | End-user mobile app API (Sanctum)

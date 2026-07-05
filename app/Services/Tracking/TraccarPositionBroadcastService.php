@@ -12,12 +12,16 @@ use App\Services\VehicleEventService;
 use App\Support\RuntimeState;
 use App\Support\Tracking\DeviceLocationPayload;
 use App\Support\Traccar\TraccarSchema;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 /**
  * Watches tc_positions for rows written by Traccar (not the Laravel ingest API)
- * and broadcasts DeviceLocationUpdated so open map pages update in real time.
+ * and broadcasts DeviceLocationUpdated so open map clients update in real time.
+ *
+ * Use broadcast_mode=light on small servers (AWS Lightsail): WebSocket only,
+ * latest GPS per device, alerts via traccar:process-position-events.
  */
 class TraccarPositionBroadcastService
 {
@@ -28,11 +32,16 @@ class TraccarPositionBroadcastService
         private TraccarIdMap $idMap,
         private PositionReaderInterface $positionReader,
         private VehicleEventService $vehicleEvents,
+        private DevicePositionLoader $positionLoader,
     ) {}
 
     public function broadcastNewPositions(): int
     {
         if (! config('traccar.broadcast_positions', true) || ! TraccarSchema::isReady()) {
+            return 0;
+        }
+
+        if (config('traccar.broadcast_mode', 'light') === 'off') {
             return 0;
         }
 
@@ -46,7 +55,7 @@ class TraccarPositionBroadcastService
             return 0;
         }
 
-        $limit = max(1, (int) config('traccar.broadcast_positions_limit', 200));
+        $limit = max(1, (int) config('traccar.broadcast_positions_limit', 80));
 
         $rows = DB::table($table)
             ->where('id', '>', $lastId)
@@ -58,12 +67,18 @@ class TraccarPositionBroadcastService
             return 0;
         }
 
-        $count = 0;
-        $maxId = $lastId;
+        $maxId = (int) $rows->max('id');
+
+        if ($this->shouldKeepLatestPerDevice()) {
+            $rows = $this->latestRowPerTraccarDevice($rows);
+        }
+
+        $processEvents = $this->shouldProcessEventsInline();
+
+        $laravelIds = [];
+        $mappedRows = [];
 
         foreach ($rows as $row) {
-            $maxId = max($maxId, (int) $row->id);
-
             $laravelDeviceId = $this->idMap->laravelId(
                 TraccarEntityMap::TYPE_DEVICE,
                 (int) $row->deviceid
@@ -73,7 +88,25 @@ class TraccarPositionBroadcastService
                 continue;
             }
 
-            $device = Device::query()->find($laravelDeviceId);
+            $laravelIds[] = $laravelDeviceId;
+            $mappedRows[] = [$laravelDeviceId, $row];
+        }
+
+        if ($mappedRows === []) {
+            $this->saveLastBroadcastPositionId($maxId);
+
+            return 0;
+        }
+
+        $devices = Device::query()
+            ->whereIn('id', array_values(array_unique($laravelIds)))
+            ->get()
+            ->keyBy('id');
+
+        $count = 0;
+
+        foreach ($mappedRows as [$laravelDeviceId, $row]) {
+            $device = $devices->get($laravelDeviceId);
 
             if (! $device) {
                 continue;
@@ -86,6 +119,51 @@ class TraccarPositionBroadcastService
                 DeviceLocationPayload::fromDeviceLocation($location, $device)
             ));
 
+            if ($processEvents) {
+                $previous = $this->positionReader->previousBefore(
+                    $device,
+                    (int) $location->id,
+                    (int) $location->id
+                );
+                $this->vehicleEvents->processLocation($device, $location, $previous);
+            }
+
+            $count++;
+        }
+
+        $this->saveLastBroadcastPositionId($maxId);
+
+        return $count;
+    }
+
+    /**
+     * Light mode: run status/geofence/push logic once per device from latest GPS (not every tc_positions row).
+     */
+    public function processLatestPositionEvents(): int
+    {
+        if (! TraccarSchema::isReady()) {
+            return 0;
+        }
+
+        $devices = Device::query()
+            ->where('status', 'active')
+            ->get();
+
+        if ($devices->isEmpty()) {
+            return 0;
+        }
+
+        $this->positionLoader->attachLatestToMany($devices);
+
+        $count = 0;
+
+        foreach ($devices as $device) {
+            $location = $device->latestLocation;
+
+            if ($location === null || $location->lat === null || $location->lng === null) {
+                continue;
+            }
+
             $previous = $this->positionReader->previousBefore(
                 $device,
                 (int) $location->id,
@@ -96,9 +174,42 @@ class TraccarPositionBroadcastService
             $count++;
         }
 
-        $this->saveLastBroadcastPositionId($maxId);
-
         return $count;
+    }
+
+    private function shouldKeepLatestPerDevice(): bool
+    {
+        return filter_var(
+            config('traccar.broadcast_latest_per_device', true),
+            FILTER_VALIDATE_BOOL,
+        );
+    }
+
+    private function shouldProcessEventsInline(): bool
+    {
+        if (config('traccar.broadcast_mode', 'light') === 'light') {
+            return false;
+        }
+
+        return filter_var(
+            config('traccar.broadcast_process_events', false),
+            FILTER_VALIDATE_BOOL,
+        ) || config('traccar.broadcast_mode') === 'full';
+    }
+
+    /**
+     * @param  Collection<int, object>  $rows  ordered by id asc
+     * @return Collection<int, object>
+     */
+    private function latestRowPerTraccarDevice(Collection $rows): Collection
+    {
+        $latest = [];
+
+        foreach ($rows as $row) {
+            $latest[(int) $row->deviceid] = $row;
+        }
+
+        return collect(array_values($latest));
     }
 
     private function lastBroadcastPositionId(): int

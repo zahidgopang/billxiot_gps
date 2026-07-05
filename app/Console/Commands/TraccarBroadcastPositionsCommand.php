@@ -9,7 +9,7 @@ class TraccarBroadcastPositionsCommand extends Command
 {
     protected $signature = 'traccar:broadcast-positions';
 
-    protected $description = 'Broadcast new Traccar tc_positions rows to open map clients (Pusher/Echo)';
+    protected $description = 'Broadcast latest Traccar GPS to map clients (WebSocket). Use TRACCAR_BROADCAST_MODE=light on small VPS.';
 
     public function handle(TraccarPositionBroadcastService $service): int
     {
