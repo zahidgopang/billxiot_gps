@@ -46,6 +46,8 @@ return [
 
     'google' => [
         'maps_key' => env('GOOGLE_MAPS_API_KEY'),
+        /** Map ID for Advanced Markers — Google Cloud Console → Map Management */
+        'maps_map_id' => env('GOOGLE_MAPS_MAP_ID'),
     ],
 
 ];

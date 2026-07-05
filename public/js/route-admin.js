@@ -86,8 +86,17 @@
             return;
         }
 
+        if (global.GoogleMapsPlatform?.load) {
+            global.GoogleMapsPlatform.load({
+                key,
+                mapId: cfg.googleMapsMapId,
+                libraries: ['marker', 'places'],
+            }).then(initMap).catch(() => showMapError('Failed to load Google Maps.'));
+            return;
+        }
+
         const script = document.createElement('script');
-        script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&libraries=places&callback=__routeAdminMapReady`;
+        script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&libraries=places&loading=async&v=weekly&callback=__routeAdminMapReady`;
         script.async = true;
         global.__routeAdminMapReady = () => initMap();
         script.onerror = () => showMapError('Failed to load Google Maps.');
@@ -110,7 +119,16 @@
         const destLat = parseFloat(document.getElementById('routeDestLat')?.value || '24.4672');
         const destLng = parseFloat(document.getElementById('routeDestLng')?.value || '39.6111');
 
-        map = new google.maps.Map(el, {
+        map = new google.maps.Map(el, global.GoogleMapsPlatform?.mapOptions ? global.GoogleMapsPlatform.mapOptions({
+            center: { lat: startLat, lng: startLng },
+            zoom: 7,
+            mapTypeControl: false,
+            streetViewControl: false,
+            fullscreenControl: true,
+            zoomControl: true,
+            scrollwheel: true,
+            gestureHandling: 'greedy',
+        }, cfg.googleMapsMapId) : {
             center: { lat: startLat, lng: startLng },
             zoom: 7,
             mapTypeControl: false,
@@ -123,7 +141,10 @@
 
         geocoder = new google.maps.Geocoder();
 
-        startMarker = new google.maps.Marker({
+        const createMarker = global.VehicleMarker?.createMarker || global.GoogleMapsPlatform?.createMarker;
+        const mk = (opts) => (createMarker ? createMarker(opts) : new google.maps.Marker(opts));
+
+        startMarker = mk({
             map,
             position: { lat: startLat, lng: startLng },
             label: { text: 'S', color: '#fff', fontWeight: '700' },
@@ -131,7 +152,7 @@
             title: labels.pickStart || 'Start',
         });
 
-        destMarker = new google.maps.Marker({
+        destMarker = mk({
             map,
             position: { lat: destLat, lng: destLng },
             label: { text: 'D', color: '#fff', fontWeight: '700' },

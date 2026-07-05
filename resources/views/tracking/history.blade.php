@@ -291,6 +291,7 @@
         window.GLOBAL_TRACKING_HISTORY_CONFIG = {
             panel: @json($panel),
             googleMapsKey: @json(config('services.google.maps_key')),
+            googleMapsMapId: @json(config('services.google.maps_map_id')),
             historyJsonUrl: @json(route($routes['historyJson'])),
             multiColors: @json($multiColors),
             appTimezone: @json(config('app.timezone')),
@@ -309,5 +310,7 @@
         };
     </script>
     <script src="{{ protected_js('app-datetime.js') }}"></script>
-    <script src="{{ protected_js('global-tracking-history.js') }}"></script>
+@include('partials.google-maps-platform')
+<script src="{{ protected_js('vehicle-marker.js') }}"></script>
+<script src="{{ protected_js('global-tracking-history.js') }}"></script>
 @endpush

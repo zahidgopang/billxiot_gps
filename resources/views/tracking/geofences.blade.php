@@ -86,6 +86,7 @@
     deleteUrl: @json($deleteUrl),
     liveJsonUrl: @json($liveJsonUrl),
     googleMapsKey: @json($googleMapsKey),
+    googleMapsMapId: @json(config('services.google.maps_map_id')),
     csrfToken: @json(csrf_token()),
     pollIntervalMs: 4000,
     stateColors: @json($stateColors),
@@ -106,6 +107,7 @@
         savedForVehicle: @json(__('app.tracking.geofence_saved_for_vehicle')),
     },
 };</script>
+@include('partials.google-maps-platform')
 <script src="{{ protected_js('geofence-map-draw.js') }}"></script>
 <script src="{{ protected_js('tracking-geofences.js') }}"></script>
 @endpush

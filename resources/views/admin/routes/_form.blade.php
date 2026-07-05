@@ -283,6 +283,7 @@
 <script>
 window.ROUTE_ADMIN_CONFIG = {
     googleMapsKey: @json($googleMapsKey ?? config('services.google.maps_key')),
+    googleMapsMapId: @json(config('services.google.maps_map_id')),
     checkpoints: @json($checkpointsJson),
     guidedPolyline: @json($guidedPolylineJson),
     guidedDistanceKm: @json(old('guided_distance_km', $route->guided_distance_km)),
@@ -306,5 +307,7 @@ window.ROUTE_ADMIN_CONFIG = {
     },
 };
 </script>
+@include('partials.google-maps-platform')
+<script src="{{ protected_js('vehicle-marker.js') }}"></script>
 <script src="{{ protected_js('route-admin.js') }}"></script>
 @endpush

@@ -955,7 +955,8 @@
                 const displayLabel = this.markerLabel(cp.label, kind);
                 const color = reached ? '#16a34a' : (isSkipped ? '#cbd5e1' : (isCurrent ? '#2563eb' : '#94a3b8'));
 
-                const marker = new google.maps.Marker({
+                const createMarker = global.VehicleMarker?.createMarker || global.GoogleMapsPlatform?.createMarker || ((o) => new google.maps.Marker(o));
+                const marker = createMarker({
                     map,
                     position: { lat, lng },
                     title: cp.label || '',

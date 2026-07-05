@@ -95,8 +95,7 @@
             (cfg.vehicles || []).forEach((v) => this.vehicles.set(v.id, { ...v }));
 
             const callbackName = '__globalTrackingHistoryReady';
-            global[callbackName] = () => {
-                try { delete global[callbackName]; } catch (_) { global[callbackName] = undefined; }
+            const startMap = () => {
                 if (!global.google?.maps?.Map) {
                     this.showError(cfg.i18n?.loadingMapFailed || 'Google Maps failed to initialize.');
                     return;
@@ -104,12 +103,28 @@
                 this.initMap();
             };
 
+            if (global.GoogleMapsPlatform?.load) {
+                global.GoogleMapsPlatform.load({
+                    key: cfg.googleMapsKey,
+                    mapId: cfg.googleMapsMapId,
+                    libraries: ['marker'],
+                }).then(startMap).catch(() => {
+                    this.showError(cfg.i18n?.loadingMapFailed || 'Could not load Google Maps.');
+                });
+                return;
+            }
+
+            global[callbackName] = () => {
+                try { delete global[callbackName]; } catch (_) { global[callbackName] = undefined; }
+                startMap();
+            };
+
             const script = document.createElement('script');
             script.dataset.globalTrackingHistoryMaps = '1';
             script.async = true;
             script.defer = true;
             script.onerror = () => this.showError(cfg.i18n?.loadingMapFailed || 'Could not load Google Maps.');
-            script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(cfg.googleMapsKey)}&callback=${callbackName}`;
+            script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(cfg.googleMapsKey)}&loading=async&v=weekly&callback=${callbackName}`;
             document.head.appendChild(script);
         }
 
@@ -117,13 +132,19 @@
             const mapEl = document.getElementById('gtHistoryMap');
             if (!mapEl) return;
 
-            this.map = new google.maps.Map(mapEl, {
+            const baseMapOpts = {
                 center: DEFAULT_CENTER,
                 zoom: 11,
                 mapTypeControl: false,
                 streetViewControl: false,
                 fullscreenControl: true,
-            });
+            };
+            this.map = new google.maps.Map(
+                mapEl,
+                global.GoogleMapsPlatform?.mapOptions
+                    ? global.GoogleMapsPlatform.mapOptions(baseMapOpts, this.cfg.googleMapsMapId)
+                    : baseMapOpts,
+            );
 
             this.legendEl = document.getElementById('gtHistoryLegend');
             this.bindUi();
@@ -304,7 +325,7 @@
         }
 
         addEndpoint(point, type) {
-            const marker = new google.maps.Marker({
+            const marker = global.VehicleMarker.createMarker({
                 position: { lat: point.lat, lng: point.lng },
                 map: this.map,
                 icon: this.endpointIcon(type),
@@ -315,7 +336,7 @@
         }
 
         addEventMarker(ev) {
-            const marker = new google.maps.Marker({
+            const marker = global.VehicleMarker.createMarker({
                 position: { lat: ev.lat, lng: ev.lng },
                 map: this.map,
                 icon: {

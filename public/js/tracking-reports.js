@@ -221,7 +221,13 @@
     function loadMap(points) {
         const cb = '__gtReportMapReady';
         const init = () => {
-            const map = new google.maps.Map($('gtReportMap'), { zoom: 11, center: { lat: points[0].lat, lng: points[0].lng } });
+            const baseMapOpts = { zoom: 11, center: { lat: points[0].lat, lng: points[0].lng } };
+            const map = new google.maps.Map(
+                $('gtReportMap'),
+                global.GoogleMapsPlatform?.mapOptions
+                    ? global.GoogleMapsPlatform.mapOptions(baseMapOpts, cfg.googleMapsMapId)
+                    : baseMapOpts,
+            );
             if (global.FleetMapRenderer) {
                 const r = new global.FleetMapRenderer({ googleMaps: google, speedToColor: (s) => s > 80 ? '#ef4444' : s > 60 ? '#eab308' : '#22c55e' });
                 r.attachMap(map);
@@ -231,7 +237,7 @@
         if (global.google && global.google.maps) { init(); return; }
         global[cb] = init;
         const s = document.createElement('script');
-        s.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(cfg.googleMapsKey)}&callback=${cb}`;
+        s.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(cfg.googleMapsKey)}&loading=async&v=weekly&callback=${cb}`;
         document.head.appendChild(s);
     }
 

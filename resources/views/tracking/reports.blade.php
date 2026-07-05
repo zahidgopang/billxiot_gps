@@ -105,6 +105,7 @@ window.TRACKING_REPORTS_CONFIG = {
     generateUrl: @json($generateUrl),
     exportUrl: @json($exportUrl),
     googleMapsKey: @json(config('services.google.maps_key')),
+    googleMapsMapId: @json(config('services.google.maps_map_id')),
     currentLang: @json(app()->getLocale()),
     i18n: @json(array_merge(\App\Services\Tracking\Reports\ReportLabels::jsBundle(), [
         'hourSuffix' => __('app.tracking.report_duration_hours'),
@@ -118,6 +119,8 @@ window.TRACKING_REPORTS_CONFIG = {
     ])),
 };
 </script>
+@include('partials.google-maps-platform')
+<script src="{{ protected_js('vehicle-marker.js') }}"></script>
 <script src="{{ protected_js('fleet-map-renderer.js') }}"></script>
 <script src="{{ protected_js('tracking-reports.js') }}"></script>
 @endpush

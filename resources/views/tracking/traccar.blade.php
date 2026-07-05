@@ -1966,6 +1966,7 @@
             userId: @json(auth()->id()),
             alertPollIntervalMs: 15000,
             googleMapsKey: @json(config('services.google.maps_key')),
+            googleMapsMapId: @json(config('services.google.maps_map_id')),
             liveJsonUrl: @json(route($routes['liveJson'])),
             historyJsonUrl: @json(route($routes['historyJson'])),
             eventsJsonUrl: @json(Route::has($routes['eventsJson']) ? route($routes['eventsJson']) : null),
@@ -2139,6 +2140,7 @@
         };
     </script>
     <script src="{{ protected_js('app-datetime.js') }}"></script>
+    @include('partials.google-maps-platform')
     <script src="{{ protected_js('vehicle-marker.js') }}"></script>
     <script src="{{ protected_js('fleet-map-cluster.js') }}"></script>
     <script src="{{ protected_js('history-analytics.js') }}"></script>

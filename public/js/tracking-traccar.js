@@ -88,6 +88,23 @@
         };
     }
 
+    function createMapMarker(options) {
+        if (global.VehicleMarker?.createMarker) {
+            return global.VehicleMarker.createMarker(options);
+        }
+        if (global.GoogleMapsPlatform?.createMarker) {
+            return global.GoogleMapsPlatform.createMarker(options);
+        }
+        return new google.maps.Marker(options);
+    }
+
+    function mapInitOptions(base) {
+        if (global.GoogleMapsPlatform?.mapOptions) {
+            return global.GoogleMapsPlatform.mapOptions(base, global.GOOGLE_MAPS_CONFIG?.mapId);
+        }
+        return base;
+    }
+
     function applyMarkerIcon(marker, icon) {
         if (global.VehicleMarker?.applyMarkerIcon) {
             global.VehicleMarker.applyMarkerIcon(marker, icon);
@@ -490,8 +507,7 @@
             });
 
             const cbName = '__traccarUiReady';
-            global[cbName] = () => {
-                try { delete global[cbName]; } catch (_) { global[cbName] = undefined; }
+            const startMap = () => {
                 if (!global.google?.maps?.Map) {
                     this.showError(cfg.i18n?.loadingMapFailed || 'Google Maps failed to initialize.');
                     return;
@@ -499,11 +515,27 @@
                 this.initMap();
             };
 
+            if (global.GoogleMapsPlatform?.load) {
+                global.GoogleMapsPlatform.load({
+                    key: cfg.googleMapsKey,
+                    mapId: cfg.googleMapsMapId,
+                    libraries: ['marker'],
+                }).then(startMap).catch(() => {
+                    this.showError(cfg.i18n?.loadingMapFailed || 'Could not load Google Maps.');
+                });
+                return;
+            }
+
+            global[cbName] = () => {
+                try { delete global[cbName]; } catch (_) { global[cbName] = undefined; }
+                startMap();
+            };
+
             const script = document.createElement('script');
             script.async = true;
             script.defer = true;
             script.onerror = () => this.showError(cfg.i18n?.loadingMapFailed || 'Could not load Google Maps.');
-            script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(cfg.googleMapsKey)}&callback=${cbName}`;
+            script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(cfg.googleMapsKey)}&loading=async&v=weekly&callback=${cbName}`;
             document.head.appendChild(script);
         }
 
@@ -511,7 +543,7 @@
             const mapEl = document.getElementById('tcMap');
             if (!mapEl) return;
 
-            this.map = new google.maps.Map(mapEl, {
+            this.map = new google.maps.Map(mapEl, mapInitOptions({
                 center: DEFAULT_CENTER,
                 zoom: 11,
                 mapTypeControl: false,
@@ -519,7 +551,7 @@
                 fullscreenControl: false,
                 zoomControl: false,
                 gestureHandling: 'greedy',
-            });
+            }));
             this.mapZoom = this.map.getZoom() || 11;
             this.map.addListener('idle', () => {
                 this.mapZoom = this.map.getZoom() || this.mapZoom || 11;
@@ -1429,7 +1461,7 @@
                     icon = liveClusterIcon(count);
                     this.clusterIconCache.set(count, icon);
                 }
-                const marker = new google.maps.Marker({
+                const marker = createMapMarker({
                     map: this.map,
                     position: item.position,
                     icon: icon || undefined,
@@ -1467,7 +1499,7 @@
             const st = this.vehicleState(id);
             if (!this.map || !v || st.marker) return;
             const pos = v.lat != null && v.lng != null ? { lat: v.lat, lng: v.lng } : null;
-            st.marker = new google.maps.Marker({
+            st.marker = createMapMarker({
                 map: pos && !this.historyActive ? this.map : null,
                 position: pos || DEFAULT_CENTER,
                 title: this.labelFor(v),
@@ -2265,7 +2297,7 @@
         }
 
         addStop(stop, name) {
-            const marker = new google.maps.Marker({
+            const marker = createMapMarker({
                 position: { lat: stop.lat, lng: stop.lng }, map: this.map,
                 icon: pStopIcon(), zIndex: 570, title: 'P',
             });
@@ -3217,7 +3249,7 @@
         addEndpoint(point, type) {
             if (!point || !hasGeo(point.lat, point.lng)) return;
             const url = type === 'start' ? (this.cfg.startIconUrl || '/images/map/marker-start.svg') : (this.cfg.endIconUrl || '/images/map/marker-end.svg');
-            const marker = new google.maps.Marker({
+            const marker = createMapMarker({
                 position: { lat: point.lat, lng: point.lng }, map: this.map,
                 icon: { url, scaledSize: new google.maps.Size(40, 40), anchor: new google.maps.Point(20, 20) },
                 zIndex: type === 'start' ? 600 : 601,
@@ -3252,7 +3284,7 @@
         }
 
         addEventDot(ev) {
-            const marker = new google.maps.Marker({
+            const marker = createMapMarker({
                 position: { lat: ev.lat, lng: ev.lng }, map: this.map,
                 icon: { path: google.maps.SymbolPath.CIRCLE, fillColor: ev.type === 'stop' ? '#f97316' : '#ef4444', fillOpacity: 0.95, strokeColor: '#fff', strokeWeight: 2, scale: 6 },
                 title: ev.title || ev.type, zIndex: 550,
@@ -3323,7 +3355,7 @@
 
         locateEvent(lat, lng) {
             this.eventMarker?.setMap(null);
-            this.eventMarker = new google.maps.Marker({
+            this.eventMarker = createMapMarker({
                 position: { lat, lng }, map: this.map,
                 icon: { path: google.maps.SymbolPath.CIRCLE, fillColor: '#ef4444', fillOpacity: 1, strokeColor: '#fff', strokeWeight: 3, scale: 9 },
                 zIndex: 999,

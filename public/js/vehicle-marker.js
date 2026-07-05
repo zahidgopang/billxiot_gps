@@ -631,6 +631,22 @@
         };
     }
 
+    function createMarker(options) {
+        const platform = global.GoogleMapsPlatform;
+        if (platform?.createMarker) {
+            return platform.createMarker(options);
+        }
+        const google = options.google || global.google;
+        return new google.maps.Marker({
+            map: options.map ?? null,
+            position: options.position,
+            title: options.title,
+            icon: options.icon,
+            zIndex: options.zIndex,
+            optimized: options.optimized,
+        });
+    }
+
     function applyMarkerIcon(marker, icon) {
         if (!marker || !icon) {
             return;
@@ -717,6 +733,7 @@
             return bodyOnlyVehicleSvg(color, heading, showDirection, vehicleType, sizedOpts).url;
         },
         createIconBuilder,
+        createMarker,
         applyMarkerIcon,
         getPulseOverlayClass,
         createPulseController,

@@ -77,17 +77,32 @@
             (cfg.devices || []).forEach((d) => this.deviceById.set(d.id, d));
 
             const callbackName = '__userFleetMapGoogleReady';
+            const startMap = () => {
+                if (!global.google?.maps?.Map) {
+                    this.showBootError('Google Maps failed to initialize.');
+                    return;
+                }
+                this.initMap();
+            };
+
+            if (global.GoogleMapsPlatform?.load) {
+                global.GoogleMapsPlatform.load({
+                    key: cfg.googleMapsKey,
+                    mapId: cfg.googleMapsMapId,
+                    libraries: ['marker'],
+                }).then(startMap).catch(() => {
+                    this.showBootError('Could not load Google Maps. Check your connection or API key.');
+                });
+                return;
+            }
+
             global[callbackName] = () => {
                 try {
                     delete global[callbackName];
                 } catch (_) {
                     global[callbackName] = undefined;
                 }
-                if (!global.google?.maps?.Map) {
-                    this.showBootError('Google Maps failed to initialize.');
-                    return;
-                }
-                this.initMap();
+                startMap();
             };
 
             const existing = document.querySelector('script[data-user-fleet-maps]');
@@ -105,7 +120,7 @@
             script.async = true;
             script.defer = true;
             script.onerror = () => this.showBootError('Could not load Google Maps. Check your connection or API key.');
-            script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(cfg.googleMapsKey)}&callback=${callbackName}`;
+            script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(cfg.googleMapsKey)}&loading=async&v=weekly&callback=${callbackName}`;
             document.head.appendChild(script);
         }
 
@@ -127,14 +142,20 @@
             const center = count > 0 ? bounds.getCenter() : DEFAULT_CENTER;
             const initialZoom = count === 1 ? 13 : 11;
 
-            this.map = new google.maps.Map(mapEl, {
+            const baseMapOpts = {
                 center,
                 zoom: initialZoom,
                 mapTypeControl: false,
                 streetViewControl: false,
                 fullscreenControl: true,
                 gestureHandling: 'greedy',
-            });
+            };
+            this.map = new google.maps.Map(
+                mapEl,
+                global.GoogleMapsPlatform?.mapOptions
+                    ? global.GoogleMapsPlatform.mapOptions(baseMapOpts, this.config.googleMapsMapId)
+                    : baseMapOpts,
+            );
 
             if (count > 1) {
                 this.map.fitBounds(bounds, 56);
@@ -341,7 +362,7 @@
                         icon = clusterIcon(clusterCount);
                         this.clusterIconCache.set(clusterCount, icon);
                     }
-                    const marker = new google.maps.Marker({
+                    const marker = global.VehicleMarker.createMarker({
                         map: this.map,
                         position: item.position,
                         icon,
@@ -369,7 +390,7 @@
                 if (!device) return;
                 const point = this.devicePoint(device);
                 const icon = this.iconBuilder?.iconFor(point, { showLiveBadge: true });
-                const marker = new google.maps.Marker({
+                const marker = global.VehicleMarker.createMarker({
                     map: this.map,
                     position: item.position,
                     icon: icon || undefined,

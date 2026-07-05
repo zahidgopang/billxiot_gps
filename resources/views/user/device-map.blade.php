@@ -2628,6 +2628,7 @@
             baseUrl: @json(url('/')),
             csrfToken: @json(csrf_token()),
             googleMapsKey: @json(config('services.google.maps_key')),
+            googleMapsMapId: @json(config('services.google.maps_map_id')),
             appDebug: @json((bool) config('app.debug')),
             initialPoint: @json($initialPoint ?? null),
             defaultLat: 24.8607,
@@ -2810,6 +2811,7 @@
     <script src="{{ protected_js('map-session-guard.js') }}"></script>
     <script>window.APP_TIMEZONE = @json(config('app.timezone'));</script>
     <script src="{{ protected_js('app-datetime.js') }}"></script>
+    @include('partials.google-maps-platform')
     <script src="{{ protected_js('vehicle-marker.js') }}"></script>
     <script src="{{ protected_js('map-marker-appearance.js') }}"></script>
     <script src="{{ protected_js('fleet-map-renderer.js') }}"></script>

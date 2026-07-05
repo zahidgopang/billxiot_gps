@@ -70,8 +70,8 @@ class UserDashboardService
             $activeAlerts = 0;
         }
         $onlineNow = $this->countOnlineDevices($devices);
-
-        $vehicleStates = $this->getVehicleStateCounts($devices);
+        $alertDeviceIds = $this->alertDeviceIds($devices);
+        $vehicleStates = $this->getVehicleStateCounts($devices, $alertDeviceIds);
         $recentDevices = $devices->sortByDesc(fn (Device $d) => $d->latestLocation?->recorded_at)->take(5)->values();
         try {
             $activities = $this->getRecentActivities($deviceIds);
@@ -90,6 +90,7 @@ class UserDashboardService
             'vehicleStates' => $vehicleStates,
             'recentDevices' => $recentDevices,
             'activities' => $activities,
+            'alertDeviceIds' => $alertDeviceIds,
             'activePercent' => $totalDevices > 0 ? round(($activeDevices / $totalDevices) * 100) : 0,
             'onlinePercent' => $totalDevices > 0 ? round(($onlineNow / $totalDevices) * 100) : 0,
             'alertsPercent' => min(100, $activeAlerts * 20),
@@ -135,11 +136,11 @@ class UserDashboardService
         })->count();
     }
 
-    public function getVehicleStateCounts(Collection $devices): array
+    public function getVehicleStateCounts(Collection $devices, ?Collection $alertDeviceIds = null): array
     {
         $fleetCounts = $this->mapStatus->fleetCounts($devices);
         $maintenance = $devices->whereIn('status', ['inactive', 'blocked'])->count();
-        $alertDeviceIds = $this->alertDeviceIds($devices);
+        $alertDeviceIds ??= $this->alertDeviceIds($devices);
         $alerts = $devices->filter(fn (Device $d) => $alertDeviceIds->contains($d->id)
             && $this->mapStatus->isRecentlyOnline($d->latestLocation))->count();
 
@@ -253,6 +254,7 @@ class UserDashboardService
             'vehicleStates' => ['running' => 0, 'parked' => 0, 'maintenance' => 0, 'alerts' => 0],
             'recentDevices' => collect(),
             'activities' => collect(),
+            'alertDeviceIds' => collect(),
             'activePercent' => 0,
             'onlinePercent' => 0,
             'alertsPercent' => 0,

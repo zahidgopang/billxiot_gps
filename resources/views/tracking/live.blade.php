@@ -243,6 +243,7 @@
         window.GLOBAL_TRACKING_CONFIG = {
             panel: @json($panel),
             googleMapsKey: @json(config('services.google.maps_key')),
+            googleMapsMapId: @json(config('services.google.maps_map_id')),
             liveJsonUrl: @json(route($routes['liveJson'])),
             completeTripUrl: @json(\Illuminate\Support\Facades\Route::has($routes['completeTrip'] ?? '') ? route($routes['completeTrip']) : null),
             startNewTripUrl: @json(\Illuminate\Support\Facades\Route::has($routes['startNewTrip'] ?? '') ? route($routes['startNewTrip']) : null),
@@ -293,6 +294,7 @@
         };
     </script>
     <script src="{{ protected_js('app-datetime.js') }}"></script>
+    @include('partials.google-maps-platform')
     <script src="{{ protected_js('vehicle-marker.js') }}"></script>
     <script src="{{ protected_js('route-trip-progress.js') }}"></script>
     <script src="{{ protected_js('vehicle-map-popup.js') }}"></script>

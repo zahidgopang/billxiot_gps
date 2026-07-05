@@ -4,15 +4,19 @@ namespace App\Http\Controllers\Api\Mobile;
 
 use App\Http\Controllers\Controller;
 use App\Http\Concerns\RespondsWithMobileJson;
+use App\Models\User;
 use App\Models\VehicleEvent;
 use App\Services\Mobile\MobileDevicePresenter;
 use App\Services\Mobile\MobileMapStatusResolver;
 use App\Services\UserDashboardService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 
 class DashboardController extends Controller
 {
     use RespondsWithMobileJson;
+
+    private const HOME_CACHE_SECONDS = 45;
 
     public function __construct(
         private UserDashboardService $dashboard,
@@ -23,16 +27,13 @@ class DashboardController extends Controller
     public function home(Request $request)
     {
         $user = $request->user();
-        $stats = $this->dashboard->getStats($user);
-        $devices = $stats['devices'];
-        $fleet = $this->mapStatus->fleetCounts($devices);
-        $alertIds = $this->dashboard->alertDeviceIds($devices);
+        $payload = Cache::remember(
+            $this->homeCacheKey($user),
+            self::HOME_CACHE_SECONDS,
+            fn () => $this->buildHomePayload($user),
+        );
 
-        return $this->mobileSuccess([
-            'summary' => $this->summaryPayload($stats, $devices, $fleet),
-            'activity' => $this->activityPayload($stats['activities'])->values(),
-            'recent_vehicles' => $this->recentVehiclePayload($stats['recentDevices'], $alertIds)->values(),
-        ]);
+        return $this->mobileSuccess($payload);
     }
 
     public function summary(Request $request)
@@ -43,6 +44,28 @@ class DashboardController extends Controller
         $fleet = $this->mapStatus->fleetCounts($devices);
 
         return $this->mobileSuccess($this->summaryPayload($stats, $devices, $fleet));
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function buildHomePayload(User $user): array
+    {
+        $stats = $this->dashboard->getStats($user);
+        $devices = $stats['devices'];
+        $fleet = $this->mapStatus->fleetCounts($devices);
+        $alertIds = $stats['alertDeviceIds'] ?? $this->dashboard->alertDeviceIds($devices);
+
+        return [
+            'summary' => $this->summaryPayload($stats, $devices, $fleet),
+            'activity' => $this->activityPayload($stats['activities'])->values(),
+            'recent_vehicles' => $this->recentVehiclePayload($stats['recentDevices'], $alertIds)->values(),
+        ];
+    }
+
+    private function homeCacheKey(User $user): string
+    {
+        return 'mobile.dashboard.home.' . $user->id;
     }
 
     private function summaryPayload(array $stats, $devices, array $fleet): array
@@ -94,7 +117,7 @@ class DashboardController extends Controller
     {
         $user = $request->user();
         $stats = $this->dashboard->getStats($user);
-        $alertIds = $this->dashboard->alertDeviceIds($stats['devices']);
+        $alertIds = $stats['alertDeviceIds'] ?? $this->dashboard->alertDeviceIds($stats['devices']);
 
         return $this->mobileSuccess($this->recentVehiclePayload($stats['recentDevices'], $alertIds)->values());
     }

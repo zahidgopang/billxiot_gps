@@ -70,6 +70,7 @@
             key,
             v: 'weekly',
             loading: 'async',
+            libraries: 'marker',
         });
         return `https://maps.googleapis.com/maps/api/js?${params.toString()}`;
     }
@@ -201,7 +202,10 @@
         const pos = { lat: Number(v.lat), lng: Number(v.lng) };
 
         if (!st.marker) {
-            st.marker = new global.google.maps.Marker({
+            const createMarker = global.VehicleMarker?.createMarker
+                || global.GoogleMapsPlatform?.createMarker
+                || ((opts) => new global.google.maps.Marker(opts));
+            st.marker = createMarker({
                 map,
                 position: pos,
                 title: v.title || v.plate || `#${id}`,
@@ -573,15 +577,22 @@
 
         try {
             await loadMapsScript(key);
+            await global.google.maps.importLibrary('marker');
             const { Map } = await global.google.maps.importLibrary('maps');
 
-            map = new Map(mapEl, {
+            const baseMapOpts = {
                 center: { lat: 25.276987, lng: 55.296249 },
                 zoom: 11,
                 mapTypeControl: true,
                 streetViewControl: false,
                 gestureHandling: 'greedy',
-            });
+            };
+            map = new Map(
+                mapEl,
+                global.GoogleMapsPlatform?.mapOptions
+                    ? global.GoogleMapsPlatform.mapOptions(baseMapOpts, cfg.googleMapsMapId)
+                    : baseMapOpts,
+            );
 
             ensureMapDrawer();
 

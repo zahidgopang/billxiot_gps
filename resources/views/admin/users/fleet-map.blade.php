@@ -123,6 +123,7 @@
     <script>
         window.USER_FLEET_MAP_CONFIG = {
             googleMapsKey: @json(config('services.google.maps_key')),
+            googleMapsMapId: @json(config('services.google.maps_map_id')),
             liveJsonUrl: @json(route($panel . '.users.fleet-map.live-json', $targetUser)),
             pollIntervalMs: 5000,
             devices: @json($initialPayload),
@@ -145,6 +146,7 @@
             },
         };
     </script>
+    @include('partials.google-maps-platform')
     <script src="{{ protected_js('vehicle-marker.js') }}"></script>
     <script src="{{ protected_js('vehicle-map-popup.js') }}"></script>
     <script src="{{ protected_js('fleet-map-cluster.js') }}"></script>

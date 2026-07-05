@@ -1519,7 +1519,8 @@
         }
 
         events.forEach((ev, i) => {
-            const m = new google.maps.Marker({
+            const createMarker = global.VehicleMarker?.createMarker || global.GoogleMapsPlatform?.createMarker;
+            const m = createMarker({
                 position: { lat: ev.lat, lng: ev.lng },
                 map,
                 title: ev.title + (ev.detail ? ': ' + ev.detail : ''),
@@ -1594,7 +1595,8 @@
         clearStopMarkers();
         if (!showsStops || !stops.length) return;
         stops.forEach((s, i) => {
-            const m = new google.maps.Marker({
+            const createMarker = global.VehicleMarker?.createMarker || global.GoogleMapsPlatform?.createMarker;
+            const m = createMarker({
                 position: { lat: s.lat, lng: s.lng },
                 map,
                 title: `Stop ${i + 1} (${formatDurationLong(s.duration)})`,
@@ -2405,8 +2407,9 @@ ${pts}
     function buildGoogleMapsScriptUrl(key) {
         const params = new URLSearchParams({
             key,
-            libraries: 'geometry,visualization,places',
+            libraries: 'geometry,visualization,places,marker',
             v: 'weekly',
+            loading: 'async',
         });
         return `https://maps.googleapis.com/maps/api/js?${params.toString()}`;
     }
@@ -2685,7 +2688,7 @@ ${pts}
             : { lat: cfg.defaultLat || 24.8607, lng: cfg.defaultLng || 67.0011 };
 
         markProgrammaticViewportMove(() => {
-            map = new google.maps.Map(mapEl, {
+            const baseMapOpts = {
                 center,
                 zoom: initial ? 15 : 13,
                 mapTypeId: 'roadmap',
@@ -2695,7 +2698,13 @@ ${pts}
                 streetViewControl: false,
                 minZoom: 3,
                 maxZoom: 21,
-            });
+            };
+            map = new google.maps.Map(
+                mapEl,
+                global.GoogleMapsPlatform?.mapOptions
+                    ? global.GoogleMapsPlatform.mapOptions(baseMapOpts, cfg.googleMapsMapId)
+                    : baseMapOpts,
+            );
         });
 
         ensureMapDrawer();

@@ -185,7 +185,9 @@
 
             if (!this.vehicleMarker) {
                 const g = this.opts.googleMaps || global.google;
-                this.vehicleMarker = new g.maps.Marker({
+                const VM = global.VehicleMarker;
+                const createMarker = VM?.createMarker || global.GoogleMapsPlatform?.createMarker;
+                this.vehicleMarker = createMarker({
                     position,
                     map: this.map,
                     title,
@@ -333,8 +335,11 @@
             this.startMarker?.setMap(null);
             this.endMarker?.setMap(null);
 
+            const VM = global.VehicleMarker;
+            const createMarker = VM?.createMarker || global.GoogleMapsPlatform?.createMarker;
+
             if (start) {
-                this.startMarker = new g.maps.Marker({
+                this.startMarker = createMarker({
                     position: { lat: start.lat, lng: start.lng },
                     map: this.map,
                     title: options.startTitle || 'Route start',
@@ -345,7 +350,7 @@
             }
 
             if (end) {
-                this.endMarker = new g.maps.Marker({
+                this.endMarker = createMarker({
                     position: { lat: end.lat, lng: end.lng },
                     map: this.map,
                     title: options.endTitle || 'Route end',
@@ -463,10 +468,12 @@
             const step = Math.max(1, Math.floor(n / 80));
             const lastIdx = n - 1;
 
+            const createMarker = global.VehicleMarker?.createMarker || global.GoogleMapsPlatform?.createMarker;
+
             for (let i = 0; i < lastIdx; i += step) {
                 if (i === 0) continue;
                 const p = points[i];
-                const dot = new g.maps.Marker({
+                const dot = createMarker({
                     position: { lat: p.lat, lng: p.lng },
                     map: this.map,
                     icon: {
