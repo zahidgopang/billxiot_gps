@@ -66,6 +66,25 @@ trait ResolvesTrackingPanel
         return array_values(array_filter(array_map('intval', explode(',', (string) $raw))));
     }
 
+    /**
+     * Resolve device ids for reports (`all` = every visible vehicle).
+     *
+     * @return list<int>
+     */
+    protected function resolveReportDeviceIds(Request $request, ?\App\Models\User $user = null): array
+    {
+        $user ??= $request->user();
+        $raw = $request->input('ids', $request->query('ids', ''));
+
+        if (is_string($raw) && strtolower(trim($raw)) === 'all') {
+            return $this->tracking->allowedDeviceIds($user);
+        }
+
+        $ids = $this->parseTrackingIdList($request);
+
+        return $ids === [] ? [] : $this->tracking->filterAllowedIds($user, $ids);
+    }
+
     protected function noStoreJson(array $payload, int $status = 200): JsonResponse
     {
         return response()->json($payload, $status)

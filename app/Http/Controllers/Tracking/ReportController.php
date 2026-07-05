@@ -40,28 +40,56 @@ class ReportController extends Controller
     public function generate(Request $request): JsonResponse
     {
         $this->applyReportLocale($request);
-        $range = $this->resolveReportRange($request);
-        $type = (string) $request->query('type', 'summary');
-        $ids = $this->parseTrackingIdList($request);
+        set_time_limit(120);
 
-        $report = $this->reports->generate(
-            $request->user(),
-            $type,
-            $ids,
-            $range['from'],
-            $range['to'],
-        );
+        $ids = $this->resolveReportDeviceIds($request);
+        if ($ids === []) {
+            return $this->noStoreJson([
+                'success' => false,
+                'message' => (string) __('app.tracking.report_select_vehicle'),
+                'type' => (string) $request->input('type', $request->query('type', 'summary')),
+                'devices' => [],
+            ], 422);
+        }
 
-        return $this->noStoreJson($report);
+        try {
+            $range = $this->resolveReportRange($request);
+            $type = (string) $request->input('type', $request->query('type', 'summary'));
+
+            $report = $this->reports->generate(
+                $request->user(),
+                $type,
+                $ids,
+                $range['from'],
+                $range['to'],
+            );
+
+            return $this->noStoreJson(array_merge(['success' => true], $report));
+        } catch (\Throwable $e) {
+            report($e);
+
+            return $this->noStoreJson([
+                'success' => false,
+                'message' => (string) __('app.tracking.report_load_failed'),
+                'type' => (string) $request->input('type', $request->query('type', 'summary')),
+                'devices' => [],
+            ], 500);
+        }
     }
 
     public function export(Request $request): StreamedResponse|\Illuminate\Http\Response
     {
         $this->applyReportLocale($request);
+        set_time_limit(180);
+
+        $ids = $this->resolveReportDeviceIds($request);
+        if ($ids === []) {
+            abort(422, (string) __('app.tracking.report_select_vehicle'));
+        }
+
         $range = $this->resolveReportRange($request);
-        $type = (string) $request->query('type', 'summary');
-        $format = (string) $request->query('format', 'csv');
-        $ids = $this->parseTrackingIdList($request);
+        $type = (string) $request->input('type', $request->query('type', 'summary'));
+        $format = (string) $request->input('format', $request->query('format', 'csv'));
 
         $report = $this->reports->generate(
             $request->user(),
@@ -94,8 +122,8 @@ class ReportController extends Controller
      */
     private function resolveReportRange(Request $request): array
     {
-        $fromInput = trim((string) $request->query('from', ''));
-        $toInput = trim((string) $request->query('to', ''));
+        $fromInput = trim((string) $request->input('from', $request->query('from', '')));
+        $toInput = trim((string) $request->input('to', $request->query('to', '')));
         $tz = config('app.timezone');
 
         if ($fromInput === '') {

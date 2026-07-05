@@ -159,6 +159,9 @@
         'loadFailed' => __('app.tracking.report_load_failed'),
         'ignitionOn' => __('app.tracking.report_ignition_on'),
         'ignitionOff' => __('app.tracking.report_ignition_off'),
+        'selectVehicle' => __('app.tracking.report_select_vehicle'),
+        'devicesCapped' => __('app.tracking.report_devices_capped'),
+        'positionsTruncated' => __('app.tracking.report_positions_truncated'),
     ]);
 @endphp
 <script>

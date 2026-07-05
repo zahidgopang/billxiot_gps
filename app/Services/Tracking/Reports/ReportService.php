@@ -7,6 +7,7 @@ use App\Models\Device;
 use App\Models\DeviceLocation;
 use App\Models\User;
 use App\Models\VehicleEvent;
+use App\Services\Mobile\VehicleStatusSpec;
 use App\Services\Tracking\DeviceHistoryFetcher;
 use App\Services\Tracking\GlobalTrackingService;
 use App\Services\Tracking\HistoryAnalyticsService;
@@ -17,6 +18,12 @@ use Illuminate\Support\Collection;
 class ReportService
 {
     public const MAX_DEVICES = 50;
+
+    /** Max GPS rows returned per device in web JSON (table paginates client-side). */
+    public const MAX_POSITIONS_WEB_PER_DEVICE = 2500;
+
+    /** Max route polyline points for the map widget. */
+    public const MAX_ROUTE_MAP_POINTS = 3000;
 
     public function __construct(
         private DeviceHistoryFetcher $historyFetcher,
@@ -31,6 +38,7 @@ class ReportService
      */
     public function generate(User $actor, string $type, array $deviceIds, Carbon $from, ?Carbon $to): array
     {
+        $requestedCount = count($deviceIds);
         $ids = array_slice(
             $this->tracking->filterAllowedIds($actor, $deviceIds),
             0,
@@ -38,11 +46,19 @@ class ReportService
         );
 
         if ($ids === []) {
-            return ['type' => $type, 'devices' => [], 'from' => $from->toIso8601String(), 'to' => $to?->toIso8601String()];
+            return [
+                'type' => $type,
+                'devices' => [],
+                'from' => $from->toIso8601String(),
+                'to' => $to?->toIso8601String(),
+                'meta' => ['devices_requested' => $requestedCount, 'devices_in_report' => 0],
+            ];
         }
 
         $devices = Device::query()->whereIn('id', $ids)->get()->keyBy('id');
         $results = [];
+        $positionsTruncated = false;
+        $firstRouteDeviceId = $ids[0] ?? null;
 
         foreach ($ids as $id) {
             $device = $devices->get($id);
@@ -50,8 +66,13 @@ class ReportService
                 continue;
             }
 
-            $results[] = match ($type) {
-                'route' => $this->routeReport($device, $from, $to),
+            $row = match ($type) {
+                'route' => $this->routeReport(
+                    $device,
+                    $from,
+                    $to,
+                    $id === $firstRouteDeviceId,
+                ),
                 'positions' => $this->positionsReport($device, $from, $to),
                 'trips' => $this->tripsReport($device, $from, $to),
                 'stops' => $this->stopsReport($device, $from, $to),
@@ -59,6 +80,12 @@ class ReportService
                 'events' => $this->eventsReport($device, $from, $to),
                 default => $this->summaryReport($device, $from, $to),
             };
+
+            if (($row['positions_truncated'] ?? false) === true) {
+                $positionsTruncated = true;
+            }
+
+            $results[] = $row;
         }
 
         return [
@@ -67,21 +94,30 @@ class ReportService
             'to' => $to?->toIso8601String(),
             'devices' => $results,
             'totals' => $this->aggregateTotals($type, $results),
+            'meta' => [
+                'devices_requested' => $requestedCount,
+                'devices_in_report' => count($results),
+                'devices_capped' => $requestedCount > self::MAX_DEVICES,
+                'positions_truncated' => $positionsTruncated,
+            ],
         ];
     }
 
     /**
      * @return array<string, mixed>
      */
-    private function routeReport(Device $device, Carbon $from, ?Carbon $to): array
+    private function routeReport(Device $device, Carbon $from, ?Carbon $to, bool $includeMapPoints = true): array
     {
         $collection = $this->loadLocationCollection($device, $from, $to);
-        $points = $this->loadPoints($device, $from, $to);
         $stats = $this->historyAnalytics->analyze($collection);
         $trips = $this->tripsFromTimeline($collection, $stats['timeline'] ?? []);
+        $pointCount = $collection->count();
+        $points = $includeMapPoints
+            ? $this->buildRoutePoints($collection)
+            : [];
 
         return array_merge($this->deviceMeta($device), [
-            'point_count' => count($points),
+            'point_count' => $pointCount,
             'total_distance_km' => $stats['total_distance_km'] ?? 0,
             'moving_time_seconds' => $stats['moving_time_seconds'] ?? 0,
             'stopped_time_seconds' => $stats['stopped_time_seconds'] ?? 0,
@@ -104,11 +140,29 @@ class ReportService
     private function positionsReport(Device $device, Carbon $from, ?Carbon $to): array
     {
         $collection = $this->loadLocationCollection($device, $from, $to);
-        $statuses = $this->historyAnalytics->pointStatuses($collection);
+        $total = $collection->count();
+        $cap = self::MAX_POSITIONS_WEB_PER_DEVICE;
+        $useDetailedStatus = $total <= 800;
+        $statuses = $useDetailedStatus ? $this->historyAnalytics->pointStatuses($collection) : [];
         $positions = [];
 
         foreach ($collection->values() as $index => $loc) {
-            $status = $statuses[$index] ?? [];
+            if (count($positions) >= $cap) {
+                break;
+            }
+
+            if ($useDetailedStatus) {
+                $status = $statuses[$index] ?? [];
+                $statusLabel = (string) ($status['motion_status'] ?? $status['status_label'] ?? '');
+                $statusKey = (string) ($status['motion_status_key'] ?? $status['status_key'] ?? '');
+            } else {
+                $statusKey = VehicleStatusSpec::motionKey(
+                    (float) ($loc->speed ?? 0),
+                    (bool) $loc->ignition,
+                );
+                $statusLabel = VehicleStatusSpec::motionLabel($statusKey);
+            }
+
             $positions[] = [
                 'time' => AppDateTime::toApi($loc->recorded_at),
                 'time_display' => app_datetime_format($loc->recorded_at),
@@ -117,14 +171,16 @@ class ReportService
                 'speed' => round((float) ($loc->speed ?? 0), 1),
                 'heading' => isset($loc->heading) ? (float) $loc->heading : null,
                 'ignition' => (bool) $loc->ignition,
-                'status' => (string) ($status['motion_status'] ?? $status['status_label'] ?? ''),
-                'status_key' => (string) ($status['motion_status_key'] ?? $status['status_key'] ?? ''),
+                'status' => $statusLabel,
+                'status_key' => $statusKey,
             ];
         }
 
         return array_merge($this->deviceMeta($device), [
             'positions' => $positions,
-            'position_count' => count($positions),
+            'position_count' => $total,
+            'positions_returned' => count($positions),
+            'positions_truncated' => $total > count($positions),
         ]);
     }
 
@@ -329,21 +385,46 @@ class ReportService
     }
 
     /**
+     * @param  Collection<int, DeviceLocation>  $collection
      * @return list<array<string, mixed>>
      */
-    private function loadPoints(Device $device, Carbon $from, ?Carbon $to): array
+    private function buildRoutePoints(Collection $collection): array
     {
-        return $this->loadLocationCollection($device, $from, $to)
-            ->map(fn (DeviceLocation $loc) => [
+        if ($collection->isEmpty()) {
+            return [];
+        }
+
+        $values = $collection->values();
+        $total = $values->count();
+        $step = max(1, (int) ceil($total / self::MAX_ROUTE_MAP_POINTS));
+        $points = [];
+
+        for ($i = 0; $i < $total; $i += $step) {
+            /** @var DeviceLocation $loc */
+            $loc = $values[$i];
+            $points[] = [
                 'lat' => (float) $loc->lat,
                 'lng' => (float) $loc->lng,
                 'speed' => (float) ($loc->speed ?? 0),
                 'heading' => (float) ($loc->heading ?? 0),
                 'ignition' => (bool) $loc->ignition,
                 'recorded_at' => AppDateTime::toApi($loc->recorded_at),
-            ])
-            ->values()
-            ->all();
+            ];
+        }
+
+        $last = $values[$total - 1];
+        if ($points !== [] && ($points[count($points) - 1]['recorded_at'] ?? null) !== AppDateTime::toApi($last->recorded_at)) {
+            $points[] = [
+                'lat' => (float) $last->lat,
+                'lng' => (float) $last->lng,
+                'speed' => (float) ($last->speed ?? 0),
+                'heading' => (float) ($last->heading ?? 0),
+                'ignition' => (bool) $last->ignition,
+                'recorded_at' => AppDateTime::toApi($last->recorded_at),
+            ];
+        }
+
+        return $points;
     }
 
     /**

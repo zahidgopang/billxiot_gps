@@ -170,9 +170,12 @@ final class ReportLabels
             'kpiPoints' => (string) __('app.tracking.report_kpi_points'),
             'kpiMaxSpeed' => (string) __('app.tracking.report_kpi_max_speed'),
             'kpiDevices' => (string) __('app.tracking.report_kpi_devices'),
-            'selectAll' => (string) __('app.tracking.report_select_all'),
-            'selectNone' => (string) __('app.tracking.report_select_none'),
-            'columns' => [
+        'selectAll' => (string) __('app.tracking.report_select_all'),
+        'selectNone' => (string) __('app.tracking.report_select_none'),
+        'selectVehicle' => (string) __('app.tracking.report_select_vehicle'),
+        'devicesCapped' => (string) __('app.tracking.report_devices_capped'),
+        'positionsTruncated' => (string) __('app.tracking.report_positions_truncated'),
+        'columns' => [
                 'summary' => self::columnsForType('summary'),
                 'trips' => self::columnsForType('trips'),
                 'stops' => self::columnsForType('stops'),

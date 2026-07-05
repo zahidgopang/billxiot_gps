@@ -40,8 +40,8 @@ return function (): void {
 
     Route::prefix('reports')->name('reports.')->middleware('permission:web.reports.view')->group(function () {
         Route::get('/', [ReportController::class, 'index'])->name('index');
-        Route::get('/generate', [ReportController::class, 'generate'])->name('generate');
-        Route::get('/export', [ReportController::class, 'export'])->name('export');
+        Route::match(['get', 'post'], '/generate', [ReportController::class, 'generate'])->name('generate');
+        Route::match(['get', 'post'], '/export', [ReportController::class, 'export'])->name('export');
     });
 
     Route::prefix('events')->name('events.')->middleware('permission:web.events.view')->group(function () {

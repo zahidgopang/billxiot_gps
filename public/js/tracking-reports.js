@@ -58,6 +58,14 @@
         return [...document.querySelectorAll('#gtReportVehicles input:checked')].map((el) => el.value);
     }
 
+    function selectedIdsParam() {
+        const all = document.querySelectorAll('#gtReportVehicles input[type="checkbox"]');
+        const checked = selectedIds();
+        if (!checked.length) return '';
+        if (checked.length === all.length && all.length > 0) return 'all';
+        return checked.join(',');
+    }
+
     function reportLang() {
         const el = $('gtReportLang');
         return el ? el.value : (cfg.currentLang || 'en');
@@ -74,13 +82,29 @@
         p.set('type', $('gtReportType').value);
         p.set('from', dateTimeParam('gtReportFrom'));
         p.set('to', dateTimeParam('gtReportTo'));
-        p.set('ids', selectedIds().join(','));
+        p.set('ids', selectedIdsParam());
         p.set('lang', reportLang());
         return p;
     }
 
+    function csrfToken() {
+        return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+    }
+
     function columnsFor(type) {
         return colSets[type] || colSets.summary || [];
+    }
+
+    function reportNotice(flat) {
+        const meta = flat.meta || {};
+        const parts = [];
+        if (meta.devices_capped) {
+            parts.push(i18n.devicesCapped || 'Showing first 50 vehicles. Narrow the selection for faster results.');
+        }
+        if (meta.positions_truncated) {
+            parts.push(i18n.positionsTruncated || 'Large GPS datasets were trimmed per vehicle. Use CSV export for full data.');
+        }
+        return parts.join(' ');
     }
 
     /** Flatten API payload into columns + rows for the table. */
@@ -183,7 +207,7 @@
             ]));
         }
 
-        return { columns, rows, type, devices, totals: data.totals || {} };
+        return { columns, rows, type, devices, totals: data.totals || {}, meta: data.meta || {} };
     }
 
     function renderKpis(flat) {
@@ -360,16 +384,33 @@
 
     async function runReport() {
         if (state.loading) return;
+        if (!selectedIds().length) {
+            showEmpty(i18n.selectVehicle || 'Select at least one vehicle.');
+            return;
+        }
+
         $('gtReportMap').hidden = true;
         setLoading(true);
         try {
-            const res = await fetch(`${cfg.generateUrl}?${queryParams()}&_=${Date.now()}`, {
+            const body = queryParams();
+            const res = await fetch(cfg.generateUrl, {
+                method: 'POST',
                 credentials: 'same-origin',
                 cache: 'no-store',
-                headers: { Accept: 'application/json' },
+                headers: {
+                    Accept: 'application/json',
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-CSRF-TOKEN': csrfToken(),
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                body: body.toString(),
             });
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            const data = await res.json();
+
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || data.success === false) {
+                throw new Error(data.message || `HTTP ${res.status}`);
+            }
+
             state.lastPayload = data;
             const flat = flatten(data);
             state.columns = flat.columns;
@@ -388,17 +429,46 @@
                 renderKpis(flat);
                 renderHead();
                 renderPage();
+                const notice = reportNotice(flat);
+                if (notice) {
+                    const count = $('gtReportCount');
+                    if (count) count.textContent = notice;
+                }
             }
         } catch (err) {
             console.error('[reports] generate failed', err);
-            showEmpty(i18n.loadFailed || 'Failed to load the report. Please try again.');
+            showEmpty(err.message || i18n.loadFailed || 'Failed to load the report. Please try again.');
         } finally {
             setLoading(false);
         }
     }
 
     function exportFmt(fmt) {
-        window.location.href = `${cfg.exportUrl}?${queryParams()}&format=${fmt}`;
+        if (!selectedIds().length) {
+            showEmpty(i18n.selectVehicle || 'Select at least one vehicle.');
+            return;
+        }
+
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = cfg.exportUrl;
+        form.style.display = 'none';
+
+        const addField = (name, value) => {
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = name;
+            input.value = value;
+            form.appendChild(input);
+        };
+
+        addField('_token', csrfToken());
+        queryParams().forEach((value, key) => addField(key, value));
+        addField('format', fmt);
+
+        document.body.appendChild(form);
+        form.submit();
+        form.remove();
     }
 
     function setVehicleChecks(checked) {
