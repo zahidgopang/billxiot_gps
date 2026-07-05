@@ -6,10 +6,11 @@ use App\Http\Controllers\Controller;
 use App\Services\Tracking\TraccarForwardPositionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 
 /**
- * Receives Traccar position forward POSTs (traccar.xml forward.url).
- * Broadcasts DeviceLocationUpdated to Reverb immediately — no DB polling scheduler.
+ * Receives Traccar position forward (traccar.xml forward.url).
+ * Traccar 6+ defaults to GET (forward.type=url); json mode uses POST.
  */
 class TraccarForwardController extends Controller
 {
@@ -21,7 +22,7 @@ class TraccarForwardController extends Controller
 
         if (! $forward->isEnabled()) {
             if (config('app.debug')) {
-                \Illuminate\Support\Facades\Log::debug('traccar.forward skipped: mode disabled', [
+                Log::debug('traccar.forward skipped: mode disabled', [
                     'mode' => config('traccar.broadcast_mode'),
                     'positions' => config('traccar.broadcast_positions'),
                 ]);
@@ -30,17 +31,60 @@ class TraccarForwardController extends Controller
             return response()->json(['ok' => true, 'skipped' => 'forward mode disabled']);
         }
 
-        $handled = $forward->handlePayload($request->all());
+        $payload = $this->normalizeIncomingPayload($request);
+        $handled = $forward->handlePayload($payload);
 
         if (config('app.debug') && ! $handled) {
-            \Illuminate\Support\Facades\Log::debug('traccar.forward received but not broadcast', [
-                'keys' => array_keys($request->all()),
+            Log::debug('traccar.forward received but not broadcast', [
+                'method' => $request->method(),
+                'keys' => array_keys($payload),
             ]);
         }
 
         return response()->json([
             'ok' => true,
             'broadcast' => $handled,
+        ]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function normalizeIncomingPayload(Request $request): array
+    {
+        if ($request->isMethod('POST')) {
+            $body = $request->all();
+
+            return is_array($body) ? $body : [];
+        }
+
+        $query = $request->query();
+
+        if ($query === []) {
+            return [];
+        }
+
+        // Traccar forward.type=url sends GET query parameters (Traccar 6 default).
+        $position = array_filter([
+            'deviceId' => $query['deviceId'] ?? $query['device_id'] ?? null,
+            'latitude' => $query['latitude'] ?? $query['lat'] ?? null,
+            'longitude' => $query['longitude'] ?? $query['lon'] ?? $query['lng'] ?? null,
+            'speed' => $query['speed'] ?? null,
+            'course' => $query['course'] ?? null,
+            'fixTime' => $query['fixTime'] ?? $query['fixtime'] ?? null,
+            'attributes' => $query['attributes'] ?? null,
+        ], static fn ($value) => $value !== null && $value !== '');
+
+        $uniqueId = (string) ($query['uniqueId'] ?? $query['id'] ?? '');
+
+        $device = array_filter([
+            'id' => $query['deviceId'] ?? null,
+            'uniqueId' => $uniqueId !== '' ? $uniqueId : null,
+        ], static fn ($value) => $value !== null && $value !== '');
+
+        return array_filter([
+            'position' => $position !== [] ? $position : null,
+            'device' => $device !== [] ? $device : null,
         ]);
     }
 

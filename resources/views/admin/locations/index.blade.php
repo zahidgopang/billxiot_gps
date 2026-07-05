@@ -96,7 +96,9 @@
                         $latest = $d->latestLocation;
                         $subStatus = $subscriptionService->statusLabel($d);
                     @endphp
-                    <tr data-device-id="{{ $d->id }}">
+                    <tr data-device-id="{{ $d->id }}"
+                        data-status-key="{{ $liveStatus['key'] }}"
+                        @if($latest?->recorded_at) data-recorded-at="{{ $latest->recorded_at->toIso8601String() }}" @endif>
                         <td>
                             <strong>{{ $d->listPrimaryLabel() }}</strong>
                             <small class="d-block text-muted"><x-admin.ltr tag="code">{{ $d->imei }}</x-admin.ltr></small>
@@ -172,10 +174,12 @@
     <script>
         window.ADMIN_LOCATIONS_LIVE = {
             pollUrl: @json(route(($panel ?? 'admin') . '.locations.live-json')),
-            pollMs: 5000,
+            pollMs: @json((int) config('tracking.live_poll_interval_ms', 10000)),
+            reverbStaleMs: @json(max(45000, (int) config('traccar.broadcast_interval_seconds', 30) * 1500)),
             dash: @json(__('app.map.dash')),
             noData: @json(__('app.common.no_data')),
             kmh: @json(__('app.admin.locations.kmh')),
+            justNow: 'Just now',
         };
     </script>
     <script src="{{ protected_js('admin-locations-live.js') }}"></script>

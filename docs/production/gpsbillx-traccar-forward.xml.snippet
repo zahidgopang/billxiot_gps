@@ -7,6 +7,8 @@
   Then: sudo systemctl restart traccar
 -->
 <entry key='forward.enable'>true</entry>
+<!-- Traccar 6+: type=json sends POST JSON. Without this, default is url (GET) → HTTP 405 on Laravel. -->
+<entry key='forward.type'>json</entry>
 <entry key='forward.json'>true</entry>
 <entry key='forward.url'>https://gpsbillx.com/api/traccar/forward</entry>
 <entry key='forward.header'>X-Traccar-Token: YOUR_FORWARD_SECRET</entry>

@@ -50,6 +50,7 @@ class TraccarForwardStatusCommand extends Command
         $this->newLine();
         $this->line('Add to Traccar conf/traccar.xml (inside <properties>), then restart Traccar:');
         $this->line("  <entry key='forward.enable'>true</entry>");
+        $this->line("  <entry key='forward.type'>json</entry>");
         $this->line("  <entry key='forward.json'>true</entry>");
         $this->line("  <entry key='forward.url'>{$forwardUrl}</entry>");
 

@@ -796,6 +796,8 @@
     })();
 </script>
 
+@include('partials.reverb-echo')
+
 @stack('scripts')
 
 <script>

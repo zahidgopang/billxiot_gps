@@ -47,7 +47,11 @@
     // creating the recurring poll interval. Under 'use strict' an undeclared
     // reference throws and silently aborts live polling (marker freezes until
     // a full page reload).
-    const pollIntervalMs = Number(cfg.pollIntervalMs) > 0 ? Number(cfg.pollIntervalMs) : 2000;
+    const pollIntervalMs = Number(cfg.pollIntervalMs) > 0 ? Number(cfg.pollIntervalMs) : 10000;
+    const reverbStaleMs = Number(cfg.reverbStaleMs) > 0 ? Number(cfg.reverbStaleMs) : 45000;
+    const alertPollIntervalMs = Number(cfg.alertPollIntervalMs) > 0
+        ? Number(cfg.alertPollIntervalMs)
+        : 30000;
     const debugGps = cfg.debugGps === true
         || (typeof URLSearchParams !== 'undefined'
             && new URLSearchParams(window.location.search).get('debug_gps') === '1');
@@ -133,6 +137,13 @@
     let livePopupAddress = '';
     let livePollTimer = null;
     let alertsPollTimer = null;
+    let realtimeHealthy = false;
+    let lastReverbActivityAt = 0;
+    let lastHttpHeartbeatAt = 0;
+    let pollInFlight = false;
+    let echoHooksBound = false;
+    let reverbWatchTimer = null;
+    let echoChannel = null;
     let statusTicker = null;
     let markerAnimationFrame = null;
     let animFromPos = null;
@@ -2146,7 +2157,7 @@ ${pts}
             if (data.success) {
                 showNotification(data.message || 'Trip completed', 'success');
                 if (data.route_trip) applyRouteTripPayload({ route_trip: data.route_trip });
-                else await pollLive();
+                else await pollLive(true);
             }
         } catch (_) { /* ignore */ }
     }
@@ -2166,7 +2177,7 @@ ${pts}
             if (data.success) {
                 showNotification(data.message || 'Trip started', 'success');
                 if (data.route_trip) applyRouteTripPayload({ route_trip: data.route_trip });
-                else await pollLive();
+                else await pollLive(true);
             } else if (data.message) {
                 showNotification(data.message, 'error');
             }
@@ -2225,11 +2236,12 @@ ${pts}
         }
     }
 
-    async function pollLive() {
+    async function pollLive(force) {
+        if (!force && realtimeHealthy) return;
+        if (pollInFlight) return;
+        if (!liveUrl) return;
+        pollInFlight = true;
         try {
-            // Cache-bust + no-store so each poll hits the server for the latest
-            // fix; otherwise the browser may replay a cached response and the
-            // marker stays frozen until a full page reload.
             const sep = liveUrl.includes('?') ? '&' : '?';
             const res = await fetch(`${liveUrl}${sep}_=${Date.now()}`, {
                 cache: 'no-store',
@@ -2240,9 +2252,10 @@ ${pts}
             if (handleMapAccessDenied(res, data)) return;
             if (!res.ok) return;
             if (data && isValidCoord(data.lat) && isValidCoord(data.lng)) applyLivePoint(data);
-            await pollNewAlerts();
         } catch (e) {
             console.warn('Live poll failed', e);
+        } finally {
+            pollInFlight = false;
         }
     }
 
@@ -2301,36 +2314,177 @@ ${pts}
         ensureFleetRenderer()?.updateVehicleIcon(lastTelemetry);
     }
 
-    function setupRealtime() {
+    function isEchoConnected() {
+        return global.Echo?.connector?.pusher?.connection?.state === 'connected';
+    }
+
+    function reverbEventsRecent(maxMs) {
+        const limit = maxMs ?? reverbStaleMs;
+        return lastReverbActivityAt > 0
+            && (Date.now() - lastReverbActivityAt) < limit;
+    }
+
+    function needsHttpLivePoll(force = false) {
+        if (force) return true;
+        if (document.hidden) return false;
+        if (realtimeHealthy) return false;
+        return !!liveUrl;
+    }
+
+    function needsHttpAlertPoll() {
+        return !realtimeHealthy && !document.hidden && !!alertsUrl;
+    }
+
+    function stopLivePolling() {
         if (livePollTimer) {
             clearInterval(livePollTimer);
+            livePollTimer = null;
         }
+    }
+
+    function stopAlertsPolling() {
         if (alertsPollTimer) {
             clearInterval(alertsPollTimer);
+            alertsPollTimer = null;
         }
+    }
+
+    function pauseRealtimePolling() {
+        stopLivePolling();
+        stopAlertsPolling();
+    }
+
+    function startLivePolling() {
+        if (!needsHttpLivePoll()) {
+            stopLivePolling();
+            return;
+        }
+        const hadTimer = !!livePollTimer;
+        stopLivePolling();
+        if (!hadTimer) {
+            pollLive(true);
+        }
+        livePollTimer = setInterval(() => pollLive(false), pollIntervalMs);
+    }
+
+    function startAlertsPolling() {
+        if (!needsHttpAlertPoll()) {
+            stopAlertsPolling();
+            return;
+        }
+        const hadTimer = !!alertsPollTimer;
+        stopAlertsPolling();
+        if (!hadTimer && !alertsBootstrapped) {
+            loadRecentAlerts();
+        }
+        alertsPollTimer = setInterval(pollNewAlerts, alertPollIntervalMs);
+    }
+
+    function maybeStaleReverbHeartbeat() {
+        if (!realtimeHealthy || document.hidden) return;
+        if (reverbEventsRecent()) return;
+        const since = Date.now() - (lastHttpHeartbeatAt || 0);
+        if (lastHttpHeartbeatAt && since < reverbStaleMs) return;
+        lastHttpHeartbeatAt = Date.now();
+        pollLive(true);
+    }
+
+    function syncRealtimePolling() {
+        const wsConnected = isEchoConnected();
+        if (wsConnected !== realtimeHealthy) {
+            realtimeHealthy = wsConnected;
+            console.info(
+                '[device-map] Reverb',
+                wsConnected
+                    ? 'connected — live-json / alerts-json polling stopped'
+                    : 'unavailable — HTTP fallback active',
+            );
+        }
+        if (needsHttpLivePoll()) {
+            startLivePolling();
+        } else {
+            stopLivePolling();
+        }
+        if (needsHttpAlertPoll()) {
+            startAlertsPolling();
+        } else {
+            stopAlertsPolling();
+        }
+    }
+
+    function applyReverbLocation(payload) {
+        const loc = payload?.location && payload.location.lat != null
+            ? payload.location
+            : payload;
+        if (!loc || !isValidCoord(loc.lat) || !isValidCoord(loc.lng)) return;
+        lastReverbActivityAt = Date.now();
+        applyLivePoint(loc);
+        stopLivePolling();
+    }
+
+    function subscribeDeviceEcho() {
+        if (!global.Echo || typeof global.Echo.private !== 'function' || !deviceId || echoChannel) {
+            return;
+        }
+        try {
+            echoChannel = global.Echo.private(`device.${deviceId}`);
+            echoChannel.listen('.DeviceLocationUpdated', applyReverbLocation);
+            if (isEchoConnected()) {
+                realtimeHealthy = true;
+                stopLivePolling();
+                stopAlertsPolling();
+            }
+        } catch (err) {
+            console.warn('[device-map] Echo subscribe failed — using HTTP fallback', err);
+        }
+    }
+
+    function bindEchoRealtime() {
+        if (echoHooksBound) return;
+        echoHooksBound = true;
+
+        const sync = () => syncRealtimePolling();
+        global.addEventListener('reverb:connected', sync);
+        global.addEventListener('reverb:disconnected', sync);
+        global.addEventListener('focus', sync);
+
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                pauseRealtimePolling();
+            } else {
+                syncRealtimePolling();
+            }
+        });
+
+        if (!global.Echo) {
+            realtimeHealthy = false;
+            return;
+        }
+
+        reverbWatchTimer = setInterval(() => {
+            if (!isEchoConnected()) {
+                realtimeHealthy = false;
+                syncRealtimePolling();
+                return;
+            }
+            realtimeHealthy = true;
+            stopLivePolling();
+            stopAlertsPolling();
+            maybeStaleReverbHeartbeat();
+        }, 20000);
+
+        setTimeout(sync, 800);
+        setTimeout(sync, 2500);
+    }
+
+    function setupRealtime() {
         if (statusTicker) {
             clearInterval(statusTicker);
         }
-
-        pollLive();
-        livePollTimer = setInterval(() => pollLive(), pollIntervalMs);
-        alertsPollTimer = setInterval(pollNewAlerts, pollIntervalMs);
+        bindEchoRealtime();
+        subscribeDeviceEcho();
+        syncRealtimePolling();
         statusTicker = setInterval(tickStatus, 1000);
-
-        if (window.Echo && typeof window.Echo.private === 'function') {
-            try {
-                window.Echo.private(`device.${deviceId}`)
-                    .listen('.DeviceLocationUpdated', (payload) => {
-                        applyLivePoint(payload.location || payload);
-                        pollNewAlerts();
-                    });
-                console.info('[device-map] Live updates via Pusher + polling every', pollIntervalMs, 'ms');
-            } catch (err) {
-                console.warn('[device-map] Echo subscribe failed — using polling only', err);
-            }
-        } else {
-            console.info('[device-map] Live updates via polling every', pollIntervalMs, 'ms');
-        }
     }
 
     function showLoading(msg) {
@@ -2630,9 +2784,13 @@ ${pts}
 
     async function startMapDataServices() {
         try {
-            await loadRecentAlerts();
+            if (!alertsBootstrapped) {
+                await loadRecentAlerts();
+            }
             setupRealtime();
-            await pollLive();
+            if (needsHttpLivePoll()) {
+                await pollLive(true);
+            }
         } catch (err) {
             console.warn('[device-map] data services failed', err);
         }

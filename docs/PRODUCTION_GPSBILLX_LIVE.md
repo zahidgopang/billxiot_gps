@@ -68,10 +68,13 @@ Open `/opt/traccar/conf/traccar.xml` (or `/etc/traccar/traccar.xml`).
 
 ```xml
 <entry key='forward.enable'>true</entry>
+<entry key='forward.type'>json</entry>
 <entry key='forward.json'>true</entry>
 <entry key='forward.url'>https://gpsbillx.com/api/traccar/forward</entry>
 <entry key='forward.header'>X-Traccar-Token: <same secret as TRACCAR_FORWARD_SECRET></entry>
 ```
+
+**HTTP 405 in Traccar logs?** Traccar 6 defaults to `forward.type=url` (GET). Laravel expects POST JSON — add `forward.type=json` and restart Traccar.
 
 See also: [gpsbillx-traccar-forward.xml.snippet](./production/gpsbillx-traccar-forward.xml.snippet)
 
