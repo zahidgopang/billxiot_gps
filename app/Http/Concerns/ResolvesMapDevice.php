@@ -4,6 +4,8 @@ namespace App\Http\Concerns;
 
 use App\Models\Device;
 use App\Services\DeviceMapAccessService;
+use App\Services\Authorization\RbacService;
+use App\Services\Traccar\TraccarDeviceAccessService;
 use Illuminate\Http\Request;
 
 trait ResolvesMapDevice
@@ -58,5 +60,31 @@ trait ResolvesMapDevice
             'geofenceUpdate' => rtrim(route('user.geofence.update', ['id' => 0]), '/0'),
             'accessDeniedRedirect' => route('user.devices.index'),
         ];
+    }
+
+    protected function canManageGeofencesOnMap(Device $device): bool
+    {
+        $user = auth()->user();
+        if (! $user) {
+            return false;
+        }
+
+        if ($this->isAdminMapRequest()) {
+            $rbac = app(RbacService::class);
+            if ($rbac->isSuperAdmin($user) || $rbac->isVendorAdmin($user) || $rbac->isClientManager($user)) {
+                return app(TraccarDeviceAccessService::class)->userCanAccessDevice($user, $device);
+            }
+
+            return false;
+        }
+
+        return true;
+    }
+
+    protected function assertFleetGeofenceAccess(Device $device): void
+    {
+        if (! $this->canManageGeofencesOnMap($device)) {
+            abort(403, 'Not authorized to manage geofences for this device.');
+        }
     }
 }

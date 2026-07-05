@@ -1,25 +1,102 @@
 <script>
-    window.Pusher = Pusher;
-
     (function () {
         const echoEnabled = @json((bool) config('broadcasting.echo_enabled', true));
         const key = @json((string) config('broadcasting.connections.reverb.key'));
-        const host = @json((string) config('broadcasting.connections.reverb.options.host'));
-        const port = @json((int) config('broadcasting.connections.reverb.options.port', 443));
-        const scheme = @json((string) config('broadcasting.connections.reverb.options.scheme', 'https'));
-        const forceTLS = scheme === 'https';
-        const transports = forceTLS ? ['wss'] : ['ws'];
+        const configuredHost = @json((string) config('broadcasting.connections.reverb.options.host'));
+        const configuredPort = @json((int) config('broadcasting.connections.reverb.options.port', 443));
+        const configuredScheme = @json((string) config('broadcasting.connections.reverb.options.scheme', 'https'));
+        const isLocal = @json(config('app.env') === 'local');
         const debugRealtime = new URLSearchParams(window.location.search).has('realtime_debug')
             || window.localStorage?.getItem('realtime_debug') === '1';
 
-        if (!echoEnabled || !key || !host) {
-            console.info('[realtime] WebSocket disabled — map updates use polling.');
+        function normalizeHost(raw) {
+            if (!raw) return '';
+            let host = String(raw).trim();
+            if (host.includes('://')) {
+                try {
+                    host = new URL(host).hostname;
+                } catch (_) {
+                    host = host.replace(/^https?:\/\//i, '');
+                }
+            }
+            host = host.replace(/^https?:\/\//i, '').replace(/[/:].*$/, '').replace(/\/+$/, '');
+            return host;
+        }
+
+        let host = normalizeHost(configuredHost) || window.location.hostname || 'localhost';
+        let port = configuredPort;
+        let scheme = configuredScheme;
+
+        if (window.location.hostname) {
+            host = window.location.hostname;
+        }
+
+        if (window.location.protocol === 'https:') {
+            scheme = 'https';
+            if (port === 80) {
+                port = 443;
+            }
+        } else if (isLocal && scheme === 'https') {
+            scheme = 'http';
+            if (port === 443) {
+                port = 8080;
+            }
+        }
+
+        const forceTLS = scheme === 'https';
+        const transports = forceTLS ? ['wss'] : ['ws'];
+        const wsScheme = forceTLS ? 'wss' : 'ws';
+        const portSuffix = (forceTLS && port === 443) || (!forceTLS && port === 80) ? '' : `:${port}`;
+        const expectedWsUrl = key ? `${wsScheme}://${host}${portSuffix}/app/${key}?protocol=7&client=js` : '';
+
+        window.__reverbDebug = () => ({
+            state: window.Echo?.connector?.pusher?.connection?.state ?? null,
+            echoLoaded: typeof window.Echo !== 'undefined' && window.Echo !== null,
+            pusherLoaded: typeof Pusher !== 'undefined',
+            echoClassLoaded: typeof Echo !== 'undefined',
+            expectedWsUrl,
+            echoConfig: { key: key || null, host, port, scheme, forceTLS, transports },
+            pusherConfig: window.Echo?.connector?.pusher?.config ?? null,
+            socketId: window.Echo?.connector?.pusher?.connection?.socket_id ?? null,
+            lastInitError: window.__reverbInitError ?? null,
+        });
+
+        if (!echoEnabled) {
+            console.warn('[realtime] Echo disabled (REVERB_CLIENT_ENABLED=false). Maps use polling.');
             window.Echo = null;
             return;
         }
 
+        if (!key) {
+            console.error('[realtime] REVERB_APP_KEY missing — Echo not started.');
+            window.Echo = null;
+            return;
+        }
+
+        if (!host) {
+            console.error('[realtime] REVERB_HOST missing — Echo not started.');
+            window.Echo = null;
+            return;
+        }
+
+        if (typeof Pusher === 'undefined') {
+            window.__reverbInitError = 'pusher.min.js not loaded';
+            console.error('[realtime] pusher.min.js not loaded. Check /js/vendor/pusher.min.js');
+            window.Echo = null;
+            return;
+        }
+
+        if (typeof Echo === 'undefined') {
+            window.__reverbInitError = 'echo.iife.js not loaded';
+            console.error('[realtime] echo.iife.js not loaded. Check /js/vendor/echo.iife.js');
+            window.Echo = null;
+            return;
+        }
+
+        window.Pusher = Pusher;
+
         try {
-            if (debugRealtime && window.Pusher) {
+            if (debugRealtime) {
                 window.Pusher.logToConsole = true;
                 window.Pusher.log = (message) => console.debug('[pusher-js]', message);
             }
@@ -27,17 +104,14 @@
             const echo = new Echo({
                 broadcaster: 'pusher',
                 key: key,
+                cluster: 'mt1',
                 wsHost: host,
                 wsPort: port,
                 wssPort: port,
                 forceTLS: forceTLS,
                 encrypted: forceTLS,
-                enabledTransports: transports,
+                enabledTransports: ['ws', 'wss'],
                 disableStats: true,
-                cluster: '',
-                // Pusher JS may prefix the WebSocket URL with httpPath. Reverb
-                // expects /app/{key}, not /pusher/app/{key}.
-                httpPath: '',
                 authEndpoint: @json(url('/broadcasting/auth')),
                 auth: {
                     headers: {
@@ -47,12 +121,9 @@
             });
 
             window.Echo = echo;
+            window.__reverbInitError = null;
 
-            const connection = echo.connector?.pusher?.connection;
-            const pusherConfig = echo.connector?.pusher?.config;
             if (debugRealtime) {
-                const wsScheme = forceTLS ? 'wss' : 'ws';
-                const expectedWsUrl = `${wsScheme}://${host}:${port}/app/${key}?protocol=7&client=js`;
                 console.info('[realtime] Echo/Reverb config', {
                     key,
                     host,
@@ -61,16 +132,11 @@
                     forceTLS,
                     transports,
                     expectedWsUrl,
-                    pusherConfig,
-                    note: 'httpPath must be empty for Reverb so Pusher JS connects to /app/{key}.',
-                });
-                window.__reverbDebug = () => ({
-                    state: connection?.state,
-                    expectedWsUrl,
-                    echoConfig: { key, host, port, scheme, forceTLS, transports },
                     pusherConfig: echo.connector?.pusher?.config,
                 });
             }
+
+            const connection = echo.connector?.pusher?.connection;
             if (connection) {
                 let warned = false;
                 const warnOnce = (detail) => {
@@ -78,7 +144,7 @@
                     warned = true;
                     console.warn(
                         '[realtime] WebSocket unavailable (' + (detail || 'connection failed') + '). '
-                        + 'Maps still update via polling. Start Reverb: php artisan reverb:start',
+                        + 'Maps still update via polling. Run: reverb-start.bat',
                     );
                 };
                 if (debugRealtime) {
@@ -92,10 +158,14 @@
                     connection.bind('failed', logEvent('failed'));
                 }
                 connection.bind('error', (err) => warnOnce(err?.error?.data?.message || err?.type));
-                connection.bind('failed', () => warnOnce('failed'));
+                connection.bind('failed', () => {
+                    warnOnce('failed');
+                    console.error('[realtime] WebSocket failed. Run window.__reverbDebug()');
+                });
             }
         } catch (e) {
-            console.warn('[realtime] Echo init failed — polling only', e);
+            window.__reverbInitError = e?.message || String(e);
+            console.error('[realtime] Echo init failed — polling only', e);
             window.Echo = null;
         }
     })();

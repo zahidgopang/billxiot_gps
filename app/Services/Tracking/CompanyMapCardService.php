@@ -44,7 +44,7 @@ class CompanyMapCardService
     }
 
     /**
-     * Payload for the live map (bus name/plate come from the selected vehicle).
+     * Payload for the live map (vehicle name/plate come from the selected vehicle).
      *
      * @return array<string, mixed>
      */

@@ -12,9 +12,7 @@
     const TRAIL_MIN_STEP_DEG = 0.000022;
 
     let map = null;
-    let DrawingManagerClass = null;
-    let OverlayType = null;
-    let drawingManager = null;
+    let geofenceDrawer = null;
     let currentDrawing = null;
     let existingShapes = [];
     let pollTimer = null;
@@ -67,6 +65,32 @@
         return trackStates.get(id);
     }
 
+    function buildMapsScriptUrl(key) {
+        const params = new URLSearchParams({
+            key,
+            v: 'weekly',
+            loading: 'async',
+        });
+        return `https://maps.googleapis.com/maps/api/js?${params.toString()}`;
+    }
+
+    function waitForMapsCore(maxMs = 15000) {
+        return new Promise((resolve, reject) => {
+            const start = Date.now();
+            (function poll() {
+                if (typeof global.google?.maps?.importLibrary === 'function') {
+                    resolve();
+                    return;
+                }
+                if (Date.now() - start > maxMs) {
+                    reject(new Error('Google Maps unavailable'));
+                    return;
+                }
+                setTimeout(poll, 50);
+            })();
+        });
+    }
+
     function loadMapsScript(key) {
         return new Promise((resolve, reject) => {
             if (typeof global.google?.maps?.importLibrary === 'function') {
@@ -76,110 +100,62 @@
 
             const existing = document.querySelector('script[data-gt-geo-maps]');
             if (existing) {
-                const start = Date.now();
-                (function wait() {
-                    if (typeof global.google?.maps?.importLibrary === 'function') {
-                        resolve();
-                        return;
-                    }
-                    if (Date.now() - start > 15000) {
-                        reject(new Error('Google Maps importLibrary unavailable'));
-                        return;
-                    }
-                    setTimeout(wait, 50);
-                })();
+                waitForMapsCore().then(resolve).catch(reject);
                 return;
             }
 
             const script = document.createElement('script');
             script.dataset.gtGeoMaps = '1';
             script.async = true;
-            script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&loading=async`;
+            script.defer = true;
+            script.src = buildMapsScriptUrl(key);
             script.onerror = () => reject(new Error('Google Maps script failed'));
             script.onload = () => {
-                const start = Date.now();
-                (function wait() {
-                    if (typeof global.google?.maps?.importLibrary === 'function') {
-                        resolve();
-                        return;
-                    }
-                    if (Date.now() - start > 15000) {
-                        reject(new Error('Google Maps importLibrary unavailable'));
-                        return;
-                    }
-                    setTimeout(wait, 50);
-                })();
+                waitForMapsCore().then(resolve).catch(reject);
             };
             document.head.appendChild(script);
         });
     }
 
-    async function ensureDrawingClasses() {
-        if (DrawingManagerClass && OverlayType) {
-            return true;
-        }
-        try {
-            const drawingLib = await global.google.maps.importLibrary('drawing');
-            DrawingManagerClass = drawingLib.DrawingManager;
-            OverlayType = drawingLib.OverlayType;
-            return !!DrawingManagerClass;
-        } catch (err) {
-            console.warn('[tracking-geofences] drawing library failed', err);
-            return false;
-        }
-    }
-
-    async function initDrawingManager() {
-        if (drawingManager || !map) {
-            return drawingManager;
-        }
-        if (!await ensureDrawingClasses()) {
+    function ensureMapDrawer() {
+        if (!map || !global.GeofenceMapDrawer) {
             return null;
         }
-
-        try {
-            drawingManager = new DrawingManagerClass({
-                drawingMode: null,
-                drawingControl: false,
-                polygonOptions: {
-                    fillColor: '#2563eb',
-                    fillOpacity: 0.15,
-                    strokeColor: '#2563eb',
-                    strokeWeight: 2,
+        if (!geofenceDrawer) {
+            geofenceDrawer = new global.GeofenceMapDrawer({
+                map,
+                onComplete: (overlay) => {
+                    currentDrawing = overlay;
+                    const saveBtn = $('gtGeoSave');
+                    if (saveBtn) saveBtn.disabled = false;
+                    const cancelBtn = $('gtGeoCancel');
+                    if (cancelBtn) cancelBtn.hidden = false;
                 },
-                circleOptions: {
-                    fillColor: '#2563eb',
-                    fillOpacity: 0.15,
-                    strokeColor: '#2563eb',
-                    strokeWeight: 2,
+                onChange: (state) => {
+                    const saveBtn = $('gtGeoSave');
+                    if (!saveBtn || state.ready) {
+                        return;
+                    }
+                    if (state.mode === 'polygon' && (state.pointCount || 0) >= 3) {
+                        saveBtn.disabled = false;
+                    }
                 },
             });
-            drawingManager.setMap(map);
-
-            global.google.maps.event.addListener(drawingManager, 'overlaycomplete', (e) => {
-                currentDrawing?.setMap(null);
-                currentDrawing = e.overlay;
-                drawingManager.setDrawingMode(null);
-                const saveBtn = $('gtGeoSave');
-                if (saveBtn) saveBtn.disabled = false;
-                const cancelBtn = $('gtGeoCancel');
-                if (cancelBtn) cancelBtn.hidden = false;
-            });
-        } catch (err) {
-            console.warn('[tracking-geofences] DrawingManager init failed', err);
-            drawingManager = null;
         }
-
-        return drawingManager;
+        return geofenceDrawer;
     }
 
-    async function startDraw(mode) {
-        if (!mode) {
+    function extractDrawingPayload(overlay) {
+        return global.GeofenceDraw?.resolvePayload(geofenceDrawer, overlay || currentDrawing) || null;
+    }
+
+    function startDraw(kind) {
+        if (!global.GeofenceMapDrawer) {
             notify(i18n.drawingUnavailable || 'Drawing tools failed to load', 'error');
             return;
         }
-        const dm = drawingManager || await initDrawingManager();
-        if (!dm || !OverlayType) {
+        const drawer = ensureMapDrawer();
+        if (!drawer) {
             notify(i18n.drawingUnavailable || 'Drawing tools failed to load', 'error');
             return;
         }
@@ -190,13 +166,18 @@
         if (saveBtn) saveBtn.disabled = true;
         const cancelBtn = $('gtGeoCancel');
         if (cancelBtn) cancelBtn.hidden = false;
-        dm.setDrawingMode(mode);
+
+        if (kind === 'circle') {
+            drawer.startCircle();
+        } else {
+            drawer.startPolygon();
+        }
     }
 
     function cancelDraw() {
+        geofenceDrawer?.cancel();
         currentDrawing?.setMap(null);
         currentDrawing = null;
-        drawingManager?.setDrawingMode(null);
         const saveBtn = $('gtGeoSave');
         if (saveBtn) saveBtn.disabled = true;
         const cancelBtn = $('gtGeoCancel');
@@ -379,20 +360,22 @@
     }
 
     function bindControls() {
-        $('gtGeoDrawPolygon')?.addEventListener('click', async () => {
-            await ensureDrawingClasses();
-            startDraw(OverlayType?.POLYGON);
-        });
-        $('gtGeoDrawCircle')?.addEventListener('click', async () => {
-            await ensureDrawingClasses();
-            startDraw(OverlayType?.CIRCLE);
-        });
+        $('gtGeoDrawPolygon')?.addEventListener('click', () => startDraw('polygon'));
+        $('gtGeoDrawCircle')?.addEventListener('click', () => startDraw('circle'));
         $('gtGeoCancel')?.addEventListener('click', cancelDraw);
         $('gtGeoSave')?.addEventListener('click', saveGeofence);
     }
 
+    function scheduleMapResize() {
+        if (!map || !global.google?.maps?.event) {
+            return;
+        }
+        global.google.maps.event.trigger(map, 'resize');
+    }
+
     async function saveGeofence() {
-        if (!currentDrawing) {
+        const shape = extractDrawingPayload(currentDrawing);
+        if (!shape) {
             notify(i18n.drawFirst || 'Draw a shape first', 'error');
             return;
         }
@@ -404,30 +387,17 @@
         }
 
         const name = ($('gtGeoName')?.value || '').trim() || `Geofence ${new Date().toLocaleString()}`;
+
         const payload = {
             name,
             device_id: Number(vehicle.id),
+            type: shape.type,
         };
-
-        if (currentDrawing instanceof global.google.maps.Polygon) {
-            payload.type = 'polygon';
-            payload.coords = [];
-            const path = currentDrawing.getPath();
-            for (let i = 0; i < path.getLength(); i++) {
-                const ll = path.getAt(i);
-                payload.coords.push([ll.lat(), ll.lng()]);
-            }
-            if (payload.coords.length < 3) {
-                notify(i18n.drawFirst || 'Draw a shape first', 'error');
-                return;
-            }
-        } else if (currentDrawing instanceof global.google.maps.Circle) {
-            payload.type = 'circle';
-            const c = currentDrawing.getCenter();
-            payload.center = [c.lat(), c.lng()];
-            payload.radius = Math.round(currentDrawing.getRadius());
+        if (shape.type === 'polygon') {
+            payload.coords = shape.coords;
         } else {
-            return;
+            payload.center = shape.center;
+            payload.radius = shape.radius;
         }
 
         const btn = $('gtGeoSave');
@@ -446,8 +416,9 @@
             const json = await res.json().catch(() => ({}));
             if (!res.ok || json.success === false) throw new Error(json.message || 'save failed');
 
-            currentDrawing.setMap(null);
+            currentDrawing?.setMap(null);
             currentDrawing = null;
+            geofenceDrawer?.clearOverlay?.();
             const cancelBtn = $('gtGeoCancel');
             if (cancelBtn) cancelBtn.hidden = true;
             const nameInput = $('gtGeoName');
@@ -478,6 +449,7 @@
         existingShapes = [];
 
         const geofences = data.geofences || [];
+        const canManage = cfg.canManageGeofences !== false;
         if (listEl) {
             listEl.innerHTML = geofences.length
                 ? geofences.map((g) => `<div class="gt-geo-row" data-id="${g.id}">
@@ -485,7 +457,7 @@
                         <strong>${escapeHtml(g.name)}</strong> — ${escapeHtml(g.device_name)} <span class="text-muted">(${escapeHtml(g.type)})</span></span>
                         <span class="gt-geo-actions">
                             <button type="button" class="btn btn-sm btn-link p-0 me-2 gt-geo-zoom" data-id="${g.id}" title="Zoom"><i class="fas fa-search-location"></i></button>
-                            <button type="button" class="btn btn-sm btn-outline-danger gt-geo-del" data-id="${g.id}">${escapeHtml(i18n.del || 'Delete')}</button>
+                            ${canManage ? `<button type="button" class="btn btn-sm btn-outline-danger gt-geo-del" data-id="${g.id}">${escapeHtml(i18n.del || 'Delete')}</button>` : ''}
                         </span>
                     </div>`).join('')
                 : `<div class="text-muted">${escapeHtml(i18n.none || 'No geofences yet')}</div>`;
@@ -574,9 +546,8 @@
                 strokeWeight: 2,
             });
         }
-        if (g.coords) {
-            const coords = Array.isArray(g.coords) ? g.coords : JSON.parse(g.coords);
-            if (!coords?.length) return null;
+        const coords = Array.isArray(g.coords) ? g.coords : (g.coords ? JSON.parse(g.coords) : null);
+        if (coords?.length >= 3) {
             return new global.google.maps.Polygon({
                 map,
                 paths: coords.map((p) => ({ lat: +p[0], lng: +p[1] })),
@@ -609,12 +580,15 @@
                 zoom: 11,
                 mapTypeControl: true,
                 streetViewControl: false,
+                gestureHandling: 'greedy',
             });
 
-            global.google.maps.event.addListenerOnce(map, 'idle', () => {
-                global.google.maps.event.trigger(map, 'resize');
-            });
-            setTimeout(() => global.google.maps.event.trigger(map, 'resize'), 300);
+            ensureMapDrawer();
+
+            global.google.maps.event.addListenerOnce(map, 'idle', scheduleMapResize);
+            setTimeout(scheduleMapResize, 300);
+            setTimeout(scheduleMapResize, 900);
+            global.addEventListener('resize', scheduleMapResize);
 
             bindVehiclePicker();
             bindControls();

@@ -84,37 +84,147 @@
             min-height: 460px;
             background: var(--tc-bg);
             position: relative;
+            --tc-chrome-panel: 0px;
+        }
+        .tc-app.tc-app--nav-open {
+            --tc-nav-bar-height: 96px;
+        }
+        .tc-app.tc-app--nav-open:has(.tc-panel--open) {
+            --tc-chrome-panel: min(360px, 94vw);
         }
 
         /* ===== Top icon toolbar (Traccar style) ===== */
         .tc-iconbar {
-            display: flex;
+            position: absolute;
+            top: 12px;
+            inset-inline-start: 12px;
+            z-index: 10;
+            display: inline-flex;
             align-items: center;
             gap: 0.15rem;
-            flex-wrap: wrap;
-            padding: 0.4rem 0.7rem;
-            padding-inline-start: 3.85rem;
+            flex-wrap: nowrap;
             background: var(--tc-surface);
-            border-bottom: 1px solid var(--tc-border);
+            border-radius: 10px;
+            box-shadow: var(--tc-shadow);
+            padding: 0;
+            width: 42px;
+            height: 42px;
+            max-width: 42px;
+            max-height: 42px;
+            overflow: visible;
+            border: none;
+            opacity: 1;
+            pointer-events: auto;
+            transition: max-width 0.28s ease, max-height 0.24s ease, width 0.28s ease, height 0.24s ease,
+                border-radius 0.2s ease, box-shadow 0.2s ease, top 0.24s ease, inset 0.24s ease, padding 0.24s ease;
+        }
+        .tc-app.tc-app--nav-open .tc-iconbar {
+            top: 0;
+            inset-inline-start: 0;
+            right: 0;
+            width: 100%;
+            height: auto;
+            max-width: 100%;
+            max-height: 96px;
+            border-radius: 0;
             box-shadow: var(--tc-shadow-sm);
-            z-index: 6;
-            max-height: 0;
+            border-bottom: 1px solid var(--tc-border);
+            padding: 0.4rem 0.7rem;
+            flex-wrap: wrap;
+            overflow-x: auto;
+            overflow-y: visible;
+        }
+
+        .tc-nav-toggle {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            flex-shrink: 0;
+            width: 42px;
+            height: 42px;
+            border: none;
+            border-radius: 10px;
+            background: transparent;
+            color: var(--tc-primary);
+            font-size: 1.05rem;
+            cursor: pointer;
+            overflow: visible;
+        }
+        .tc-app.tc-app--nav-open .tc-nav-toggle {
+            background: var(--tc-primary);
+            color: #fff;
+        }
+
+        .tc-iconbar-links {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.15rem;
+            flex: 0 0 auto;
+            width: 0;
+            max-width: 0;
             opacity: 0;
             overflow: hidden;
             pointer-events: none;
-            padding-top: 0;
-            padding-bottom: 0;
-            transform: translateY(-8px);
-            transition: max-height 0.24s ease, opacity 0.18s ease, padding 0.24s ease, transform 0.24s ease;
+            transition: opacity 0.18s ease, max-width 0.28s ease;
         }
-        .tc-app.tc-app--topnav-open .tc-iconbar {
-            max-height: 96px;
+        .tc-app.tc-app--nav-open .tc-iconbar-links {
+            flex: 1;
+            width: auto;
+            max-width: none;
             opacity: 1;
             overflow: visible;
             pointer-events: auto;
-            padding-top: 0.4rem;
-            padding-bottom: 0.4rem;
-            transform: none;
+        }
+
+        .tc-nav-close {
+            display: none;
+            align-items: center;
+            justify-content: center;
+            width: 38px;
+            height: 38px;
+            border: 1px solid var(--tc-border);
+            border-radius: var(--tc-radius-sm);
+            background: var(--tc-surface);
+            color: var(--tc-text-muted);
+            font-size: 1rem;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+        .tc-app.tc-app--nav-open .tc-nav-close {
+            display: inline-flex;
+        }
+        .tc-nav-close:hover {
+            background: var(--tc-surface-2);
+            color: var(--tc-primary);
+            border-color: var(--tc-primary);
+        }
+
+        .tc-nav-toggle .tc-toggle-badge {
+            position: absolute;
+            top: -5px;
+            inset-inline-end: -5px;
+            min-width: 20px;
+            height: 20px;
+            padding: 0 5px;
+            border-radius: 999px;
+            background: var(--tc-alert);
+            color: #fff;
+            font-size: 0.65rem;
+            font-weight: 700;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            line-height: 1;
+            box-shadow: 0 0 0 2px var(--tc-surface);
+            z-index: 12;
+            pointer-events: none;
+        }
+        .tc-app.tc-app--nav-open .tc-nav-toggle .tc-toggle-badge {
+            box-shadow: 0 0 0 2px var(--tc-primary);
+        }
+        .tc-nav-toggle .tc-toggle-badge[hidden] {
+            display: none !important;
         }
 
         .tc-iconbar a {
@@ -179,54 +289,7 @@
             position: relative;
         }
 
-        /* Floating navigation toggles */
-        .tc-panel-toggle,
-        .tc-topbar-toggle {
-            display: none;
-            position: absolute;
-            top: 12px;
-            inset-inline-start: 12px;
-            z-index: 7;
-            width: 42px;
-            height: 42px;
-            border: none;
-            border-radius: 10px;
-            background: var(--tc-surface);
-            color: var(--tc-primary);
-            align-items: center;
-            justify-content: center;
-            font-size: 1.05rem;
-            box-shadow: var(--tc-shadow);
-            cursor: pointer;
-        }
-        .tc-topbar-toggle {
-            display: inline-flex;
-            inset-inline-start: 62px;
-        }
-        .tc-topbar-toggle[aria-expanded="true"],
-        .tc-panel-toggle[aria-expanded="true"] {
-            background: var(--tc-primary);
-            color: #fff;
-        }
-        .tc-panel-toggle .tc-toggle-badge {
-            position: absolute;
-            top: -5px;
-            inset-inline-end: -5px;
-            min-width: 18px;
-            height: 18px;
-            padding: 0 4px;
-            border-radius: 9px;
-            background: var(--tc-primary);
-            color: #fff;
-            font-size: 0.62rem;
-            font-weight: 700;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            line-height: 1;
-        }
-
-        /* Backdrop behind the mobile drawer. Uses visibility (not display) so it is
+        /* Backdrop when navigation drawer is open */
            fully inert when closed and never intercepts map taps. */
         .tc-panel-backdrop {
             position: absolute;
@@ -267,7 +330,6 @@
         }
         [dir="rtl"] .tc-main.tc-main--drawer .tc-panel { transform: translateX(106%); }
         .tc-main.tc-main--drawer .tc-panel.tc-panel--open { transform: none; }
-        .tc-main.tc-main--drawer .tc-panel-toggle { display: inline-flex; }
         .tc-main.tc-main--drawer .tc-map-wrap { width: 100%; flex: 1; }
 
         .tc-tabs {
@@ -512,19 +574,51 @@
 
         /* ===== Map ===== */
         .tc-map-wrap { position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; }
-        .tc-map-area { position: relative; flex: 1; min-height: 0; }
+        .tc-map-area {
+            position: relative;
+            flex: 1;
+            min-height: 0;
+            --tc-chrome-top: 12px;
+            --tc-chrome-start: 58px;
+            --tc-nav-bar-height: 0px;
+        }
+        .tc-app.tc-app--nav-open .tc-map-area {
+            --tc-chrome-top: calc(var(--tc-nav-bar-height) + 8px);
+            --tc-chrome-start: calc(var(--tc-chrome-panel, 0px) + 12px);
+            --tc-nav-bar-height: 96px;
+        }
+
+        /* Company card — separate overlay on map (not part of hub top bar) */
         .tc-map-overlay--start {
             position: absolute;
-            top: 64px;
-            inset-inline-start: 12px;
-            z-index: 6;
-            width: min(340px, calc(100% - 24px));
+            top: var(--tc-chrome-top);
+            inset-inline-start: var(--tc-chrome-start);
+            z-index: 11;
+            width: auto;
+            max-width: min(340px, calc(100% - var(--tc-chrome-start) - 16px));
             display: flex;
             flex-direction: column;
+            align-items: flex-start;
             gap: 8px;
             pointer-events: none;
+            transition: top 0.24s ease, inset-inline-start 0.28s ease, max-width 0.28s ease;
         }
         .tc-map-overlay--start > * { pointer-events: auto; }
+        .tc-map-overlay--start .tc-company-card:not(.is-open) {
+            width: auto;
+            min-width: 120px;
+            max-width: min(280px, calc(100vw - var(--tc-chrome-start) - 24px));
+            border-radius: 10px;
+        }
+        .tc-map-overlay--start .tc-company-card:not(.is-open) .tc-info-card__collapse {
+            min-height: 42px;
+            padding: 10px 14px;
+            font-size: 13px;
+        }
+        .tc-map-overlay--start .tc-company-card.is-open {
+            width: min(340px, calc(100vw - var(--tc-chrome-start) - 24px));
+            max-width: 340px;
+        }
         .tc-map-route-footer {
             position: absolute;
             bottom: 10px;
@@ -545,12 +639,13 @@
         }
         .route-trip-bar {
             position: absolute;
-            top: 12px;
+            top: var(--tc-chrome-top, 12px);
             left: 50%;
             transform: translateX(-50%);
             z-index: 6;
             width: min(720px, calc(100% - 24px));
             pointer-events: auto;
+            transition: top 0.24s ease;
         }
         .route-trip-bar[hidden] { display: none !important; }
         .route-trip-bar__hint {
@@ -969,15 +1064,24 @@
 
         .tc-map-overlay--end {
             position: absolute;
-            top: 12px;
+            top: var(--tc-chrome-top, 12px);
             inset-inline-end: 12px;
-            z-index: 6;
+            z-index: 7;
             width: min(340px, calc(100% - 24px));
             display: flex;
             flex-direction: column;
             align-items: flex-end;
             gap: 8px;
             pointer-events: none;
+            transition: top 0.24s ease;
+        }
+        .tc-map-overlay--end .tc-driver-card:not(.is-open) {
+            border-radius: 10px;
+        }
+        .tc-map-overlay--end .tc-driver-card:not(.is-open) .tc-info-card__collapse {
+            min-height: 42px;
+            padding: 10px 14px;
+            font-size: 13px;
         }
         .tc-map-overlay--end > * { pointer-events: auto; }
         .tc-map-overlay--end .tc-map-controls {
@@ -1356,6 +1460,9 @@
                 width: 86vw;
                 max-width: 340px;
             }
+            .tc-app.tc-app--nav-open:has(.tc-panel--open) {
+                --tc-chrome-panel: min(340px, 86vw);
+            }
 
             /* Legacy mobile drawer rules (kept for width / footer) */
             .tc-panel {
@@ -1375,9 +1482,7 @@
             [dir="rtl"] .tc-panel { transform: translateX(106%); }
             .tc-panel.tc-panel--open { transform: none; }
 
-            .tc-panel-toggle { display: inline-flex; }
-
-            /* Map controls a touch smaller and out of the way of the toggle */
+            /* Map controls a touch smaller on mobile */
             .tc-map-controls { top: 10px; inset-inline-end: 10px; gap: 6px; z-index: 6; }
             .tc-map-controls .btn { width: 40px; height: 40px; }
 
@@ -1442,60 +1547,66 @@
             ['key' => 'settings', 'icon' => 'fa-sliders-h', 'route' => $hubRoutes['settings'] ?? null, 'label' => __('app.tracking.settings_nav')],
         ];
     @endphp
-    <div class="tc-app{{ ! empty($ui['map_only']) ? ' tc-app--map-only' : '' }}">
-        @if(! empty($ui['iconbar']))
-        <button type="button" class="tc-topbar-toggle" id="tcTopbarToggle"
-                aria-label="{{ __('app.tracking.hub_nav') }}" title="{{ __('app.tracking.hub_nav') }}"
-                aria-expanded="false" aria-controls="tcIconbar">
-            <i class="fas fa-list-ul"></i>
+    @if(! empty($ui['alert_controls']))
+    @push('tracking-topbar-actions')
+    <div class="tracking-topbar__alert-controls">
+        <button type="button" class="tracking-topbar__alert-btn on" id="tcSoundToggle"
+                title="{{ __('app.tracking.alert_sound') }}" aria-label="{{ __('app.tracking.alert_sound') }}" aria-pressed="true">
+            <i class="fas fa-volume-high"></i>
         </button>
+        <button type="button" class="tracking-topbar__alert-btn" id="tcDesktopToggle"
+                title="{{ __('app.tracking.alert_desktop') }}" aria-label="{{ __('app.tracking.alert_desktop') }}" aria-pressed="false">
+            <i class="fas fa-bell"></i>
+        </button>
+    </div>
+    @endpush
+    @endif
+    <div class="tc-app{{ ! empty($ui['map_only']) ? ' tc-app--map-only' : '' }}">
+        @if(! empty($ui['iconbar']) || ! empty($ui['panel_toggle']))
         <div class="tc-iconbar" id="tcIconbar">
-            @foreach($iconLinks as $link)
-                @php
-                    $hubKey = $link['key'];
-                    $showHub = ! empty($link['hub']) || ! empty($hubPerms[$hubKey]);
-                @endphp
-                @if($showHub && $link['route'] && Route::has($link['route']))
-                    @if(!empty($link['active']))
-                        <a href="{{ route($link['route']) }}" class="active"
-                           title="{{ $link['label'] }}" aria-label="{{ $link['label'] }}">
-                            <i class="fas {{ $link['icon'] }}"></i>
-                        </a>
-                    @else
-                        <a href="{{ route($link['route']) }}"
-                           data-tc-module="{{ route($link['route']) }}"
-                           data-tc-module-title="{{ $link['label'] }}"
-                           data-tc-module-icon="{{ $link['icon'] }}"
-                           title="{{ $link['label'] }}" aria-label="{{ $link['label'] }}">
-                            <i class="fas {{ $link['icon'] }}"></i>
-                        </a>
-                    @endif
+            <button type="button" class="tc-nav-toggle" id="tcNavToggle"
+                    aria-label="{{ __('app.tracking.hub_nav') }}" title="{{ __('app.tracking.hub_nav') }}"
+                    aria-expanded="false" aria-controls="tcIconbar tcPanel">
+                <i class="fas fa-bars"></i>
+                @if(! empty($ui['panel_toggle']))
+                <span class="tc-toggle-badge" id="tcToggleBadge" hidden>0</span>
                 @endif
-            @endforeach
-            @if(! empty($ui['alert_controls']))
-            <span class="tc-iconbar-sep"></span>
-            <div class="tc-alert-controls">
-                <button type="button" class="tc-alert-btn" id="tcSoundToggle"
-                        title="{{ __('app.tracking.alert_sound') }}" aria-label="{{ __('app.tracking.alert_sound') }}" aria-pressed="true">
-                    <i class="fas fa-volume-high"></i>
-                </button>
-                <button type="button" class="tc-alert-btn" id="tcDesktopToggle"
-                        title="{{ __('app.tracking.alert_desktop') }}" aria-label="{{ __('app.tracking.alert_desktop') }}" aria-pressed="false">
-                    <i class="fas fa-bell"></i>
-                </button>
+            </button>
+            @if(! empty($ui['iconbar']))
+            <div class="tc-iconbar-links" id="tcIconbarLinks">
+                @foreach($iconLinks as $link)
+                    @php
+                        $hubKey = $link['key'];
+                        $showHub = ! empty($link['hub']) || ! empty($hubPerms[$hubKey]);
+                    @endphp
+                    @if($showHub && $link['route'] && Route::has($link['route']))
+                        @if(!empty($link['active']))
+                            <a href="{{ route($link['route']) }}" class="active"
+                               title="{{ $link['label'] }}" aria-label="{{ $link['label'] }}">
+                                <i class="fas {{ $link['icon'] }}"></i>
+                            </a>
+                        @else
+                            <a href="{{ route($link['route']) }}"
+                               data-tc-module="{{ route($link['route']) }}"
+                               data-tc-module-title="{{ $link['label'] }}"
+                               data-tc-module-icon="{{ $link['icon'] }}"
+                               title="{{ $link['label'] }}" aria-label="{{ $link['label'] }}">
+                                <i class="fas {{ $link['icon'] }}"></i>
+                            </a>
+                        @endif
+                    @endif
+                @endforeach
             </div>
+            <button type="button" class="tc-nav-close" id="tcNavClose"
+                    aria-label="{{ __('app.common.close') }}" title="{{ __('app.common.close') }}">
+                <i class="fas fa-times"></i>
+            </button>
             @endif
         </div>
         @endif
 
         <div class="tc-main{{ ! empty($ui['panel_toggle']) ? ' tc-main--drawer' : '' }}">
             @if(! empty($ui['panel_toggle']))
-            <button type="button" class="tc-panel-toggle" id="tcPanelToggle"
-                    aria-label="{{ __('app.tracking.panel_toggle') }}" title="{{ __('app.tracking.panel_toggle') }}"
-                    aria-expanded="false" aria-controls="tcPanel">
-                <i class="fas fa-list-ul"></i>
-                <span class="tc-toggle-badge" id="tcToggleBadge" hidden>0</span>
-            </button>
             <div class="tc-panel-backdrop" id="tcPanelBackdrop"></div>
             @endif
             @if(! empty($ui['sidebar']))
@@ -1655,18 +1766,18 @@
                                 <div class="tc-info-row" data-company-row="bus_name">
                                     <div class="tc-info-row__content">
                                         <div class="tc-info-row__labels">
-                                            <span class="tc-info-row__label-en">{{ __('app.tracking.company_map_label_bus_name') }}</span>
-                                            <span class="tc-info-row__label-ar" lang="ar">{{ __('app.tracking.company_map_label_bus_name_ar') }}</span>
+                                            <span class="tc-info-row__label-en">{{ __('app.tracking.company_map_label_vehicle_name', ['type' => __('app.forms.vehicle_type_car')]) }}</span>
+                                            <span class="tc-info-row__label-ar" lang="ar">{{ __('app.tracking.company_map_label_vehicle_name_ar', ['type' => trans('app.forms.vehicle_type_car', [], 'ar')]) }}</span>
                                         </div>
                                         <div class="tc-info-row__value" data-company-value="bus_name" dir="auto">—</div>
                                     </div>
-                                    <div class="tc-info-row__icon"><i class="fas fa-bus" aria-hidden="true"></i></div>
+                                    <div class="tc-info-row__icon"><i class="fas fa-car" aria-hidden="true" data-company-icon="vehicle_name"></i></div>
                                 </div>
                                 <div class="tc-info-row" data-company-row="bus_plate">
                                     <div class="tc-info-row__content">
                                         <div class="tc-info-row__labels">
-                                            <span class="tc-info-row__label-en">{{ __('app.tracking.company_map_label_bus_plate') }}</span>
-                                            <span class="tc-info-row__label-ar" lang="ar">{{ __('app.tracking.company_map_label_bus_plate_ar') }}</span>
+                                            <span class="tc-info-row__label-en">{{ __('app.tracking.company_map_label_vehicle_plate', ['type' => __('app.forms.vehicle_type_car')]) }}</span>
+                                            <span class="tc-info-row__label-ar" lang="ar">{{ __('app.tracking.company_map_label_vehicle_plate_ar', ['type' => trans('app.forms.vehicle_type_car', [], 'ar')]) }}</span>
                                         </div>
                                         <div class="tc-info-row__value" data-company-value="bus_plate" dir="auto">—</div>
                                     </div>
@@ -1848,11 +1959,6 @@
 @endsection
 
 @push('scripts')
-    @if($panel !== 'user')
-        <script src="https://js.pusher.com/8.2/pusher.min.js"></script>
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/laravel-echo/1.15.0/echo.iife.js"></script>
-        @include('user._pusher')
-    @endif
     <script>document.body.classList.add('gt-page-active'@if(! empty($ui['map_only'])), 'tc-live-map-only'@endif);</script>
     <script>
         window.TRACCAR_UI_CONFIG = {
@@ -1917,6 +2023,12 @@
                 hide: @json(__('app.tracking.hide')),
                 companyMapExpand: @json(__('app.tracking.company_map_expand')),
                 companyMapCollapse: @json(__('app.tracking.company_map_collapse')),
+                companyMapVehicleName: @json(__('app.tracking.company_map_label_vehicle_name')),
+                companyMapVehicleNameAr: @json(__('app.tracking.company_map_label_vehicle_name_ar')),
+                companyMapVehiclePlate: @json(__('app.tracking.company_map_label_vehicle_plate')),
+                companyMapVehiclePlateAr: @json(__('app.tracking.company_map_label_vehicle_plate_ar')),
+                vehicleTypeLabels: @json(\App\Support\VehicleIcons\VehicleIconLibrary::defaultTypeLabels()),
+                vehicleTypeLabelsAr: @json(\App\Support\VehicleIcons\VehicleIconLibrary::defaultTypeLabels('ar')),
                 driverMapExpand: @json(__('app.tracking.driver_map_expand')),
                 driverMapCollapse: @json(__('app.tracking.driver_map_collapse')),
                 driverMapNone: @json(__('app.tracking.driver_map_none')),

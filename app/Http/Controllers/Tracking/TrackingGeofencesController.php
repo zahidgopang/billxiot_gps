@@ -5,8 +5,10 @@ namespace App\Http\Controllers\Tracking;
 use App\Contracts\Geofences\GeofenceStoreInterface;
 use App\Http\Concerns\ResolvesTrackingPanel;
 use App\Http\Controllers\Controller;
+use App\Support\Traccar\GeofenceWkt;
 use App\Models\Device;
 use App\Models\Geofence;
+use App\Services\Authorization\RbacService;
 use App\Services\Mobile\VehicleStatusSpec;
 use App\Services\Tracking\GlobalTrackingService;
 use App\Services\Traccar\TraccarGeofenceManager;
@@ -22,6 +24,7 @@ class TrackingGeofencesController extends Controller
         private GlobalTrackingService $tracking,
         private TraccarGeofenceManager $geofenceManager,
         private GeofenceStoreInterface $geofenceStore,
+        private RbacService $rbac,
     ) {}
 
     public function index(Request $request): View
@@ -44,15 +47,22 @@ class TrackingGeofencesController extends Controller
 
         foreach ($devices as $device) {
             foreach ($this->geofenceStore->forDevice($device) as $geofence) {
+                $shape = GeofenceWkt::resolveShape(
+                    (string) ($geofence->type ?? 'polygon'),
+                    $geofence->coords ?? null,
+                    $geofence->center ?? null,
+                    isset($geofence->radius) ? (int) $geofence->radius : null,
+                    $geofence->area ?? null,
+                );
                 $items[] = [
                     'id' => (int) $geofence->id,
                     'device_id' => $device->id,
                     'device_name' => $device->mapMarkerTitle(),
                     'name' => (string) $geofence->name,
-                    'type' => (string) $geofence->type,
-                    'coords' => $geofence->coords,
-                    'center' => $geofence->center,
-                    'radius' => $geofence->radius,
+                    'type' => (string) $shape['type'],
+                    'coords' => $shape['coords'],
+                    'center' => $shape['center'],
+                    'radius' => $shape['radius'],
                     'color' => $geofence->color ?? null,
                 ];
             }
@@ -67,9 +77,10 @@ class TrackingGeofencesController extends Controller
             'device_id' => 'required|integer',
             'name' => 'required|string|max:120',
             'type' => 'required|in:polygon,circle',
-            'coords' => 'nullable|array',
-            'center' => 'nullable|array',
-            'radius' => 'nullable|numeric',
+            'coords' => 'required_if:type,polygon|array|min:3',
+            'coords.*' => 'array|size:2',
+            'center' => 'required_if:type,circle|array|size:2',
+            'radius' => 'required_if:type,circle|numeric|min:1',
         ]);
 
         $deviceId = (int) $validated['device_id'];
@@ -127,6 +138,7 @@ class TrackingGeofencesController extends Controller
             'vehicles' => $this->tracking->listItemsForActor($request->user()),
             'hubRoutes' => $this->trackingHubRoutes($panel),
             'googleMapsKey' => config('services.google.maps_key'),
+            'canManageGeofences' => $this->rbac->hasPermission($request->user(), 'web.geofence.manage'),
         ], $extra);
     }
 }

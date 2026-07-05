@@ -91,6 +91,43 @@
             gap: 0.6rem;
         }
 
+        .tracking-topbar__alert-controls {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+        }
+
+        .tracking-topbar__alert-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 38px;
+            height: 38px;
+            border: 1px solid rgba(255, 255, 255, 0.28);
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            color: rgba(255, 255, 255, 0.88);
+            font-size: 1rem;
+            cursor: pointer;
+            transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+        }
+
+        .tracking-topbar__alert-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            border-color: rgba(255, 255, 255, 0.45);
+            color: #fff;
+        }
+
+        .tracking-topbar__alert-btn.on {
+            background: rgba(25, 118, 210, 0.35);
+            border-color: rgba(255, 255, 255, 0.45);
+            color: #fff;
+        }
+
+        .tracking-topbar__alert-btn.muted {
+            color: rgba(255, 255, 255, 0.55);
+        }
+
         .tracking-back-btn {
             display: inline-flex;
             align-items: center;
@@ -143,6 +180,7 @@
         </a>
 
         <div class="tracking-topbar__actions">
+            @stack('tracking-topbar-actions')
             @include('partials.language-toggle')
             <a href="{{ Route::has($dashboardRoute) ? route($dashboardRoute) : url('/') }}" class="tracking-back-btn">
                 <i class="fas fa-arrow-left"></i><span>{{ __('app.tracking.back_to_management') }}</span>
@@ -167,6 +205,7 @@
     <script src="{{ protected_js('app-datetime.js') }}"></script>
     <script src="{{ protected_js('form-enhancements.js') }}"></script>
     <script src="{{ protected_js('map-session-guard.js') }}"></script>
+    @include('partials.reverb-echo')
 
     @include('partials.i18n-js')
 

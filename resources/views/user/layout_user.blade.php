@@ -751,8 +751,7 @@
 <script src="{{ protected_js('app-datetime.js') }}"></script>
 <script src="{{ protected_js('form-enhancements.js') }}"></script>
 <script src="{{ protected_js('map-session-guard.js') }}"></script>
-<script src="https://js.pusher.com/8.2/pusher.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/laravel-echo/1.15.0/echo.iife.js"></script>
+@include('partials.reverb-echo')
 
 <script>
     // Fixed Sidebar Toggle - Single Click Functionality
@@ -907,7 +906,6 @@
     });
 </script>
 
-@include('user._pusher')
 @if(($htmlDir ?? 'ltr') === 'rtl')
     <script src="{{ asset('js/admin-rtl.js') }}"></script>
 @endif

@@ -1,5 +1,11 @@
 <?php
 
+use App\Support\ReverbHost;
+use App\Support\ReverbTls;
+
+$reverbPublicHost = ReverbHost::normalize(env('REVERB_HOST'));
+$reverbTls = ReverbTls::serverOptions();
+
 return [
 
     /*
@@ -32,9 +38,9 @@ return [
             'host' => env('REVERB_SERVER_HOST', '0.0.0.0'),
             'port' => env('REVERB_SERVER_PORT', 8080),
             'path' => env('REVERB_SERVER_PATH', ''),
-            'hostname' => env('REVERB_HOST'),
+            'hostname' => $reverbPublicHost,
             'options' => [
-                'tls' => [],
+                'tls' => $reverbTls,
             ],
             'max_request_size' => env('REVERB_MAX_REQUEST_SIZE', 10_000),
             'scaling' => [
@@ -77,7 +83,7 @@ return [
                 'secret' => env('REVERB_APP_SECRET'),
                 'app_id' => env('REVERB_APP_ID'),
                 'options' => [
-                    'host' => env('REVERB_HOST'),
+                    'host' => $reverbPublicHost,
                     'port' => env('REVERB_PORT', 443),
                     'scheme' => env('REVERB_SCHEME', 'https'),
                     'useTLS' => env('REVERB_SCHEME', 'https') === 'https',

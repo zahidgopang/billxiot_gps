@@ -76,6 +76,8 @@ class MapController extends Controller
             ? $this->mapStatus->resolve($latestLocation, $device)
             : ['label' => __('app.common.offline'), 'key' => 'offline'];
 
+        $canManageGeofences = $this->canManageGeofencesOnMap($device);
+
         return view('user.device-map', compact(
             'device',
             'locations',
@@ -84,6 +86,7 @@ class MapController extends Controller
             'initialStatus',
             'initialAlerts',
             'isAdminMap',
+            'canManageGeofences',
             'mapApiRoutes',
             'mapToken',
             'mapTourMode',

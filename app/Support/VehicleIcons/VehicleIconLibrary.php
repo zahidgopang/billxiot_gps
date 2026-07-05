@@ -9,9 +9,25 @@ final class VehicleIconLibrary
      */
     public static function defaultTypes(): array
     {
-        return collect(self::iconDefinitions())->mapWithKeys(function (array $meta, string $key) {
-            return [$key => self::labelFor($key, $meta)];
+        return self::defaultTypeLabels();
+    }
+
+    /**
+     * @return array<string, string> vehicle type key => localized label
+     */
+    public static function defaultTypeLabels(?string $locale = null): array
+    {
+        $labels = collect(self::iconDefinitions())->mapWithKeys(function (array $meta, string $key) use ($locale) {
+            return [$key => self::labelFor($key, $meta, $locale)];
         })->all();
+
+        foreach (config('vehicle_icons.aliases', []) as $alias => $target) {
+            if (! isset($labels[$alias]) && isset($labels[$target])) {
+                $labels[$alias] = $labels[$target];
+            }
+        }
+
+        return $labels;
     }
 
     /**
@@ -178,11 +194,14 @@ final class VehicleIconLibrary
     /**
      * @param  array<string, mixed>  $meta
      */
-    private static function labelFor(string $key, array $meta): string
+    private static function labelFor(string $key, array $meta, ?string $locale = null): string
     {
         $labelKey = $meta['label_key'] ?? 'vehicle_type_'.$key;
-        $translated = __('app.forms.'.$labelKey);
-        if ($translated !== 'app.forms.'.$labelKey) {
+        $fullKey = 'app.forms.'.$labelKey;
+        $translated = $locale !== null
+            ? trans($fullKey, [], $locale)
+            : __($fullKey);
+        if ($translated !== $fullKey) {
             return $translated;
         }
 

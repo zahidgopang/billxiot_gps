@@ -603,11 +603,8 @@
                 this.bindFooterTabs();
             }
             this.bindModules();
-            if (document.getElementById('tcPanelToggle')) {
-                this.bindPanelToggle();
-            }
-            if (document.getElementById('tcTopbarToggle')) {
-                this.bindTopbarToggle();
+            if (document.getElementById('tcNavToggle')) {
+                this.bindNavToggle();
             }
             this.fitAppHeight();
             if (this.ui.alert_controls || this.ui.sidebar_tabs?.events) {
@@ -621,12 +618,17 @@
                 this.renderList();
                 this.updateCounts();
             }
-            this.visible.forEach((id) => { this.ensureMarker(id); this.subscribePusher(id); });
+
+            // Suppress assigned-route auto-zoom until the user picks a vehicle.
+            this._routeBoundsFitted = true;
+            this.seedLivePositionsFromCache();
             this.renderLiveClusters();
+            this.fitAllIfNeeded();
 
             // "Follow (new window)" deep-link: ?follow=<deviceId>
             const followId = parseInt(new URLSearchParams(global.location.search).get('follow'), 10);
             if (followId && this.vehicles.has(followId)) {
+                this._routeBoundsFitted = false;
                 this.setFollow(followId, true);
             }
             if (this.uiOn('polyline') || this.uiOn('route_progress')) {
@@ -635,13 +637,36 @@
                 this.clearAllRouteMapOverlays();
             }
             this.syncVisibleVehicleRoutePolylines();
-            if (!this._routeTripDeviceId) {
-                this.fitAll();
-                this.renderLiveClusters();
-            }
+            this.renderLiveClusters();
             this.initCompanyMapCard();
             this.initDriverMapCard();
             this.startPolling();
+        }
+
+        /** Apply cached SSR positions so markers/clusters render before the first poll. */
+        seedLivePositionsFromCache() {
+            this.visible.forEach((id) => {
+                this.ensureMarker(id);
+                this.subscribePusher(id);
+                const v = this.vehicles.get(id);
+                if (v?.lat != null && v?.lng != null) {
+                    this.applyPoint(id, v);
+                }
+            });
+        }
+
+        /** Fit map to all visible vehicles once we have at least one position. */
+        fitAllIfNeeded() {
+            if (this.initialFitDone || !this.map) return;
+            let count = 0;
+            this.visible.forEach((id) => {
+                const v = this.vehicles.get(id);
+                if (hasGeo(v?.lat, v?.lng)) count++;
+            });
+            if (count === 0) return;
+            this.fitAll();
+            this.renderLiveClusters();
+            this.initialFitDone = true;
         }
 
         initCompanyMapCard() {
@@ -707,6 +732,24 @@
             });
             const id = this.resolveActiveVehicleId();
             const vehicle = id != null ? this.vehicles.get(id) : null;
+            const i18n = this.cfg.i18n || {};
+            const vehicleTypeRaw = String(vehicle?.vehicle_type || 'car').toLowerCase();
+            const typeLabels = i18n.vehicleTypeLabels || {};
+            const typeLabelsAr = i18n.vehicleTypeLabelsAr || typeLabels;
+            const vehicleType = typeLabels[vehicleTypeRaw]
+                ? vehicleTypeRaw
+                : (typeLabels.car ? 'car' : vehicleTypeRaw);
+            const typeEn = typeLabels[vehicleType] || typeLabels.car || 'Vehicle';
+            const typeAr = typeLabelsAr[vehicleType] || typeLabelsAr.car || typeEn;
+            const fillLabel = (template, type) => String(template || ':type').replace(':type', type);
+            const nameLabelEn = card.querySelector('[data-company-row="bus_name"] .tc-info-row__label-en');
+            const nameLabelAr = card.querySelector('[data-company-row="bus_name"] .tc-info-row__label-ar');
+            const plateLabelEn = card.querySelector('[data-company-row="bus_plate"] .tc-info-row__label-en');
+            const plateLabelAr = card.querySelector('[data-company-row="bus_plate"] .tc-info-row__label-ar');
+            if (nameLabelEn) nameLabelEn.textContent = fillLabel(i18n.companyMapVehicleName, typeEn);
+            if (nameLabelAr) nameLabelAr.textContent = fillLabel(i18n.companyMapVehicleNameAr, typeAr);
+            if (plateLabelEn) plateLabelEn.textContent = fillLabel(i18n.companyMapVehiclePlate, typeEn);
+            if (plateLabelAr) plateLabelAr.textContent = fillLabel(i18n.companyMapVehiclePlateAr, typeAr);
             const busNameCell = card.querySelector('[data-company-value="bus_name"]');
             const busPlateCell = card.querySelector('[data-company-value="bus_plate"]');
             if (busNameCell) {
@@ -1790,6 +1833,7 @@
                 (data.devices || []).forEach((d) => this.applyPoint(d.id, d));
                 this.syncVisibleVehicleRoutePolylines();
                 this.renderLiveClusters();
+                this.fitAllIfNeeded();
             } catch (err) {
                 console.warn('[traccar-ui] poll failed', err);
             } finally {
@@ -1935,45 +1979,41 @@
         }
 
         closeNavigationOnVehicleSelect() {
-            this.closePanel();
-            this.closeTopbar();
+            this.closeNav();
         }
 
-        bindTopbarToggle() {
-            const toggle = document.getElementById('tcTopbarToggle');
-            const app = document.querySelector('.tc-app');
-            toggle?.addEventListener('click', () => {
-                const open = !app?.classList.contains('tc-app--topnav-open');
-                this.setTopbarOpen(open);
-            });
-            document.addEventListener('keydown', (e) => {
-                if (e.key === 'Escape') this.closeTopbar();
-            });
-        }
-
-        setTopbarOpen(open) {
-            const app = document.querySelector('.tc-app');
-            if (!app) return;
-            app.classList.toggle('tc-app--topnav-open', !!open);
-            document.getElementById('tcTopbarToggle')?.setAttribute('aria-expanded', open ? 'true' : 'false');
-            this.mapResize();
-        }
-
-        closeTopbar() {
-            this.setTopbarOpen(false);
-        }
-
-        bindPanelToggle() {
-            const toggle = document.getElementById('tcPanelToggle');
+        bindNavToggle() {
+            const toggle = document.getElementById('tcNavToggle');
+            const closeBtn = document.getElementById('tcNavClose');
             const backdrop = document.getElementById('tcPanelBackdrop');
-            toggle?.addEventListener('click', () => {
-                const panel = document.getElementById('tcPanel');
-                if (panel?.classList.contains('tc-panel--open')) this.closePanel();
-                else this.openPanel();
+            const app = document.querySelector('.tc-app');
+            if (!toggle || !app) return;
+
+            this.setNavOpen(false);
+
+            toggle.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const open = !app.classList.contains('tc-app--nav-open');
+                this.setNavOpen(open);
             });
-            backdrop?.addEventListener('click', () => this.closePanel());
+
+            closeBtn?.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.closeNav();
+            });
+
+            backdrop?.addEventListener('click', () => this.closeNav());
+
+            document.addEventListener('click', (e) => {
+                if (!app.classList.contains('tc-app--nav-open')) return;
+                const iconbar = document.getElementById('tcIconbar');
+                const panel = document.getElementById('tcPanel');
+                if (iconbar?.contains(e.target) || panel?.contains(e.target)) return;
+                this.closeNav();
+            });
+
             document.addEventListener('keydown', (e) => {
-                if (e.key === 'Escape') this.closeNavigationOnVehicleSelect();
+                if (e.key === 'Escape') this.closeNav();
             });
 
             let raf = null;
@@ -1988,18 +2028,36 @@
             global.addEventListener('orientationchange', onResize);
         }
 
-        openPanel() {
+        setNavOpen(open) {
+            const app = document.querySelector('.tc-app');
+            if (!app) return;
+            const shouldOpen = !!open;
+            app.classList.toggle('tc-app--nav-open', shouldOpen);
+            document.getElementById('tcNavToggle')?.setAttribute('aria-expanded', shouldOpen ? 'true' : 'false');
+
             const panel = document.getElementById('tcPanel');
-            if (!panel) return;
-            panel.classList.add('tc-panel--open');
-            document.getElementById('tcPanelBackdrop')?.classList.add('show');
-            document.getElementById('tcPanelToggle')?.setAttribute('aria-expanded', 'true');
+            const backdrop = document.getElementById('tcPanelBackdrop');
+            if (shouldOpen) {
+                panel?.classList.add('tc-panel--open');
+                backdrop?.classList.add('show');
+            } else {
+                panel?.classList.remove('tc-panel--open');
+                backdrop?.classList.remove('show');
+            }
+
+            this.mapResize();
+        }
+
+        closeNav() {
+            this.setNavOpen(false);
+        }
+
+        openPanel() {
+            this.setNavOpen(true);
         }
 
         closePanel() {
-            document.getElementById('tcPanel')?.classList.remove('tc-panel--open');
-            document.getElementById('tcPanelBackdrop')?.classList.remove('show');
-            document.getElementById('tcPanelToggle')?.setAttribute('aria-expanded', 'false');
+            this.closeNav();
         }
 
         fitAppHeight() {
@@ -2652,7 +2710,7 @@
                 this._routeTripDeviceId = id;
                 const cached = this.vehicles.get(id)?.route_trip;
                 if (cached?.route) {
-                    this.applyRouteTrip(id, this.sanitizeRouteTrip(cached), { forceFitBounds: true });
+                    this.applyRouteTrip(id, this.sanitizeRouteTrip(cached), { forceFitBounds: !this._routeBoundsFitted });
                 } else {
                     this.clearSelectedRouteOverlays();
                     this.routeTripKit?.clear();
@@ -3142,7 +3200,7 @@
                     const titleEl = document.getElementById('tcModuleTitle');
                     if (titleEl) titleEl.innerHTML = `<i class="fas ${escHtml(icon)} me-2"></i>${escHtml(title)}`;
                     frame.title = title;
-                    this.closeTopbar();
+                    this.closeNav();
                     if (loader) loader.hidden = false;
                     frame.src = url + (url.includes('?') ? '&' : '?') + 'embed=1';
                     this._moduleModal.show();

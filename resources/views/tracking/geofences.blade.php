@@ -56,15 +56,19 @@
 
                 <div class="gt-geo-field">
                     <label for="gtGeoName">{{ __('app.tracking.geofence_name') }}</label>
-                    <input type="text" id="gtGeoName" class="form-control form-control-sm" placeholder="{{ __('app.tracking.geofence_name') }}">
+                    <input type="text" id="gtGeoName" class="form-control form-control-sm" placeholder="{{ __('app.tracking.geofence_name') }}" @disabled(empty($canManageGeofences))>
                 </div>
 
+                @if(! empty($canManageGeofences))
                 <div class="gt-geo-btns">
                     <button type="button" class="btn btn-outline-primary btn-sm" id="gtGeoDrawPolygon"><i class="fas fa-draw-polygon me-1"></i>{{ __('app.tracking.geofence_draw_polygon') }}</button>
                     <button type="button" class="btn btn-outline-primary btn-sm" id="gtGeoDrawCircle"><i class="far fa-circle me-1"></i>{{ __('app.tracking.geofence_draw_circle') }}</button>
                     <button type="button" class="btn btn-primary btn-sm" id="gtGeoSave" disabled><i class="fas fa-save me-1"></i>{{ __('app.tracking.geofence_save') }}</button>
                     <button type="button" class="btn btn-outline-secondary btn-sm" id="gtGeoCancel" hidden>{{ __('app.tracking.geofence_cancel') }}</button>
                 </div>
+                @else
+                <p class="small text-muted mb-0">{{ __('app.tracking.geofence_view_only_hint') }}</p>
+                @endif
             </aside>
 
             <div>
@@ -85,6 +89,7 @@
     csrfToken: @json(csrf_token()),
     pollIntervalMs: 4000,
     stateColors: @json($stateColors),
+    canManageGeofences: @json(! empty($canManageGeofences)),
     vehicles: @json($vehicles),
     i18n: {
         saved: @json(__('app.tracking.geofence_saved')),
@@ -101,5 +106,6 @@
         savedForVehicle: @json(__('app.tracking.geofence_saved_for_vehicle')),
     },
 };</script>
+<script src="{{ protected_js('geofence-map-draw.js') }}"></script>
 <script src="{{ protected_js('tracking-geofences.js') }}"></script>
 @endpush

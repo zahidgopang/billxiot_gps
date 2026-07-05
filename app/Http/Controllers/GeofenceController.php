@@ -12,6 +12,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use App\Support\Traccar\GeofenceWkt;
 use App\Support\Traccar\TraccarSchema;
 
 class GeofenceController extends Controller
@@ -83,6 +84,8 @@ class GeofenceController extends Controller
         $device = Device::query()->findOrFail($deviceId);
 
         if ($this->isAdminMapRequest()) {
+            $this->assertFleetGeofenceAccess($device);
+
             return $geofence;
         }
 
@@ -100,13 +103,21 @@ class GeofenceController extends Controller
         $device = $this->authorizeDevice($token);
 
         return $this->geofenceStore->forDevice($device)->map(function ($g) {
+            $shape = GeofenceWkt::resolveShape(
+                (string) ($g->type ?? 'polygon'),
+                $g->coords ?? null,
+                $g->center ?? null,
+                isset($g->radius) ? (int) $g->radius : null,
+                $g->area ?? null,
+            );
+
             return [
                 'id' => $g->id,
                 'name' => $g->name,
-                'type' => $g->type,
-                'coords' => is_string($g->coords ?? null) ? json_decode($g->coords, true) : ($g->coords ?? null),
-                'center' => is_string($g->center ?? null) ? json_decode($g->center, true) : ($g->center ?? null),
-                'radius' => $g->radius ?? null,
+                'type' => $shape['type'],
+                'coords' => $shape['coords'],
+                'center' => $shape['center'],
+                'radius' => $shape['radius'],
             ];
         });
     }
@@ -114,6 +125,7 @@ class GeofenceController extends Controller
     public function store(Request $req, string $token)
     {
         $device = $this->authorizeDevice($token);
+        $this->assertFleetGeofenceAccess($device);
 
         $validated = $req->validate([
             'name' => 'required|string|max:255',

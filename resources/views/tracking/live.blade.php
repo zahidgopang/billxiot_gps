@@ -238,11 +238,6 @@
 @endsection
 
 @push('scripts')
-    @if($panel !== 'user')
-        <script src="https://js.pusher.com/8.2/pusher.min.js"></script>
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/laravel-echo/1.15.0/echo.iife.js"></script>
-        @include('user._pusher')
-    @endif
     <script>document.body.classList.add('gt-page-active');</script>
     <script>
         window.GLOBAL_TRACKING_CONFIG = {

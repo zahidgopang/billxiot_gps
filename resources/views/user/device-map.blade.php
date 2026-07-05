@@ -2462,6 +2462,7 @@
                 </div>
             </div>
 
+            @if(! empty($canManageGeofences))
             <!-- Geofence Drawing Panel -->
             <div class="geofence-panel" id="geofencePanel">
                 <div class="geofence-header">
@@ -2478,13 +2479,16 @@
                     <button class="geofence-btn cancel" id="btnCancelGeofence">{{ __('app.common.cancel') }}</button>
                 </div>
             </div>
+            @endif
 
             <!-- Smart Controls -->
             <div class="smart-controls">
                 <div class="control-group">
                     <button class="smart-btn" id="btnCenterVehicle" title="{{ __('app.map.center_vehicle') }}"><i class="fas fa-location-crosshairs"></i></button>
                     <button class="smart-btn" id="btnFollow" title="{{ __('app.map.follow') }}"><i class="fas fa-satellite"></i></button>
+                    @if(! empty($canManageGeofences))
                     <button class="smart-btn" id="btnGeofence" title="{{ __('app.map.geofences') }}"><i class="fas fa-draw-polygon"></i></button>
+                    @endif
                     <button class="smart-btn" id="btnClear" title="{{ __('app.map.clear_route') }}"><i class="fas fa-trash-alt"></i></button>
                     <button class="smart-btn" id="btnTraffic" title="{{ __('app.map.traffic') }}"><i class="fas fa-traffic-light"></i></button>
                 </div>
@@ -2588,6 +2592,7 @@
             driverContactTel: @json($device->driverContactTel()),
             deviceTypeLabel: @json($device->deviceTypeLabel()),
             isAdminMap: @json($isAdminMap ?? false),
+            canManageGeofences: @json(! empty($canManageGeofences)),
             apiRoutes: @json($mapApiRoutes ?? []),
             completeTripUrl: @json($mapApiRoutes['completeTrip'] ?? ''),
             startNewTripUrl: @json($mapApiRoutes['startNewTrip'] ?? ''),
@@ -2811,6 +2816,7 @@
     <script src="{{ protected_js('history-analytics.js') }}"></script>
     <script src="{{ protected_js('route-trip-progress.js') }}"></script>
     <script src="{{ protected_js('vehicle-map-popup.js') }}"></script>
+    <script src="{{ protected_js('geofence-map-draw.js') }}"></script>
     <script src="{{ protected_js('device-map-tracker.js') }}"></script>
     <script src="{{ protected_js('map-tour.js') }}"></script>
 @endpush

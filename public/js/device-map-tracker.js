@@ -12,6 +12,7 @@
     const baseUrl = cfg.baseUrl || '';
     const csrfToken = cfg.csrfToken || '';
     const api = cfg.apiRoutes || {};
+    const canManageGeofences = cfg.canManageGeofences !== false;
     const mapToken = cfg.mapToken || '';
     const liveUrl = api.live || (mapToken ? `${baseUrl}/user/device/${mapToken}/live-json` : '');
     const historyUrl = api.history || (mapToken ? `${baseUrl}/user/device/${mapToken}/history-json` : '');
@@ -65,7 +66,7 @@
         return `${n}% (${mi('gsmExcellent', 'Excellent')})`;
     }
 
-    let map, drawingManager, trafficLayer, customInfoWindow;
+    let map, geofenceDrawer, trafficLayer, customInfoWindow;
     let vehicleMapPopup = null;
     let geofences = [];
     let polylines = [];
@@ -2404,52 +2405,66 @@ ${pts}
     function buildGoogleMapsScriptUrl(key) {
         const params = new URLSearchParams({
             key,
-            libraries: 'drawing,geometry,visualization,places',
+            libraries: 'geometry,visualization,places',
             v: 'weekly',
         });
         return `https://maps.googleapis.com/maps/api/js?${params.toString()}`;
     }
 
-    /** drawing library must be ready before DrawingManager. */
-    async function ensureDrawingLibrary(maxMs = 12000) {
-        const start = Date.now();
-        while (Date.now() - start < maxMs) {
-            if (mapsAuthFailed) {
-                return false;
-            }
-            if (google?.maps?.drawing?.DrawingManager) {
-                return true;
-            }
-            if (typeof google?.maps?.importLibrary === 'function') {
-                try {
-                    await google.maps.importLibrary('drawing');
-                    if (google?.maps?.drawing?.DrawingManager) {
-                        return true;
-                    }
-                } catch (_) {
-                    /* retry */
-                }
-            }
-            await sleep(50);
-        }
-        return !!google?.maps?.drawing?.DrawingManager;
-    }
-
-    function initDrawingManager() {
-        if (drawingManager || !map) {
-            return drawingManager;
-        }
-        if (!google?.maps?.drawing?.DrawingManager) {
+    function ensureMapDrawer() {
+        if (!map || !window.GeofenceMapDrawer) {
             return null;
         }
-        try {
-            drawingManager = new google.maps.drawing.DrawingManager({ drawingControl: false });
-            drawingManager.setMap(map);
-        } catch (drawErr) {
-            console.warn('[device-map] DrawingManager init failed', drawErr);
-            drawingManager = null;
+        if (!geofenceDrawer) {
+            geofenceDrawer = new window.GeofenceMapDrawer({
+                map,
+                onComplete: (overlay) => {
+                    currentDrawing = overlay;
+                    const saveBtn = document.getElementById('btnSaveGeofence');
+                    if (saveBtn) saveBtn.disabled = false;
+                },
+                onChange: (state) => {
+                    const saveBtn = document.getElementById('btnSaveGeofence');
+                    if (!saveBtn || state.ready) {
+                        return;
+                    }
+                    if (state.mode === 'polygon' && (state.pointCount || 0) >= 3) {
+                        saveBtn.disabled = false;
+                    }
+                },
+            });
         }
-        return drawingManager;
+        return geofenceDrawer;
+    }
+
+    function startGeofenceDraw(kind) {
+        if (!window.GeofenceMapDrawer) {
+            showNotification('Drawing tools unavailable', 'error');
+            return;
+        }
+        const drawer = ensureMapDrawer();
+        if (!drawer) {
+            showNotification('Drawing tools unavailable', 'error');
+            return;
+        }
+        currentDrawing?.setMap(null);
+        currentDrawing = null;
+        const saveBtn = document.getElementById('btnSaveGeofence');
+        if (saveBtn) saveBtn.disabled = true;
+        if (kind === 'circle') {
+            drawer.startCircle();
+        } else {
+            drawer.startPolygon();
+        }
+    }
+
+    function cancelGeofenceDraw() {
+        geofenceDrawer?.cancel();
+        currentDrawing?.setMap(null);
+        currentDrawing = null;
+        const saveBtn = document.getElementById('btnSaveGeofence');
+        if (saveBtn) saveBtn.disabled = true;
+        document.getElementById('geofencePanel')?.classList.remove('active');
     }
 
     function waitForGoogleMaps(maxMs = 15000) {
@@ -2683,7 +2698,7 @@ ${pts}
             });
         });
 
-        initDrawingManager();
+        ensureMapDrawer();
         trafficLayer = new google.maps.TrafficLayer();
         customInfoWindow = new google.maps.InfoWindow({ maxWidth: 320, pixelOffset: new google.maps.Size(0, -8) });
         customInfoWindow.addListener('closeclick', () => {
@@ -2739,7 +2754,6 @@ ${pts}
         try {
             await waitForMapContainerSize();
             await loadGoogleMapsApi();
-            await ensureDrawingLibrary();
 
             if (!map) {
                 createMapInstance();
@@ -2882,9 +2896,11 @@ ${pts}
     }
 
     function bindDrawingControls() {
+        if (!canManageGeofences) {
+            return;
+        }
         const drawIds = ['btnDrawPolygon', 'btnDrawCircle', 'btnSaveGeofence', 'btnCancelGeofence'];
-        const dm = drawingManager || initDrawingManager();
-        if (!dm || !google?.maps?.drawing) {
+        if (!window.GeofenceMapDrawer) {
             drawIds.forEach((id) => {
                 const el = document.getElementById(id);
                 if (el) {
@@ -2894,34 +2910,10 @@ ${pts}
             return;
         }
 
-        google.maps.event.addListener(dm, 'overlaycomplete', (e) => {
-            currentDrawing = e.overlay;
-            document.getElementById('btnSaveGeofence').disabled = false;
-            dm.setDrawingMode(null);
-        });
-        document.getElementById('btnDrawPolygon')?.addEventListener('click', () => {
-            if (!initDrawingManager()) {
-                showNotification('Drawing tools unavailable', 'error');
-                return;
-            }
-            currentDrawing?.setMap(null);
-            drawingManager.setDrawingMode(google.maps.drawing.OverlayType.POLYGON);
-        });
-        document.getElementById('btnDrawCircle')?.addEventListener('click', () => {
-            if (!initDrawingManager()) {
-                showNotification('Drawing tools unavailable', 'error');
-                return;
-            }
-            currentDrawing?.setMap(null);
-            drawingManager.setDrawingMode(google.maps.drawing.OverlayType.CIRCLE);
-        });
+        document.getElementById('btnDrawPolygon')?.addEventListener('click', () => startGeofenceDraw('polygon'));
+        document.getElementById('btnDrawCircle')?.addEventListener('click', () => startGeofenceDraw('circle'));
         document.getElementById('btnSaveGeofence')?.addEventListener('click', saveGeofence);
-        document.getElementById('btnCancelGeofence')?.addEventListener('click', () => {
-            currentDrawing?.setMap(null);
-            drawingManager?.setDrawingMode(null);
-            document.getElementById('btnSaveGeofence').disabled = true;
-            document.getElementById('geofencePanel')?.classList.remove('active');
-        });
+        document.getElementById('btnCancelGeofence')?.addEventListener('click', cancelGeofenceDraw);
     }
 
     function bindControls() {
@@ -3884,6 +3876,11 @@ ${pts}
     function geofenceListItemHtml(g) {
         const name = escapeHtml(g.name || 'Unnamed');
         const type = escapeHtml(g.type || 'zone');
+        const deleteBtn = canManageGeofences
+            ? `<button type="button" class="geofence-action-btn geofence-action-btn--danger geofence-delete-btn" data-id="${g.id}" title="Remove geofence" aria-label="Remove geofence">
+                        <i class="fas fa-trash-alt"></i>
+                    </button>`
+            : '';
         return `
             <div class="geofence-list-item" data-geofence-id="${g.id}">
                 <div class="geofence-list-item__info">
@@ -3894,9 +3891,7 @@ ${pts}
                     <button type="button" class="geofence-action-btn geofence-zoom-btn" data-id="${g.id}" title="Zoom to zone" aria-label="Zoom to zone">
                         <i class="fas fa-search-plus"></i>
                     </button>
-                    <button type="button" class="geofence-action-btn geofence-action-btn--danger geofence-delete-btn" data-id="${g.id}" title="Remove geofence" aria-label="Remove geofence">
-                        <i class="fas fa-trash-alt"></i>
-                    </button>
+                    ${deleteBtn}
                 </div>
             </div>`;
     }
@@ -4039,24 +4034,14 @@ ${pts}
     }
 
     async function saveGeofence() {
-        if (!currentDrawing) return showNotification('Draw a shape first', 'error');
+        const extracted = window.GeofenceDraw?.resolvePayload(geofenceDrawer, currentDrawing);
+        if (!extracted) return showNotification('Draw a shape first', 'error');
+        if (extracted.type === 'polygon') {
+            currentDrawing = geofenceDrawer?.getOverlay?.() || currentDrawing;
+        }
         const name = prompt('Geofence name:', 'New Geofence');
         if (!name) return;
-        const payload = { name, device_id: deviceId };
-        if (currentDrawing instanceof google.maps.Polygon) {
-            payload.type = 'polygon';
-            const path = currentDrawing.getPath();
-            payload.coords = [];
-            for (let i = 0; i < path.getLength(); i++) {
-                const ll = path.getAt(i);
-                payload.coords.push([ll.lat(), ll.lng()]);
-            }
-        } else if (currentDrawing instanceof google.maps.Circle) {
-            payload.type = 'circle';
-            const c = currentDrawing.getCenter();
-            payload.center = [c.lat(), c.lng()];
-            payload.radius = Math.round(currentDrawing.getRadius());
-        }
+        const payload = { name, device_id: deviceId, ...extracted };
         try {
             const res = await fetch(geofencesSaveUrl, {
                 method: 'POST',

@@ -769,10 +769,7 @@
 <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
 <script src="{{ protected_js('form-enhancements.js') }}"></script>
-<script src="https://js.pusher.com/8.2/pusher.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/laravel-echo/1.15.0/echo.iife.js"></script>
-
-@include('user._pusher')
+@include('partials.reverb-echo')
 
 @if(($htmlDir ?? 'ltr') === 'rtl')
     <script src="{{ asset('js/admin-rtl.js') }}"></script>

@@ -1,5 +1,12 @@
 <?php
 
+use App\Support\ReverbHost;
+use App\Support\ReverbTls;
+
+$reverbHost = ReverbHost::normalize(env('REVERB_HOST'));
+$reverbScheme = env('REVERB_SCHEME', 'https');
+$reverbPort = (int) env('REVERB_PORT', 443);
+
 return [
 
     'default' => env('BROADCAST_DRIVER', 'reverb'),
@@ -23,13 +30,13 @@ return [
             'secret'  => env('REVERB_APP_SECRET'),
             'app_id'  => env('REVERB_APP_ID'),
             'options' => [
-                'host'   => env('REVERB_HOST'),
-                'port'   => env('REVERB_PORT', 443),
-                'scheme' => env('REVERB_SCHEME', 'https'),
-                'useTLS' => env('REVERB_SCHEME', 'https') === 'https',
+                'host'   => $reverbHost,
+                'port'   => $reverbPort,
+                'scheme' => $reverbScheme,
+                'useTLS' => $reverbScheme === 'https',
             ],
             'client_options' => [
-                // Guzzle client options for server-to-Reverb event publishing.
+                'verify' => ! ReverbTls::enabled(),
             ],
         ],
 

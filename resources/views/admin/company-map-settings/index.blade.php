@@ -39,11 +39,11 @@
                                     </tr>
                                 @endforeach
                                 <tr>
-                                    <td class="small fw-semibold">{{ __('app.tracking.company_map_label_bus_name') }}</td>
+                                    <td class="small fw-semibold">{{ __('app.tracking.company_map_label_vehicle_name', ['type' => __('app.forms.vehicle_type_car')]) }}</td>
                                     <td colspan="2" class="small text-muted">{{ __('app.tracking.company_map_vehicle_hint') }}</td>
                                 </tr>
                                 <tr>
-                                    <td class="small fw-semibold">{{ __('app.tracking.company_map_label_bus_plate') }}</td>
+                                    <td class="small fw-semibold">{{ __('app.tracking.company_map_label_vehicle_plate', ['type' => __('app.forms.vehicle_type_car')]) }}</td>
                                     <td colspan="2" class="small text-muted">{{ __('app.tracking.company_map_vehicle_hint') }}</td>
                                 </tr>
                             </tbody>

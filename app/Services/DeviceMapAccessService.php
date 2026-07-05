@@ -185,8 +185,10 @@ class DeviceMapAccessService
         return $request->routeIs(
             'admin.device.*',
             'admin.locations.*',
+            'admin.geofence.*',
             'client.device.*',
             'client.locations.*',
+            'client.geofence.*',
         );
     }
 

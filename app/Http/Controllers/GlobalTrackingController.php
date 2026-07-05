@@ -4,9 +4,12 @@ namespace App\Http\Controllers;
 
 use App\Http\Concerns\ResolvesHistoryDateRange;
 use App\Http\Concerns\ResolvesTrackingPanel;
+use App\Models\Device;
 use App\Services\Mobile\VehicleStatusSpec;
+use App\Services\Tracking\DevicePositionLoader;
 use App\Services\Tracking\GlobalTrackingService;
 use App\Services\Tracking\TrackingUiPermissions;
+use App\Services\VehicleEventService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -59,7 +62,49 @@ class GlobalTrackingController extends Controller
             ? $this->tracking->livePayloadForIds(array_slice($allowed, 0, GlobalTrackingService::MAX_LIVE_DEVICES), $request->user())
             : $this->tracking->livePayloadForIds($allowed, $request->user());
 
+        $this->processLiveGeofenceChecks($devices);
+
         return $this->noStoreJson(['devices' => $devices]);
+    }
+
+    /**
+     * Detect geofence enter/exit for vehicles on the live map poll (same as device map live).
+     *
+     * @param  list<array<string, mixed>>  $devices
+     */
+    private function processLiveGeofenceChecks(array $devices): void
+    {
+        if (! config('tracking.laravel_geofence_detection', true) || $devices === []) {
+            return;
+        }
+
+        $ids = array_values(array_filter(array_map(
+            fn (array $row) => (int) ($row['id'] ?? 0),
+            $devices,
+        )));
+
+        if ($ids === []) {
+            return;
+        }
+
+        $models = Device::query()->whereIn('id', $ids)->get()->keyBy('id');
+        app(DevicePositionLoader::class)->attachLatestToMany($models);
+        $eventService = app(VehicleEventService::class);
+
+        foreach ($ids as $id) {
+            $device = $models->get($id);
+            $latest = $device?->latestLocation;
+            if (! $device || ! $latest || $latest->lat === null || $latest->lng === null) {
+                continue;
+            }
+
+            $eventService->processGeofenceFromLocation(
+                $device,
+                (float) $latest->lat,
+                (float) $latest->lng,
+                $latest->recorded_at ?? now(),
+            );
+        }
     }
 
     public function devicePanel(Request $request): JsonResponse
