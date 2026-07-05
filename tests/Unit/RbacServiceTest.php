@@ -78,6 +78,75 @@ class RbacServiceTest extends TestCase
         $this->assertTrue(app(RbacService::class)->hasPermission($user, 'permissions.manage'));
     }
 
+    public function test_end_user_cannot_be_denied_essential_fleet_permissions(): void
+    {
+        $this->bindRolePermissions([
+            AppRole::EndUser->value => ['maps.view'],
+        ]);
+
+        $user = $this->userWithRole(AppRole::EndUser);
+        $user->patchTraccarAppAttributes([
+            TraccarAppFields::KEY_PERMISSIONS => [
+                'web.reports.view' => false,
+                'web.vehicles.send_commands' => false,
+                'web.map.sidebar.vehicle_list' => false,
+            ],
+        ]);
+
+        $rbac = app(RbacService::class);
+
+        $this->assertTrue($rbac->hasPermission($user, 'web.reports.view'));
+        $this->assertTrue($rbac->hasPermission($user, 'web.vehicles.send_commands'));
+        $this->assertTrue($rbac->hasPermission($user, 'web.map.sidebar.vehicle_list'));
+        $this->assertContains('web.reports.view', $rbac->grantedPermissionsFor($user));
+    }
+
+    public function test_end_user_deny_override_is_ignored_when_syncing_permissions(): void
+    {
+        $this->bindRolePermissions([
+            AppRole::EndUser->value => ['maps.view'],
+        ]);
+
+        $user = $this->userWithRole(AppRole::EndUser);
+
+        app(RbacService::class)->syncPermissionOverrides($user, [
+            'web.reports.view' => '0',
+            'web.vehicles.immobilizer' => false,
+        ], validKeys: [
+            'web.reports.view',
+            'web.vehicles.immobilizer',
+            'web.geofence.view',
+        ]);
+
+        $this->assertTrue(app(RbacService::class)->hasPermission($user, 'web.reports.view'));
+        $this->assertTrue(app(RbacService::class)->hasPermission($user, 'web.vehicles.immobilizer'));
+        $this->assertArrayNotHasKey('web.reports.view', app(RbacService::class)->permissionOverrides($user));
+    }
+
+    public function test_purge_essential_deny_overrides_removes_stored_denies(): void
+    {
+        $this->bindRolePermissions([
+            AppRole::EndUser->value => ['maps.view'],
+        ]);
+
+        $user = $this->userWithRole(AppRole::EndUser);
+        $user->patchTraccarAppAttributes([
+            TraccarAppFields::KEY_PERMISSIONS => [
+                'web.reports.view' => false,
+                'web.map.live_only' => true,
+                'web.geofence.view' => false,
+            ],
+        ]);
+
+        $rbac = app(RbacService::class);
+
+        $this->assertTrue($rbac->purgeEssentialDenyOverrides($user));
+        $overrides = $rbac->permissionOverrides($user);
+        $this->assertArrayNotHasKey('web.reports.view', $overrides);
+        $this->assertArrayNotHasKey('web.map.live_only', $overrides);
+        $this->assertFalse($overrides['web.geofence.view']);
+    }
+
     /**
      * @param  array<string, list<string>>  $permissionsByRole
      */

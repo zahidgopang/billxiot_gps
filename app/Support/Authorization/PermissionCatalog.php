@@ -196,19 +196,7 @@ final class PermissionCatalog
             'clients.view', 'clients.manage', 'stock.view', 'stock.manage', 'billing.manage', 'permissions.manage',
         ], true)));
 
-        $endUserKeys = array_values(array_filter($allKeys, fn ($k) => str_starts_with($k, 'general.')
-            || str_starts_with($k, 'mobile.')
-            || str_starts_with($k, 'maps.view')
-            || str_starts_with($k, 'web.map.')
-            || str_starts_with($k, 'web.history.')
-            || str_starts_with($k, 'web.events.')
-            || str_starts_with($k, 'web.reports.')
-            || str_starts_with($k, 'web.geofence.')
-            || str_starts_with($k, 'web.settings.')
-            || str_starts_with($k, 'web.tracking.hub.')
-            || str_starts_with($k, 'web.trips.')
-            || str_starts_with($k, 'pref.')
-        ));
+        $endUserKeys = self::essentialFleetPermissionKeys();
 
         return [
             'super_admin' => ['*'],
@@ -219,21 +207,72 @@ final class PermissionCatalog
     }
 
     /**
+     * Minimum fleet permissions every end-user must keep (live map, sidebar, reports, commands).
+     *
+     * @return list<string>
+     */
+    public static function essentialFleetPermissionKeys(): array
+    {
+        return [
+            'general.dashboard.view',
+            'general.profile.view',
+            'general.profile.edit',
+            'general.notifications.view',
+            'maps.view',
+            'devices.view',
+            'web.map.menu',
+            'web.map.open',
+            'web.map.workspace',
+            'web.map.auto_refresh',
+            'web.map.search_vehicles',
+            'web.map.sidebar.vehicle_list',
+            'web.map.sidebar.events',
+            'web.map.sidebar.history',
+            'web.map.toolbar.commands',
+            'web.map.toolbar.refresh',
+            'web.map.toolbar.playback',
+            'web.map.toolbar.fullscreen',
+            'web.reports.view',
+            'web.reports.history',
+            'web.reports.trips',
+            'web.reports.export_pdf',
+            'web.history.view',
+            'web.events.view',
+            'web.tracking.hub.notifications',
+            'web.vehicles.send_commands',
+            'web.vehicles.immobilizer',
+            'mobile.nav.home',
+            'mobile.nav.live_map',
+            'mobile.nav.history',
+            'mobile.nav.notifications',
+            'mobile.nav.reports',
+            'mobile.nav.commands',
+            'mobile.nav.profile',
+            'mobile.map.open',
+        ];
+    }
+
+    /**
      * Permissions every end-user account gets on web + mobile without admin assignment.
      *
      * @return list<string>
      */
     public static function endUserBaselinePermissionKeys(): array
     {
-        return self::defaultRoleGrants()['user'] ?? [];
+        return self::essentialFleetPermissionKeys();
     }
 
     public static function isEndUserBaselinePermission(string $permission): bool
     {
+        return self::isEssentialFleetPermission($permission);
+    }
+
+    public static function isEssentialFleetPermission(string $permission): bool
+    {
         static $lookup = null;
 
         if ($lookup === null) {
-            $lookup = array_fill_keys(self::endUserBaselinePermissionKeys(), true);
+            $lookup = array_fill_keys(self::essentialFleetPermissionKeys(), true);
         }
 
         return isset($lookup[$permission]);

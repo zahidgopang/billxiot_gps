@@ -59,9 +59,9 @@ class RbacService
             return true;
         }
 
-        // End users always get fleet tracking (live map, history, mobile) without
-        // per-user permission assignment. Device scope is enforced separately.
-        if ($this->isEndUser($user) && PermissionCatalog::isEndUserBaselinePermission($permission)) {
+        // End users always get essential fleet permissions (live map, reports, commands).
+        // Device scope is enforced separately — overrides cannot revoke these.
+        if ($this->isEndUser($user) && PermissionCatalog::isEssentialFleetPermission($permission)) {
             return true;
         }
 
@@ -111,10 +111,14 @@ class RbacService
 
         $granted = array_filter($base, fn ($p) => $p !== '*');
 
+        if ($this->isEndUser($user)) {
+            $granted = array_merge($granted, PermissionCatalog::essentialFleetPermissionKeys());
+        }
+
         foreach ($overrides as $key => $enabled) {
             if ($enabled) {
                 $granted[] = $key;
-            } else {
+            } elseif (! ($this->isEndUser($user) && PermissionCatalog::isEssentialFleetPermission($key))) {
                 $granted = array_values(array_filter($granted, fn ($k) => $k !== $key));
             }
         }
@@ -188,6 +192,12 @@ class RbacService
                 continue;
             }
 
+            if ($this->isEndUser($user)
+                && PermissionCatalog::isEssentialFleetPermission($key)
+                && ($value === '0' || $value === 0 || $value === false)) {
+                continue;
+            }
+
             if ($value === '' || $value === null) {
                 unset($overrides[$key]);
             } elseif ($value === '1' || $value === 1 || $value === true) {
@@ -208,6 +218,12 @@ class RbacService
 
     public function setPermissionOverride(User $user, string $permission, ?bool $value): void
     {
+        if ($this->isEndUser($user)
+            && $value === false
+            && PermissionCatalog::isEssentialFleetPermission($permission)) {
+            return;
+        }
+
         $overrides = $this->permissionOverrides($user);
 
         if ($value === null) {
@@ -223,5 +239,44 @@ class RbacService
         if ($user->exists) {
             $user->save();
         }
+    }
+
+    /**
+     * Remove deny overrides (and live-map-only grants) that block essential fleet access.
+     */
+    public function purgeEssentialDenyOverrides(User $user): bool
+    {
+        if (! $this->isEndUser($user)) {
+            return false;
+        }
+
+        $overrides = $this->permissionOverrides($user);
+        $changed = false;
+
+        foreach (PermissionCatalog::essentialFleetPermissionKeys() as $key) {
+            if (($overrides[$key] ?? null) === false) {
+                unset($overrides[$key]);
+                $changed = true;
+            }
+        }
+
+        if (($overrides['web.map.live_only'] ?? null) === true) {
+            unset($overrides['web.map.live_only']);
+            $changed = true;
+        }
+
+        if (! $changed) {
+            return false;
+        }
+
+        $user->patchTraccarAppAttributes([
+            TraccarAppFields::KEY_PERMISSIONS => $overrides !== [] ? $overrides : null,
+        ]);
+
+        if ($user->exists) {
+            $user->save();
+        }
+
+        return true;
     }
 }

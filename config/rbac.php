@@ -63,16 +63,21 @@ return [
         AppRole::EndUser->value => [
             'label' => 'End User',
             'panel' => 'user',
-            // Baseline tracking keys are always granted in RbacService for end users.
-            // Listed here as config fallback when the permissions DB is unavailable.
+            // Baseline keys are always granted in RbacService for end users.
             'permissions' => [
                 'maps.view',
                 'web.map.open',
-                'web.map.live_only',
                 'web.map.workspace',
                 'web.map.auto_refresh',
+                'web.map.sidebar.vehicle_list',
+                'web.map.toolbar.commands',
+                'web.reports.view',
                 'web.history.view',
                 'web.events.view',
+                'web.vehicles.send_commands',
+                'mobile.nav.live_map',
+                'mobile.nav.commands',
+                'mobile.nav.reports',
             ],
         ],
     ],
