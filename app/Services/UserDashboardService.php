@@ -119,7 +119,8 @@ class UserDashboardService
 
         return $this->trackingGate->filterTrackable(
             $user,
-            $user->trackerDevicesQuery()->with(['subscription'])->get()
+            $user->trackerDevicesQuery()->with(['subscription'])->get(),
+            requireSubscription: false,
         );
     }
 
