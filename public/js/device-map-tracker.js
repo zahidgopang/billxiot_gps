@@ -4,6 +4,7 @@
 (function () {
     'use strict';
 
+    const global = window;
     const cfg = window.DEVICE_MAP_CONFIG || {};
     const i18n = cfg.i18n || {};
     const mi = (key, fallback) => (i18n[key] != null && i18n[key] !== '' ? i18n[key] : fallback);

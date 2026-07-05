@@ -67,13 +67,13 @@ function addStartEndMarkers(start, end) {
     if (startMarker) startMarker.setMap(null);
     if (currentPositionMarker) currentPositionMarker.setMap(null);
 
-    startMarker = (global.VehicleMarker?.createMarker || global.GoogleMapsPlatform?.createMarker || ((o) => new google.maps.Marker(o)))({
+    startMarker = (window.VehicleMarker?.createMarker || window.GoogleMapsPlatform?.createMarker || ((o) => new google.maps.Marker(o)))({
         position: { lat: +start.lat, lng: +start.lng },
         map,
         label: 'S',
     });
 
-    currentPositionMarker = (global.VehicleMarker?.createMarker || global.GoogleMapsPlatform?.createMarker || ((o) => new google.maps.Marker(o)))({
+    currentPositionMarker = (window.VehicleMarker?.createMarker || window.GoogleMapsPlatform?.createMarker || ((o) => new google.maps.Marker(o)))({
         position: { lat: +end.lat, lng: +end.lng },
         map,
         label: 'E',
