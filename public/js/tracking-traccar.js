@@ -692,7 +692,9 @@
             this.initCompanyMapCard();
             this.initDriverMapCard();
             this.bindEchoRealtime();
-            this.startPolling();
+            if (this._needsHttpLivePoll()) {
+                this.startPolling();
+            }
         }
 
         /** Apply cached SSR positions so markers/clusters render before the first poll. */
@@ -1972,9 +1974,29 @@
             return global.Echo?.connector?.pusher?.connection?.state === 'connected';
         }
 
-        _reverbEventsRecent(maxMs = 18000) {
+        _reverbEventsRecent(maxMs) {
+            const limit = maxMs ?? (this.cfg.reverbStaleMs || 45000);
             return this._lastReverbActivityAt > 0
-                && (Date.now() - this._lastReverbActivityAt) < maxMs;
+                && (Date.now() - this._lastReverbActivityAt) < limit;
+        }
+
+        /** Reverb connected and GPS events are arriving — skip live-json HTTP. */
+        _reverbGpsActive() {
+            return this.realtimeHealthy && this._reverbEventsRecent();
+        }
+
+        _needsHttpLivePoll(force = false) {
+            if (force) return true;
+            if (document.hidden || this.visible.size === 0) return false;
+            if (!this.realtimeHealthy) return true;
+            return !this._reverbGpsActive();
+        }
+
+        stopLivePolling() {
+            if (this.pollTimer) {
+                clearInterval(this.pollTimer);
+                this.pollTimer = null;
+            }
         }
 
         syncRealtimePolling() {
@@ -1985,13 +2007,16 @@
                     console.info(
                         '[traccar-ui] Reverb',
                         wsConnected
-                            ? 'connected — instant WS updates + slow HTTP backup'
+                            ? 'connected — live-json off while GPS events flow'
                             : 'unavailable — HTTP polling active',
                     );
                 }
             }
-            // Always keep HTTP backup; interval adapts (slow when WS events flow).
-            this.startPolling();
+            if (this._needsHttpLivePoll()) {
+                this.startPolling();
+            } else {
+                this.stopLivePolling();
+            }
             if (wsConnected) {
                 if (this.alertTimer) {
                     clearInterval(this.alertTimer);
@@ -2027,16 +2052,18 @@
             }
 
             this._reverbWatchTimer = setInterval(() => {
-                if (!this.isEchoConnected()) return;
-                // WS up but silent → tighten HTTP backup interval.
-                this.startPolling();
-            }, 12000);
+                if (this._reverbGpsActive()) {
+                    this.stopLivePolling();
+                } else if (!document.hidden && this.visible.size > 0) {
+                    this.startPolling();
+                }
+            }, 15000);
 
             setTimeout(sync, 800);
             setTimeout(sync, 2500);
             setTimeout(() => {
                 if (!this.isEchoConnected()) sync();
-                else this.startPolling();
+                else this.syncRealtimePolling();
             }, 6000);
         }
 
@@ -2044,26 +2071,14 @@
             if (document.hidden || this.visible.size === 0) return 0;
 
             const fast = this.cfg.pollIntervalMs || 10000;
-            const slow = this.cfg.pollIntervalConnectedMs || 30000;
-            let base = fast;
-
-            if (this.realtimeHealthy && this._reverbEventsRecent()) {
-                base = slow;
-            } else if (this.realtimeHealthy) {
-                // Socket connected but no recent GPS events — poll at normal speed.
-                base = fast;
-            }
-
             const count = this.visible.size;
-            if (base === fast) {
-                if (count > 40) return Math.max(base, 15000);
-                if (count > 20) return Math.max(base, 12000);
-            }
-            return base;
+            if (count > 40) return Math.max(fast, 15000);
+            if (count > 20) return Math.max(fast, 12000);
+            return fast;
         }
 
         pausePolling() {
-            if (this.pollTimer) { clearInterval(this.pollTimer); this.pollTimer = null; }
+            this.stopLivePolling();
             if (this.alertTimer) { clearInterval(this.alertTimer); this.alertTimer = null; }
         }
 
@@ -2072,13 +2087,15 @@
         }
 
         startPolling() {
+            if (!this._needsHttpLivePoll()) {
+                this.stopLivePolling();
+                return;
+            }
             if (this.pollTimer) { clearInterval(this.pollTimer); this.pollTimer = null; }
             if (this.visible.size === 0 || document.hidden) return;
             const ms = this.resolveLivePollIntervalMs();
             if (ms <= 0) return;
-            if (!this.pollTimer) {
-                this.pollLive(true);
-            }
+            this.pollLive(true);
             this.pollTimer = setInterval(() => this.pollLive(false), ms);
         }
 
@@ -2100,13 +2117,7 @@
         }
 
         async pollLive(force) {
-            if (
-                !force
-                && this.realtimeHealthy
-                && this._reverbEventsRecent(15000)
-            ) {
-                return;
-            }
+            if (!this._needsHttpLivePoll(force)) return;
             if (this.pollInFlight && !force) return;
             const ids = [...this.visible];
             if (ids.length === 0) return;
@@ -2139,6 +2150,9 @@
                     }
                     this._lastReverbActivityAt = Date.now();
                     this.applyPoint(id, loc);
+                    if (this._reverbGpsActive()) {
+                        this.stopLivePolling();
+                    }
                 });
                 this.echoChannels.set(id, channel);
                 this.syncRealtimePolling();
