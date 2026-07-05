@@ -416,6 +416,8 @@
             this.alertTimer = null;
             this._echoHooksBound = false;
             this._alertBaselineDone = false;
+            this._lastReverbActivityAt = 0;
+            this._reverbWatchTimer = null;
             this.echoChannels = new Map();
             this.initialFitDone = false;
             this.motionRaf = null;
@@ -690,6 +692,7 @@
             this.initCompanyMapCard();
             this.initDriverMapCard();
             this.bindEchoRealtime();
+            this.startPolling();
         }
 
         /** Apply cached SSR positions so markers/clusters render before the first poll. */
@@ -1964,27 +1967,39 @@
         }
 
         /* ---------- Polling + realtime ---------- */
-        /** True when Reverb/Echo WebSocket is connected — HTTP polling stays off. */
+        /** WebSocket transport up (does not guarantee channel events are flowing). */
         isEchoConnected() {
             return global.Echo?.connector?.pusher?.connection?.state === 'connected';
         }
 
+        _reverbEventsRecent(maxMs = 18000) {
+            return this._lastReverbActivityAt > 0
+                && (Date.now() - this._lastReverbActivityAt) < maxMs;
+        }
+
         syncRealtimePolling() {
-            const healthy = this.isEchoConnected();
-            if (healthy === this.realtimeHealthy) return;
-            this.realtimeHealthy = healthy;
-            if (healthy) {
-                this.pausePolling();
+            const wsConnected = this.isEchoConnected();
+            if (wsConnected !== this.realtimeHealthy) {
+                this.realtimeHealthy = wsConnected;
                 if (typeof console !== 'undefined' && console.info) {
-                    console.info('[traccar-ui] Reverb connected — live-json / events polling stopped');
+                    console.info(
+                        '[traccar-ui] Reverb',
+                        wsConnected
+                            ? 'connected — instant WS updates + slow HTTP backup'
+                            : 'unavailable — HTTP polling active',
+                    );
                 }
-                return;
             }
-            if (typeof console !== 'undefined' && console.warn) {
-                console.warn('[traccar-ui] Reverb unavailable — HTTP fallback polling enabled');
-            }
+            // Always keep HTTP backup; interval adapts (slow when WS events flow).
             this.startPolling();
-            this.startAlertPollingFallback();
+            if (wsConnected) {
+                if (this.alertTimer) {
+                    clearInterval(this.alertTimer);
+                    this.alertTimer = null;
+                }
+            } else {
+                this.startAlertPollingFallback();
+            }
         }
 
         bindEchoRealtime() {
@@ -1999,9 +2014,8 @@
             document.addEventListener('visibilitychange', () => {
                 if (document.hidden) {
                     this.pausePolling();
-                } else if (!this.realtimeHealthy) {
-                    this.startPolling();
-                    this.startAlertPollingFallback();
+                } else {
+                    this.syncRealtimePolling();
                 }
             });
 
@@ -2012,22 +2026,39 @@
                 return;
             }
 
-            // Give Reverb time to connect before enabling HTTP fallback.
+            this._reverbWatchTimer = setInterval(() => {
+                if (!this.isEchoConnected()) return;
+                // WS up but silent → tighten HTTP backup interval.
+                this.startPolling();
+            }, 12000);
+
             setTimeout(sync, 800);
             setTimeout(sync, 2500);
             setTimeout(() => {
-                if (!this.isEchoConnected()) {
-                    sync();
-                }
+                if (!this.isEchoConnected()) sync();
+                else this.startPolling();
             }, 6000);
         }
 
         resolveLivePollIntervalMs() {
-            if (this.realtimeHealthy || document.hidden || this.visible.size === 0) return 0;
-            const base = this.cfg.pollIntervalMs || 10000;
+            if (document.hidden || this.visible.size === 0) return 0;
+
+            const fast = this.cfg.pollIntervalMs || 10000;
+            const slow = this.cfg.pollIntervalConnectedMs || 30000;
+            let base = fast;
+
+            if (this.realtimeHealthy && this._reverbEventsRecent()) {
+                base = slow;
+            } else if (this.realtimeHealthy) {
+                // Socket connected but no recent GPS events — poll at normal speed.
+                base = fast;
+            }
+
             const count = this.visible.size;
-            if (count > 40) return Math.max(base, 15000);
-            if (count > 20) return Math.max(base, 12000);
+            if (base === fast) {
+                if (count > 40) return Math.max(base, 15000);
+                if (count > 20) return Math.max(base, 12000);
+            }
             return base;
         }
 
@@ -2037,18 +2068,17 @@
         }
 
         resumePolling() {
-            if (this.realtimeHealthy) return;
-            this.startPolling();
-            this.startAlertPollingFallback();
+            this.syncRealtimePolling();
         }
 
         startPolling() {
-            if (this.realtimeHealthy) return;
             if (this.pollTimer) { clearInterval(this.pollTimer); this.pollTimer = null; }
             if (this.visible.size === 0 || document.hidden) return;
             const ms = this.resolveLivePollIntervalMs();
             if (ms <= 0) return;
-            this.pollLive(true);
+            if (!this.pollTimer) {
+                this.pollLive(true);
+            }
             this.pollTimer = setInterval(() => this.pollLive(false), ms);
         }
 
@@ -2070,7 +2100,13 @@
         }
 
         async pollLive(force) {
-            if (this.realtimeHealthy && !force) return;
+            if (
+                !force
+                && this.realtimeHealthy
+                && this._reverbEventsRecent(15000)
+            ) {
+                return;
+            }
             if (this.pollInFlight && !force) return;
             const ids = [...this.visible];
             if (ids.length === 0) return;
@@ -2098,6 +2134,10 @@
                 channel.listen('.DeviceLocationUpdated', (payload) => {
                     const loc = payload.location || payload;
                     if (loc && loc.id == null) loc.id = id;
+                    if (loc && loc.color == null) {
+                        loc.color = colorForPoint(loc, this.stateColors);
+                    }
+                    this._lastReverbActivityAt = Date.now();
                     this.applyPoint(id, loc);
                 });
                 this.echoChannels.set(id, channel);
