@@ -58,7 +58,7 @@ class GlobalTrackingController extends Controller
 
         $targetIds = $requested === []
             ? array_slice($allowed, 0, GlobalTrackingService::MAX_LIVE_DEVICES)
-            : $allowed;
+            : array_slice($allowed, 0, GlobalTrackingService::MAX_LIVE_DEVICES);
 
         $sortedIds = $targetIds;
         sort($sortedIds);

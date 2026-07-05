@@ -12,6 +12,7 @@ use App\Services\Tracking\NotificationPreferenceService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\View\View;
 
 class TrackingEventsController extends Controller
@@ -38,12 +39,17 @@ class TrackingEventsController extends Controller
         $user = $request->user();
         $ids = $this->parseTrackingIdList($request);
         $allowed = $ids === [] ? $this->tracking->allowedDeviceIds($user) : $this->tracking->filterAllowedIds($user, $ids);
+        $page = max(1, (int) $request->query('page', 1));
+        $perPage = min(100, max(10, (int) $request->query('per_page', 25)));
+
+        if ($request->boolean('alert_poll')) {
+            return $this->alertPollJson($request, $user, $allowed, $page, $perPage);
+        }
+
         $from = $request->query('from') ? Carbon::parse($request->query('from')) : now()->subDays(7);
         $to = $request->query('to') ? Carbon::parse($request->query('to')) : now();
         $type = $request->query('type');
         $types = $type ? [(string) $type] : null;
-        $page = max(1, (int) $request->query('page', 1));
-        $perPage = min(100, max(10, (int) $request->query('per_page', 25)));
 
         // Respect the user's per-type "web" notification preferences (unless filtering by type).
         $all = [];
@@ -75,6 +81,75 @@ class TrackingEventsController extends Controller
             'page' => $page,
             'per_page' => $perPage,
         ]);
+    }
+
+    private function alertPollJson(Request $request, $user, array $allowed, int $page, int $perPage): JsonResponse
+    {
+        $afterId = max(0, (int) $request->query('after_id', 0));
+        $deviceIds = array_slice($allowed, 0, 50);
+        $cacheSeconds = 10;
+        $cacheKey = 'tracking.events.alert.'
+            . $user->id
+            . '.'
+            . $afterId
+            . '.'
+            . md5(implode(',', $deviceIds));
+
+        $payload = Cache::remember($cacheKey, $cacheSeconds, function () use ($user, $deviceIds, $afterId, $perPage, $page) {
+            $all = [];
+
+            if ($afterId > 0) {
+                foreach ($deviceIds as $deviceId) {
+                    $device = Device::query()->find($deviceId);
+                    if (! $device) {
+                        continue;
+                    }
+                    foreach ($this->events->afterIdForDevice($device, $afterId, 8) as $event) {
+                        if ($this->notificationPrefs->isWebSuppressed($user, $event->type)) {
+                            continue;
+                        }
+                        $all[] = array_merge($event->toAlertArray(), [
+                            'device_id' => $device->id,
+                            'device_name' => $device->mapMarkerTitle(),
+                            'lat' => $event->lat,
+                            'lng' => $event->lng,
+                        ]);
+                    }
+                }
+            } else {
+                $recent = $this->events->recentForDevices(collect($deviceIds), max($perPage, 25));
+                foreach ($recent as $event) {
+                    $deviceId = (int) ($event->device_id ?? 0);
+                    if ($deviceId < 1) {
+                        continue;
+                    }
+                    if ($this->notificationPrefs->isWebSuppressed($user, $event->type)) {
+                        continue;
+                    }
+                    $device = Device::query()->find($deviceId);
+                    $all[] = array_merge($event->toAlertArray(), [
+                        'device_id' => $deviceId,
+                        'device_name' => $device?->mapMarkerTitle() ?? ('#'.$deviceId),
+                        'lat' => $event->lat,
+                        'lng' => $event->lng,
+                    ]);
+                }
+            }
+
+            usort($all, fn ($a, $b) => ((int) ($b['id'] ?? 0)) <=> ((int) ($a['id'] ?? 0)));
+
+            $total = count($all);
+            $slice = array_slice($all, ($page - 1) * $perPage, $perPage);
+
+            return [
+                'events' => $slice,
+                'total' => $total,
+                'page' => $page,
+                'per_page' => $perPage,
+            ];
+        });
+
+        return $this->noStoreJson($payload);
     }
 
     public function markRead(Request $request, int $eventId): JsonResponse

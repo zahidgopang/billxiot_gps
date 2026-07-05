@@ -21,6 +21,7 @@ use App\Services\Tracking\GlobalTrackingService;
 use App\Services\UserDashboardService;
 use App\Services\VehicleEventService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 
 class DeviceController extends Controller
 {
@@ -77,17 +78,36 @@ class DeviceController extends Controller
 
     public function live(Request $request, int $id)
     {
-        $device = $this->findMobileDevice($request->user(), $id);
-        $this->positionLoader->attachLatest($device);
-        $latest = $device->latestLocation;
+        $user = $request->user();
+        $device = $this->findMobileDevice($user, $id);
+        $light = $request->boolean('light');
+        $cacheSeconds = $light ? (int) config('tracking.live_json_cache_seconds', 3) : 0;
+        $cacheKey = 'mobile.device.live.'.$user->id.'.'.$id.($light ? '.light' : '.full');
 
-        $payload = $this->presenter->livePosition($device);
+        $build = function () use ($request, $device, $light) {
+            $this->positionLoader->attachLatest($device);
+            $latest = $device->latestLocation;
+
+            $payload = $this->presenter->livePosition($device, withStatusDuration: ! $light);
+
+            if (! $payload) {
+                return null;
+            }
+
+            if (! $light) {
+                $payload['route_trip'] = $this->routeTripPayloadForMobile($request, $device, $latest);
+            }
+
+            return $payload;
+        };
+
+        $payload = $cacheSeconds > 0
+            ? Cache::remember($cacheKey, $cacheSeconds, $build)
+            : $build();
 
         if (! $payload) {
             return $this->mobileError('No live position available', 404, 'no_data');
         }
-
-        $payload['route_trip'] = $this->routeTripPayloadForMobile($request, $device, $latest);
 
         return $this->mobileSuccess($payload)
             ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');

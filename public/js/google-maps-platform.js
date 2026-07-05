@@ -235,6 +235,18 @@
         return null;
     }
 
+    /** Vertical space the label badge occupies above the icon anchor (px). */
+    function estimateLabelStackPx(labelOpt) {
+        if (!labelOpt?.text) {
+            return 0;
+        }
+        const fontSize = parseFloat(String(labelOpt.fontSize || '12')) || 12;
+        const lineHeight = 1.25;
+        const padY = 4;
+        const marginBottom = 2;
+        return Math.ceil(fontSize * lineHeight + padY + marginBottom);
+    }
+
     function appendLabelElement(parent, label, focused) {
         const labelOpt = normalizeLabel(label);
         if (!labelOpt?.text) {
@@ -298,10 +310,13 @@
 
         const { w, h } = scaledSizePx(icon || {});
         const { x: ax, y: ay } = anchorPx(icon || {}, w, h);
+        const labelStack = labelOpt && hasIcon ? estimateLabelStackPx(labelOpt) : 0;
 
         return createAnchoredContent((inner, outer) => {
             inner.style.left = `${-ax}px`;
-            inner.style.top = `${-ay}px`;
+            // Label sits above the icon in the flex column — include its height so
+            // the icon anchor (pin tip / arrow pivot) stays on the GPS coordinate.
+            inner.style.top = `${-(ay + labelStack)}px`;
             inner.style.display = 'flex';
             inner.style.flexDirection = 'column';
             inner.style.alignItems = 'center';

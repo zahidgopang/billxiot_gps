@@ -157,11 +157,21 @@
                     connection.bind('error', logEvent('error'));
                     connection.bind('failed', logEvent('failed'));
                 }
-                connection.bind('error', (err) => warnOnce(err?.error?.data?.message || err?.type));
+                connection.bind('connected', () => {
+                    window.dispatchEvent(new CustomEvent('reverb:connected'));
+                });
+                connection.bind('disconnected', () => {
+                    window.dispatchEvent(new CustomEvent('reverb:disconnected'));
+                });
+                connection.bind('unavailable', () => {
+                    window.dispatchEvent(new CustomEvent('reverb:disconnected'));
+                });
                 connection.bind('failed', () => {
+                    window.dispatchEvent(new CustomEvent('reverb:disconnected'));
                     warnOnce('failed');
                     console.error('[realtime] WebSocket failed. Run window.__reverbDebug()');
                 });
+                connection.bind('error', (err) => warnOnce(err?.error?.data?.message || err?.type));
             }
         } catch (e) {
             window.__reverbInitError = e?.message || String(e);

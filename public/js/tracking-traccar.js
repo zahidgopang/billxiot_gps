@@ -412,6 +412,10 @@
             this.activeTab = 'objects';
             this.pollTimer = null;
             this.pollInFlight = false;
+            this.realtimeHealthy = false;
+            this.alertTimer = null;
+            this._echoHooksBound = false;
+            this._alertBaselineDone = false;
             this.echoChannels = new Map();
             this.initialFitDone = false;
             this.motionRaf = null;
@@ -685,7 +689,7 @@
             this.renderLiveClusters();
             this.initCompanyMapCard();
             this.initDriverMapCard();
-            this.startPolling();
+            this.bindEchoRealtime();
         }
 
         /** Apply cached SSR positions so markers/clusters render before the first poll. */
@@ -1123,7 +1127,7 @@
                 if (!st?.marker) return;
                 const isFocused = focusedId != null && Number(id) === Number(focusedId);
                 if (typeof st.marker.setZIndex === 'function') {
-                    st.marker.setZIndex(isFocused ? 2500 + Number(id) : 500 + Number(id));
+                    st.marker.setZIndex(isFocused ? 3500 + Number(id) : 1500 + Number(id));
                 }
                 if (typeof st.marker.setFocused === 'function') {
                     st.marker.setFocused(isFocused);
@@ -1612,7 +1616,7 @@
                 map: pos && !this.historyActive ? this.map : null,
                 position: pos || DEFAULT_CENTER,
                 title: this.labelFor(v),
-                zIndex: 500 + id,
+                zIndex: 1500 + id,
                 optimized: false,
             });
             this.setVehicleMarkerIcon(st, v, v.heading || 0);
@@ -1673,7 +1677,7 @@
                     strokeColor: color,
                     strokeOpacity: 0.6,
                     strokeWeight: 5,
-                    zIndex: 400,
+                    zIndex: 80,
                     clickable: false,
                 });
                 st.trailPolylines = [line];
@@ -1960,19 +1964,113 @@
         }
 
         /* ---------- Polling + realtime ---------- */
-        startPolling() {
-            if (this.pollTimer) { clearInterval(this.pollTimer); this.pollTimer = null; }
-            if (this.visible.size === 0) return;
-            const base = this.cfg.pollIntervalMs || 6000;
+        /** True when Reverb/Echo WebSocket is connected — HTTP polling stays off. */
+        isEchoConnected() {
+            return global.Echo?.connector?.pusher?.connection?.state === 'connected';
+        }
+
+        syncRealtimePolling() {
+            const healthy = this.isEchoConnected();
+            if (healthy === this.realtimeHealthy) return;
+            this.realtimeHealthy = healthy;
+            if (healthy) {
+                this.pausePolling();
+                if (typeof console !== 'undefined' && console.info) {
+                    console.info('[traccar-ui] Reverb connected — live-json / events polling stopped');
+                }
+                return;
+            }
+            if (typeof console !== 'undefined' && console.warn) {
+                console.warn('[traccar-ui] Reverb unavailable — HTTP fallback polling enabled');
+            }
+            this.startPolling();
+            this.startAlertPollingFallback();
+        }
+
+        bindEchoRealtime() {
+            if (this._echoHooksBound) return;
+            this._echoHooksBound = true;
+
+            const sync = () => this.syncRealtimePolling();
+            global.addEventListener('reverb:connected', sync);
+            global.addEventListener('reverb:disconnected', sync);
+            global.addEventListener('focus', sync);
+
+            document.addEventListener('visibilitychange', () => {
+                if (document.hidden) {
+                    this.pausePolling();
+                } else if (!this.realtimeHealthy) {
+                    this.startPolling();
+                    this.startAlertPollingFallback();
+                }
+            });
+
+            if (!global.Echo) {
+                this.realtimeHealthy = false;
+                this.startPolling();
+                this.startAlertPollingFallback();
+                return;
+            }
+
+            // Give Reverb time to connect before enabling HTTP fallback.
+            setTimeout(sync, 800);
+            setTimeout(sync, 2500);
+            setTimeout(() => {
+                if (!this.isEchoConnected()) {
+                    sync();
+                }
+            }, 6000);
+        }
+
+        resolveLivePollIntervalMs() {
+            if (this.realtimeHealthy || document.hidden || this.visible.size === 0) return 0;
+            const base = this.cfg.pollIntervalMs || 10000;
             const count = this.visible.size;
-            const ms = count > 40 ? Math.max(base, 10000)
-                : count > 20 ? Math.max(base, 8000)
-                    : base;
+            if (count > 40) return Math.max(base, 15000);
+            if (count > 20) return Math.max(base, 12000);
+            return base;
+        }
+
+        pausePolling() {
+            if (this.pollTimer) { clearInterval(this.pollTimer); this.pollTimer = null; }
+            if (this.alertTimer) { clearInterval(this.alertTimer); this.alertTimer = null; }
+        }
+
+        resumePolling() {
+            if (this.realtimeHealthy) return;
+            this.startPolling();
+            this.startAlertPollingFallback();
+        }
+
+        startPolling() {
+            if (this.realtimeHealthy) return;
+            if (this.pollTimer) { clearInterval(this.pollTimer); this.pollTimer = null; }
+            if (this.visible.size === 0 || document.hidden) return;
+            const ms = this.resolveLivePollIntervalMs();
+            if (ms <= 0) return;
             this.pollLive(true);
             this.pollTimer = setInterval(() => this.pollLive(false), ms);
         }
 
+        startAlertPollingFallback() {
+            if (this.realtimeHealthy) return;
+            if (this.alertTimer) { clearInterval(this.alertTimer); this.alertTimer = null; }
+            if (!this.cfg.eventsJsonUrl || document.hidden) return;
+            if (!this._alertBaselineDone) {
+                this._alertBaselineDone = true;
+                this.pollAlerts(true);
+            }
+            const interval = this.cfg.alertPollIntervalMs || 30000;
+            this.alertTimer = setInterval(() => this.pollAlerts(false), interval);
+        }
+
+        /** @deprecated use startAlertPollingFallback */
+        restartAlertPolling() {
+            this.startAlertPollingFallback();
+        }
+
         async pollLive(force) {
+            if (this.realtimeHealthy && !force) return;
             if (this.pollInFlight && !force) return;
             const ids = [...this.visible];
             if (ids.length === 0) return;
@@ -2003,6 +2101,7 @@
                     this.applyPoint(id, loc);
                 });
                 this.echoChannels.set(id, channel);
+                this.syncRealtimePolling();
             } catch (err) { console.warn('[traccar-ui] echo subscribe failed', id, err); }
         }
 
@@ -2010,6 +2109,7 @@
             if (!this.echoChannels.has(id)) return;
             try { global.Echo.leave(`device.${id}`); } catch (_) { /* ignore */ }
             this.echoChannels.delete(id);
+            this.syncRealtimePolling();
         }
 
         /* ---------- Map controls ---------- */
@@ -3597,10 +3697,7 @@
             document.addEventListener('keydown', unlock, { once: false });
 
             if (!this.cfg.eventsJsonUrl) return;
-            // Baseline first, then poll for new alerts.
-            this.pollAlerts(true);
-            const interval = this.cfg.alertPollIntervalMs || 15000;
-            this.alertTimer = setInterval(() => this.pollAlerts(false), interval);
+            // HTTP alert polling only when Reverb is down (see startAlertPollingFallback).
         }
 
         bindSoundToggle() {
@@ -3673,10 +3770,22 @@
         }
 
         async pollAlerts(baseline) {
-            if (!this.cfg.eventsJsonUrl) return;
-            // Narrow window keeps the scan + payload light.
-            const since = new Date(Date.now() - 30 * 60 * 1000).toISOString();
-            const url = `${this.cfg.eventsJsonUrl}?per_page=25&page=1&from=${encodeURIComponent(since)}&_=${Date.now()}`;
+            if (!this.cfg.eventsJsonUrl || document.hidden || (this.realtimeHealthy && !baseline)) return;
+            const params = new URLSearchParams({
+                per_page: '25',
+                page: '1',
+                alert_poll: '1',
+            });
+            if (baseline || this._lastEventId == null) {
+                const since = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+                params.set('from', since);
+            } else {
+                params.set('after_id', String(this._lastEventId));
+            }
+            if (!this.realtimeHealthy) {
+                params.set('_', String(Date.now()));
+            }
+            const url = `${this.cfg.eventsJsonUrl}?${params.toString()}`;
             try {
                 const res = await fetch(url, { credentials: 'same-origin', cache: 'no-store' });
                 if (!res.ok) return;

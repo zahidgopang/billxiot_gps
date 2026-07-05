@@ -29,6 +29,8 @@ class FleetController extends Controller
             ? array_slice($this->tracking->allowedDeviceIds($user), 0, GlobalTrackingService::MAX_LIVE_DEVICES)
             : $this->tracking->filterAllowedIds($user, $requested);
 
+        $allowed = array_slice($allowed, 0, GlobalTrackingService::MAX_LIVE_DEVICES);
+
         if ($allowed === []) {
             return $this->mobileSuccess([])
                 ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');

@@ -18,6 +18,7 @@ use App\Support\Tracking\TelemetryFormatter;
 use App\Services\Tracking\StatusDurationResolver;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 
 /**
  * Role-scoped vehicle lists and live/history payloads for the Global Tracking module.
@@ -395,11 +396,15 @@ class GlobalTrackingService
      */
     public function allowedDeviceIds(User $actor): array
     {
-        return $this->devicesForActor($actor)
-            ->pluck('id')
-            ->map(fn ($id) => (int) $id)
-            ->values()
-            ->all();
+        return Cache::remember(
+            'tracking.allowed_ids.'.$actor->id,
+            45,
+            fn () => $this->devicesForActor($actor)
+                ->pluck('id')
+                ->map(fn ($id) => (int) $id)
+                ->values()
+                ->all()
+        );
     }
 
     /**

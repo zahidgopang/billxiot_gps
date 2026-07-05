@@ -56,13 +56,22 @@ return [
     'geofence_on_live_poll' => filter_var(env('TRACKING_GEOFENCE_ON_LIVE_POLL', false), FILTER_VALIDATE_BOOL),
 
     /** Seconds to cache fleet live-json responses (reduces poll load with many devices). */
-    'live_json_cache_seconds' => (int) env('TRACKING_LIVE_JSON_CACHE_SECONDS', 3),
+    'live_json_cache_seconds' => (int) env('TRACKING_LIVE_JSON_CACHE_SECONDS', 8),
 
     /** Include route_trip in live-json only when a single device is polled. */
     'live_include_route_trip_single' => filter_var(env('TRACKING_LIVE_INCLUDE_ROUTE_TRIP_SINGLE', true), FILTER_VALIDATE_BOOL),
 
-    /** Default live map poll interval (ms) — increase when fleet is large. */
-    'live_poll_interval_ms' => (int) env('TRACKING_LIVE_POLL_INTERVAL_MS', 6000),
+    /** HTTP poll interval (ms) when Reverb/Echo is down — positions via live-json. */
+    'live_poll_interval_ms' => (int) env('TRACKING_LIVE_POLL_INTERVAL_MS', 10000),
+
+    /** Slow heartbeat poll (ms) when Reverb/Echo is connected — WS carries live fixes. */
+    'live_poll_interval_connected_ms' => (int) env('TRACKING_LIVE_POLL_INTERVAL_CONNECTED_MS', 30000),
+
+    /** Alert bell poll (ms) when realtime is unavailable. */
+    'alert_poll_interval_ms' => (int) env('TRACKING_ALERT_POLL_INTERVAL_MS', 30000),
+
+    /** Alert bell poll (ms) when Reverb/Echo is connected. */
+    'alert_poll_interval_connected_ms' => (int) env('TRACKING_ALERT_POLL_INTERVAL_CONNECTED_MS', 60000),
 
     /**
      * Persist notification rows to vehicle_events / tc_events.
