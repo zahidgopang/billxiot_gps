@@ -58,7 +58,8 @@
         const icon = {
             url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
             scaledSize: new g.maps.Size(40, 52),
-            anchor: new g.maps.Point(20, 20),
+            // Tip of the arrow sits on the GPS coordinate (not the rotation pivot).
+            anchor: new g.maps.Point(20, 3),
             labelOrigin: new g.maps.Point(20, -2),
         };
         arrowIconCache[key] = icon;
@@ -1148,12 +1149,10 @@
         }
 
         applyMarkerLabel(st, v, focused = false) {
-            if (!st?.marker || !v) return;
-            const color = colorForPoint(v, this.stateColors);
-            const label = markerLabel(this.labelFor(v), color, focused);
-            if (typeof st.marker.setLabel === 'function') {
-                st.marker.setLabel(label);
-            }
+            // Live fleet markers must anchor exactly on lat/lng (pin tip / icon pivot).
+            // Floating labels shift Advanced Marker content and look offset from the road.
+            if (!st?.marker || typeof st.marker.setLabel !== 'function') return;
+            st.marker.setLabel(null);
         }
 
         countNearbyVehicles(targetId, radiusMeters = 35) {
@@ -1267,6 +1266,8 @@
 
         onMapMarkerClick(id) {
             this.focusVehicleOnMap(id);
+            this.activateRouteTripForVehicle(id);
+            this.openVehiclePopup(id);
             this.openDevicePanel(id);
         }
 
@@ -1529,7 +1530,19 @@
             const point = { ...v, heading: h };
             const icon = this.iconBuilder?.iconFor(point);
             applyMarkerIcon(st.marker, icon || arrowIcon(color, h));
-            this.applyMarkerLabel(st, v);
+            if (typeof st.marker?.setLabel === 'function') {
+                st.marker.setLabel(null);
+            }
+        }
+
+        /** Rebuild marker bitmap only when heading bucket / status color changes. */
+        _markerIconSignature(v, heading) {
+            const key = v?.status_key || 'offline';
+            const bucket = Math.round((((heading || 0) % 360) + 360) % 360 / 3) * 3;
+            const style = global.VehicleMarker?.resolveMarkerStyle?.(v) || 'pin';
+            const scale = global.VehicleMarker?.resolveMarkerSizeScale?.(v) || 1;
+            const custom = global.VehicleMarker?.resolveCustomIconUrl?.(v) || '';
+            return `${key}|${colorForPoint(v, this.stateColors)}|${bucket}|${style}|${scale}|${custom}`;
         }
 
         activeClusterBreakId() {
@@ -1885,9 +1898,8 @@
         }
 
         /** Marker + render cache — trail tail locked to the same lat/lng. */
-        placeVehicleMarker(st, id, lat, lng, color, heading, skipSnap = false) {
-            const cached = this.snapFromCache(lat, lng);
-            const pos = cached || normalizeGps(lat, lng);
+        placeVehicleMarker(st, id, lat, lng, color, heading) {
+            const pos = normalizeGps(lat, lng);
             if (!pos) return;
             st.renderPos = pos;
             if (heading != null && Number.isFinite(Number(heading))) {
@@ -1895,17 +1907,25 @@
             }
             const show = this.markerShouldShowOnMap(id, true);
             st.marker?.setMap(show ? this.map : null);
-            st.marker?.setPosition(pos);
+            st.marker?.setPosition({ lat: pos.lat, lng: pos.lng });
             const vehicle = this.vehicles.get(id);
             if (vehicle) {
-                this.setVehicleMarkerIcon(st, { ...vehicle, lat: pos.lat, lng: pos.lng, color: color || colorForPoint(vehicle, this.stateColors) }, st.renderHeading);
+                const sig = this._markerIconSignature(
+                    { ...vehicle, color: color || colorForPoint(vehicle, this.stateColors) },
+                    st.renderHeading,
+                );
+                if (st._iconSig !== sig) {
+                    st._iconSig = sig;
+                    this.setVehicleMarkerIcon(
+                        st,
+                        { ...vehicle, lat: pos.lat, lng: pos.lng, color: color || colorForPoint(vehicle, this.stateColors) },
+                        st.renderHeading,
+                    );
+                }
             }
             const key = st.lastPoint?.status_key || vehicle?.status_key || '';
             if (MOVING_KEYS.has(key)) {
                 this.syncTrailPolyline(st, pos.lat, pos.lng, color || colorForPoint(vehicle || {}, this.stateColors), id);
-            }
-            if (!skipSnap && !cached) {
-                this.queueRoadSnap(id, st, pos.lat, pos.lng, color, st.renderHeading);
             }
         }
 
@@ -1965,7 +1985,6 @@
             if (this.historyActive) { st.lastPoint = merged; return; }
 
             st.marker.setTitle(this.labelFor(merged));
-            this.applyMarkerLabel(st, merged);
 
             const moving = MOVING_KEYS.has(key);
             const spd = Math.max(0, parseFloat(merged.speed) || 0);
@@ -1996,13 +2015,24 @@
                 }
                 st.lastPoint = merged;
                 st.marker.setTitle(this.labelFor(merged));
-                this.applyMarkerLabel(st, merged);
                 if (moving) this.commitGpsTrailPoint(st, merged.lat, merged.lng);
                 this.placeVehicleMarker(st, id, merged.lat, merged.lng, liveColor, h);
                 this.renderLiveClusters();
                 return;
             }
-            this.startMotion(id, merged);
+
+            // Snap marker to the latest GPS fix; trail commits on each distinct fix.
+            st.dupSince = null;
+            st.motion = null;
+            let h = parseFloat(merged.heading);
+            if (!Number.isFinite(h) || (!moving && spd < 3)) {
+                h = st.renderHeading != null ? st.renderHeading : 0;
+            }
+            st.lastPoint = merged;
+            st.marker.setTitle(this.labelFor(merged));
+            if (moving) this.commitGpsTrailPoint(st, merged.lat, merged.lng);
+            else this.clearTrail(st);
+            this.placeVehicleMarker(st, id, merged.lat, merged.lng, liveColor, h);
             this.renderLiveClusters();
         }
 

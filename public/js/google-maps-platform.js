@@ -314,12 +314,11 @@
 
         return createAnchoredContent((inner, outer) => {
             inner.style.left = `${-ax}px`;
-            // Label sits above the icon in the flex column — include its height so
-            // the icon anchor (pin tip / arrow pivot) stays on the GPS coordinate.
             inner.style.top = `${-(ay + labelStack)}px`;
             inner.style.display = 'flex';
             inner.style.flexDirection = 'column';
             inner.style.alignItems = 'center';
+            inner.style.pointerEvents = 'none';
             if (focused) {
                 outer.classList.add('gmap-adv-marker-wrap--focused');
             }
@@ -329,6 +328,9 @@
             }
             if (hasIcon) {
                 outer._img = appendIconElement(inner, icon, state || { flat: false, rotation: 0 });
+                if (outer._img) {
+                    outer._img.style.flexShrink = '0';
+                }
             }
         });
     }
@@ -431,7 +433,14 @@
                 native.map = map;
             },
             setPosition(pos) {
-                native.position = pos;
+                if (!pos) {
+                    native.position = null;
+                    return;
+                }
+                const lat = typeof pos.lat === 'function' ? pos.lat() : Number(pos.lat);
+                const lng = typeof pos.lng === 'function' ? pos.lng() : Number(pos.lng);
+                if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+                native.position = { lat, lng };
             },
             getPosition() {
                 const pos = native.position;
