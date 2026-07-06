@@ -17,6 +17,9 @@ const OUT_DIR = path.join(root, 'public', 'assets', 'protected', 'js');
 const FILES = [
     { in: path.join(SOURCE_DIR, 'admin-locations-live.js'), out: 'admin-locations-live.js' },
     { in: path.join(SOURCE_DIR, 'vehicle-marker.js'), out: 'vehicle-marker.js' },
+    { in: path.join(SOURCE_DIR, 'vehicle-map-popup.js'), out: 'vehicle-map-popup.js' },
+    { in: path.join(SOURCE_DIR, 'google-maps-platform.js'), out: 'google-maps-platform.js' },
+    { in: path.join(SOURCE_DIR, 'fleet-map-cluster.js'), out: 'fleet-map-cluster.js' },
     { in: path.join(SOURCE_DIR, 'global-tracking.js'), out: 'global-tracking.js' },
     { in: path.join(SOURCE_DIR, 'global-tracking-history.js'), out: 'global-tracking-history.js' },
     { in: path.join(SOURCE_DIR, 'tracking-traccar.js'), out: 'tracking-traccar.js' },

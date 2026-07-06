@@ -36,7 +36,7 @@
     let suppressMapClickUntil = 0;
 
     function runAfterMarkerClick(fn) {
-        suppressMapClickUntil = Date.now() + 400;
+        suppressMapClickUntil = Date.now() + 600;
         if (typeof fn === 'function') {
             fn();
         }

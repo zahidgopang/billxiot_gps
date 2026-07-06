@@ -108,6 +108,17 @@
 .vehicle-map-popup__footer-link:hover {
     text-decoration: underline;
 }
-.gm-style-iw-chr { display: none !important; }
+.vehicle-map-popup-overlay {
+    position: absolute;
+    z-index: 1000;
+    pointer-events: auto;
+    max-width: 340px;
+    filter: drop-shadow(0 12px 40px rgba(15, 23, 42, 0.18));
+}
+.vehicle-map-popup-overlay .vehicle-map-popup {
+    background: #fff;
+    border-radius: 14px;
+    border: 1px solid #e2e8f0;
+}
 .gm-style-iw-d { overflow: hidden !important; padding: 0 !important; }
 .gm-style-iw-c { padding: 0 !important; border-radius: 14px !important; box-shadow: 0 12px 40px rgba(15,23,42,0.18) !important; }

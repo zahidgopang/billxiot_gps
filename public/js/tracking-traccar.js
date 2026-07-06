@@ -324,6 +324,25 @@
         return haversineKm(a.lat, a.lng, b.lat, b.lng) * 1000;
     }
 
+    /** Dead-reckon a point along heading (meters) — used between slow GPS reports. */
+    function projectAlongHeading(lat, lng, headingDeg, meters) {
+        const m = Number(meters) || 0;
+        if (m <= 0) return normalizeGps(lat, lng);
+        const R = 6371000;
+        const brng = (Number(headingDeg) || 0) * Math.PI / 180;
+        const lat1 = lat * Math.PI / 180;
+        const lng1 = lng * Math.PI / 180;
+        const d = m / R;
+        const lat2 = Math.asin(
+            Math.sin(lat1) * Math.cos(d) + Math.cos(lat1) * Math.sin(d) * Math.cos(brng),
+        );
+        const lng2 = lng1 + Math.atan2(
+            Math.sin(brng) * Math.sin(d) * Math.cos(lat1),
+            Math.cos(d) - Math.sin(lat1) * Math.sin(lat2),
+        );
+        return normalizeGps(lat2 * 180 / Math.PI, lng2 * 180 / Math.PI) || { lat, lng };
+    }
+
     function normalizeGps(lat, lng) {
         const a = parseFloat(lat);
         const b = parseFloat(lng);
@@ -643,6 +662,7 @@
                 this.vehiclePopup = new global.VehicleMapPopup({
                     getMap: () => this.map,
                     googleMaps: google,
+                    mapOverlay: true,
                     stateColors: this.stateColors,
                     commandsSendUrl: this.ui.hub?.commands ? this.cfg.commandsSendUrl : null,
                     commandTypes: this.cfg.commandTypes,
@@ -1242,7 +1262,9 @@
             if (!hasGeo(lat, lng)) return;
 
             this._focusedVehicleId = numId;
+            this._panelDeviceId = numId;
             this.renderLiveClusters();
+            this.updateMarkerFocusStyles();
 
             if (st.marker) {
                 if (typeof st.marker.setZIndex === 'function') {
@@ -1256,19 +1278,20 @@
                 id: numId,
                 lat: parseFloat(lat),
                 lng: parseFloat(lng),
-                heading: st.renderHeading ?? v.heading ?? v.angle,
+                heading: st.renderHeading ?? v.heading ?? v.angle ?? 0,
+                status_label: v.status_label || v.status || v.status_key,
+                status_key: v.status_key || 'offline',
             };
-            this.vehiclePopup.open(
-                point,
-                st.marker?.getAnchor?.() || st.marker,
-            );
+
+            const anchor = st.marker?.getAnchor?.() || st.marker;
+            this.vehiclePopup.open(point, anchor);
         }
 
+        /** Marker click: map popup with status, telemetry, and commands. List rows use locateVehicle() for the footer panel. */
         onMapMarkerClick(id) {
-            this.focusVehicleOnMap(id);
+            this.focusVehicleOnMap(id, { pan: false });
             this.activateRouteTripForVehicle(id);
             this.openVehiclePopup(id);
-            this.openDevicePanel(id);
         }
 
         async sendCommandFromPopup(deviceId, type, btn) {
@@ -1582,8 +1605,10 @@
             if (hasGeo(v?.lat, v?.lng)) {
                 const lat = parseFloat(v.lat);
                 const lng = parseFloat(v.lng);
-                st.lastPoint = { ...v, lat, lng };
-                if (st.marker) {
+                if (!st.motion) {
+                    st.lastPoint = { ...v, lat, lng };
+                }
+                if (st.marker && !st.motion) {
                     this.placeVehicleMarker(
                         st,
                         numId,
@@ -1592,7 +1617,7 @@
                         colorForPoint(v, this.stateColors),
                         v.heading ?? v.angle ?? 0,
                     );
-                } else {
+                } else if (!st.renderPos) {
                     st.renderPos = { lat, lng };
                     st.renderHeading = parseFloat(v.heading ?? v.angle ?? 0);
                 }
@@ -1968,7 +1993,14 @@
             this.updateCounts();
             this.updatePanelLive(merged);
             if (this.vehiclePopup?.isOpenFor(id)) {
-                this.vehiclePopup.update({ ...merged, id });
+                const rp = st.renderPos;
+                this.vehiclePopup.update({
+                    ...merged,
+                    id,
+                    lat: rp?.lat ?? merged.lat,
+                    lng: rp?.lng ?? merged.lng,
+                    heading: st.renderHeading ?? merged.heading,
+                });
             }
             if (this._routeTripDeviceId != null
                 && Number(this._routeTripDeviceId) === Number(id)
@@ -1990,22 +2022,24 @@
             const spd = Math.max(0, parseFloat(merged.speed) || 0);
             const isDup = prev && samePosition(prev, merged);
 
-            // Duplicate fix while moving: hold on the reported GPS — no drift.
+            // Stale GPS while moving — keep gliding along heading until a new fix arrives.
             if (isDup && moving && spd > 1) {
-                st.dupSince = null;
-                st.motion = null;
                 st.lastPoint = merged;
-                let h = parseFloat(merged.heading);
-                if (!Number.isFinite(h) || spd < 3) {
-                    h = st.renderHeading != null ? st.renderHeading : 0;
+                if (st.motion) {
+                    st.motion.speedKmh = spd;
+                    st.motion.color = liveColor;
+                    const newH = parseFloat(merged.heading);
+                    if (Number.isFinite(newH) && spd >= 3) {
+                        st.motion.toH = newH;
+                    }
+                } else {
+                    this.startStaleCruise(id, merged, liveColor);
                 }
-                this.commitGpsTrailPoint(st, merged.lat, merged.lng);
-                this.placeVehicleMarker(st, id, merged.lat, merged.lng, liveColor, h);
                 this.renderLiveClusters();
                 return;
             }
 
-            // First fix, or a duplicate while stopped/idle: snap into place and hold.
+            // First fix, or duplicate while stopped: snap to exact GPS.
             if (!prev || isDup) {
                 st.dupSince = null;
                 st.motion = null;
@@ -2016,24 +2050,59 @@
                 st.lastPoint = merged;
                 st.marker.setTitle(this.labelFor(merged));
                 if (moving) this.commitGpsTrailPoint(st, merged.lat, merged.lng);
+                else this.clearTrail(st);
                 this.placeVehicleMarker(st, id, merged.lat, merged.lng, liveColor, h);
                 this.renderLiveClusters();
                 return;
             }
 
-            // Snap marker to the latest GPS fix; trail commits on each distinct fix.
+            // New GPS fix — glide from current render position to the fix (ends on exact lat/lng).
             st.dupSince = null;
-            st.motion = null;
-            let h = parseFloat(merged.heading);
-            if (!Number.isFinite(h) || (!moving && spd < 3)) {
-                h = st.renderHeading != null ? st.renderHeading : 0;
-            }
             st.lastPoint = merged;
             st.marker.setTitle(this.labelFor(merged));
-            if (moving) this.commitGpsTrailPoint(st, merged.lat, merged.lng);
-            else this.clearTrail(st);
-            this.placeVehicleMarker(st, id, merged.lat, merged.lng, liveColor, h);
+            if (moving) this.startMotion(id, merged);
+            else {
+                st.motion = null;
+                this.clearTrail(st);
+                let h = parseFloat(merged.heading);
+                if (!Number.isFinite(h) || spd < 3) {
+                    h = st.renderHeading != null ? st.renderHeading : 0;
+                }
+                this.placeVehicleMarker(st, id, merged.lat, merged.lng, liveColor, h);
+            }
             this.renderLiveClusters();
+        }
+
+        /**
+         * Brief dead-reckon glide when the device repeats the same GPS fix but is still moving.
+         * Render position catches up visually; the next distinct fix snaps via startMotion().
+         */
+        startStaleCruise(id, point, color) {
+            const st = this.vehicleState(id);
+            const from = st.renderPos || normalizeGps(point.lat, point.lng);
+            if (!from || !st.marker) return;
+
+            const spd = Math.max(1, parseFloat(point.speed) || 1);
+            let h = st.renderHeading ?? parseFloat(point.heading) ?? 0;
+            if (!Number.isFinite(h)) h = 0;
+
+            const interval = this.cfg.pollIntervalMs || 2000;
+            const meters = (spd / 3.6) * Math.min(interval * 0.9, 2500) / 1000;
+            const to = projectAlongHeading(from.lat, from.lng, h, meters);
+            if (distMeters(from, to) < 0.5) return;
+
+            st.motion = {
+                from,
+                to,
+                fromH: h,
+                toH: h,
+                speedKmh: spd,
+                color: color || colorForPoint(point, this.stateColors),
+                catchupMs: Math.max(200, Math.min(interval * 0.85, 1800)),
+                staleCruise: true,
+                start: performance.now(),
+            };
+            this.startMotionLoop();
         }
 
         /**
@@ -2062,6 +2131,7 @@
 
             st.dupSince = null;
             if (moving) this.commitGpsTrailPoint(st, toLL.lat, toLL.lng);
+            else this.clearTrail(st);
             st.motion = {
                 from,
                 to: toLL,
@@ -2070,10 +2140,10 @@
                 speedKmh,
                 color: colorForPoint(to, this.stateColors),
                 catchupMs: Math.max(200, catchupMs),
+                staleCruise: false,
                 start: performance.now(),
             };
             st.lastPoint = to;
-            if (!moving) this.clearTrail(st);
             this.startMotionLoop();
         }
 
@@ -2115,10 +2185,30 @@
 
                 this.placeVehicleMarker(st, id, lat, lng, m.color, heading);
 
+                if (this.vehiclePopup?.isOpenFor(id)) {
+                    const v = this.vehicles.get(id);
+                    if (v) {
+                        this.vehiclePopup.update({
+                            ...v,
+                            id,
+                            lat,
+                            lng,
+                            heading,
+                        });
+                    }
+                }
+
                 if (done) {
+                    const last = st.lastPoint;
+                    const stillMoving = MOVING_KEYS.has(last?.status_key || '');
+                    const cruiseColor = m.color;
                     st.motion = null;
-                    if (MOVING_KEYS.has(st.lastPoint?.status_key || '')) {
-                        this.syncTrailPolyline(st, m.to.lat, m.to.lng, m.color, id);
+                    if (!m.staleCruise && stillMoving) {
+                        this.syncTrailPolyline(st, m.to.lat, m.to.lng, cruiseColor, id);
+                    }
+                    if (stillMoving && (parseFloat(last?.speed) || 0) > 1) {
+                        this.startStaleCruise(id, last, cruiseColor);
+                        active = true;
                     }
                 } else {
                     active = true;

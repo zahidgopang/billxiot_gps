@@ -1,6 +1,9 @@
 /**
  * Shared vehicle info popup for Google Maps (web + fleet views).
  * Shows odometer, plate, status+duration, altitude, angle, position, engine, commands.
+ *
+ * Fleet tracking uses a Map OverlayView host (reliable with AdvancedMarkerElement).
+ * Single-device maps may use the classic InfoWindow.
  */
 (function (global) {
     'use strict';
@@ -156,21 +159,22 @@
         const resolved = resolveAnchor(anchor);
         const isAdvanced = !!anchor?._advanced;
 
-        if (resolved && !isAdvanced && typeof resolved.getPosition === 'function') {
-            try {
-                iw.open({ map, anchor: resolved });
-                return true;
-            } catch (_) {
-                /* fall through */
-            }
-        }
-
-        if (resolved && isAdvanced && resolved.map) {
-            try {
-                iw.open({ map, anchor: resolved });
-                return true;
-            } catch (_) {
-                /* fall through */
+        if (resolved) {
+            if (isAdvanced) {
+                if (!resolved.map && map) {
+                    try { resolved.map = map; } catch (_) { /* ignore */ }
+                }
+                if (resolved.map) {
+                    try {
+                        iw.open({ map, anchor: resolved });
+                        return true;
+                    } catch (_) { /* fall through */ }
+                }
+            } else if (typeof resolved.getPosition === 'function') {
+                try {
+                    iw.open({ map, anchor: resolved });
+                    return true;
+                } catch (_) { /* fall through */ }
             }
         }
 
@@ -179,17 +183,133 @@
         }
 
         iw.setPosition({ lat, lng });
-        iw.open(map);
-        return true;
+        try {
+            iw.open({ map });
+            return true;
+        } catch (_) {
+            try {
+                iw.open(map);
+                return true;
+            } catch (_2) {
+                return false;
+            }
+        }
+    }
+
+    function createMapOverlayHost(map, googleMaps) {
+        const g = googleMaps || global.google;
+        if (!g?.maps?.OverlayView || !map) {
+            return null;
+        }
+
+        const host = {
+            map,
+            position: null,
+            visible: false,
+            _overlay: null,
+            _el: null,
+            _listeners: [],
+        };
+
+        class PopupOverlay extends g.maps.OverlayView {
+            onAdd() {
+                const div = document.createElement('div');
+                div.className = 'vehicle-map-popup-overlay';
+                div.setAttribute('role', 'dialog');
+                div.addEventListener('click', (e) => e.stopPropagation());
+                host._el = div;
+                const pane = this.getPanes()?.floatPane || this.getPanes()?.overlayMouseTarget;
+                pane?.appendChild(div);
+            }
+
+            draw() {
+                if (!host._el || !host.position || !host.visible) {
+                    if (host._el) host._el.style.display = 'none';
+                    return;
+                }
+                const projection = this.getProjection();
+                if (!projection) return;
+                const latLng = new g.maps.LatLng(host.position.lat, host.position.lng);
+                const pt = projection.fromLatLngToDivPixel(latLng);
+                if (!pt) return;
+                host._el.style.display = 'block';
+                host._el.style.left = `${pt.x}px`;
+                host._el.style.top = `${pt.y}px`;
+                host._el.style.transform = 'translate(-50%, calc(-100% - 12px))';
+            }
+
+            onRemove() {
+                host._detachMapListeners();
+                host._el?.remove();
+                host._el = null;
+            }
+        }
+
+        host._overlay = new PopupOverlay();
+        host._overlay.setMap(map);
+
+        host._detachMapListeners = () => {
+            host._listeners.forEach((l) => g.maps.event.removeListener(l));
+            host._listeners = [];
+        };
+
+        host._attachMapListeners = () => {
+            host._detachMapListeners();
+            const redraw = () => host._overlay?.draw();
+            ['bounds_changed', 'zoom_changed', 'center_changed', 'idle'].forEach((ev) => {
+                host._listeners.push(g.maps.event.addListener(map, ev, redraw));
+            });
+        };
+        host._attachMapListeners();
+
+        host.setContent = (html) => {
+            if (host._el) host._el.innerHTML = html;
+        };
+
+        host.setPosition = (pos) => {
+            if (!pos) {
+                host.position = null;
+            } else {
+                host.position = {
+                    lat: parseFloat(pos.lat),
+                    lng: parseFloat(pos.lng),
+                };
+            }
+            host._overlay?.draw();
+        };
+
+        host.show = () => {
+            host.visible = true;
+            host._overlay?.draw();
+        };
+
+        host.hide = () => {
+            host.visible = false;
+            if (host._el) host._el.style.display = 'none';
+        };
+
+        host.isOpen = () => host.visible && !!host._el;
+
+        host.destroy = () => {
+            host.hide();
+            host._detachMapListeners();
+            host._overlay?.setMap(null);
+            host._overlay = null;
+        };
+
+        return host;
     }
 
     class VehicleMapPopup {
         constructor(options = {}) {
             this.opts = options;
             this.infoWindow = null;
+            this.overlayHost = null;
             this.openId = null;
             this.currentPoint = null;
             this._tickTimer = null;
+            this._useOverlay = options.mapOverlay !== false
+                && (options.mapOverlay === true || !!global.GoogleMapsPlatform?.canUseAdvancedMarkers?.());
         }
 
         ensureWindow() {
@@ -205,6 +325,15 @@
             return this.infoWindow;
         }
 
+        ensureOverlay(map) {
+            if (!this._useOverlay || !map) return null;
+            if (!this.overlayHost || this.overlayHost.map !== map) {
+                this.overlayHost?.destroy();
+                this.overlayHost = createMapOverlayHost(map, this.opts.googleMaps || global.google);
+            }
+            return this.overlayHost;
+        }
+
         open(point, anchor) {
             const map = typeof this.opts.getMap === 'function' ? this.opts.getMap() : this.opts.map;
             if (!map || !point) return;
@@ -213,24 +342,59 @@
 
             this.currentPoint = point;
             this.openId = point.id ?? null;
-            const iw = this.ensureWindow();
-            iw.setContent(buildHtml(point, this.opts));
+            const html = buildHtml(point, this.opts);
 
-            if (!openInfoWindow(iw, map, point, anchor)) {
+            const lat = parseFloat(point.lat);
+            const lng = parseFloat(point.lng);
+            if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+
+            const overlay = this.ensureOverlay(map);
+            if (overlay) {
+                this.infoWindow?.close();
+                overlay.setContent(html);
+                overlay.setPosition({ lat, lng });
+                overlay.show();
+                this._wireDom();
+                this.opts.onOpen?.(point);
+                this._startDurationTick();
                 return;
             }
 
-            this.opts.onOpen?.(point);
-            this._startDurationTick();
+            const iw = this.ensureWindow();
+            iw.setContent(html);
+            const tryOpen = () => {
+                if (!openInfoWindow(iw, map, point, anchor)) return false;
+                this.opts.onOpen?.(point);
+                this._startDurationTick();
+                return true;
+            };
+            if (!tryOpen()) {
+                global.requestAnimationFrame(() => tryOpen());
+            }
         }
 
         update(point) {
             if (this.openId != null && point.id != null && Number(this.openId) !== Number(point.id)) {
                 return;
             }
-            if (!this.infoWindow?.getMap()) return;
+            if (!this.isOpen()) return;
+
             this.currentPoint = point;
-            this.infoWindow.setContent(buildHtml(point, this.opts));
+            const html = buildHtml(point, this.opts);
+
+            if (this.overlayHost?.isOpen()) {
+                const lat = parseFloat(point.lat);
+                const lng = parseFloat(point.lng);
+                this.overlayHost.setContent(html);
+                if (Number.isFinite(lat) && Number.isFinite(lng)) {
+                    this.overlayHost.setPosition({ lat, lng });
+                }
+                this._wireDom();
+                return;
+            }
+
+            if (!this.infoWindow?.getMap()) return;
+            this.infoWindow.setContent(html);
             this._wireDom();
         }
 
@@ -238,8 +402,13 @@
             this._stopDurationTick();
             this.openId = null;
             this.currentPoint = null;
+            this.overlayHost?.hide();
             this.infoWindow?.close();
             this.opts.onClose?.();
+        }
+
+        isOpen() {
+            return this.isOpenFor(this.openId);
         }
 
         _startDurationTick() {
@@ -249,11 +418,16 @@
                 return;
             }
             this._tickTimer = global.setInterval(() => {
-                if (!this.infoWindow?.getMap() || !this.currentPoint) {
+                if (!this.isOpen() || !this.currentPoint) {
                     this._stopDurationTick();
                     return;
                 }
-                this.infoWindow.setContent(buildHtml(this.currentPoint, this.opts));
+                const html = buildHtml(this.currentPoint, this.opts);
+                if (this.overlayHost?.isOpen()) {
+                    this.overlayHost.setContent(html);
+                } else if (this.infoWindow?.getMap()) {
+                    this.infoWindow.setContent(html);
+                }
                 this._wireDom();
             }, 1000);
         }
@@ -266,17 +440,30 @@
         }
 
         isOpenFor(id) {
-            return this.openId != null
-                && Number(this.openId) === Number(id)
-                && !!this.infoWindow?.getMap();
+            if (this.openId == null || Number(this.openId) !== Number(id)) {
+                return false;
+            }
+            if (this.overlayHost?.isOpen()) return true;
+            return !!this.infoWindow?.getMap();
         }
 
         _wireDom() {
-            document.getElementById('vehicleMapPopupClose')?.addEventListener('click', (e) => {
+            const root = this.overlayHost?.isOpen()
+                ? this.overlayHost._el
+                : null;
+            const closeBtn = root
+                ? root.querySelector('#vehicleMapPopupClose')
+                : document.getElementById('vehicleMapPopupClose');
+            closeBtn?.addEventListener('click', (e) => {
                 e.preventDefault();
+                e.stopPropagation();
                 this.close();
             });
-            document.getElementById('vehicleMapPopupCmdSend')?.addEventListener('click', () => {
+            const sendBtn = root
+                ? root.querySelector('#vehicleMapPopupCmdSend')
+                : document.getElementById('vehicleMapPopupCmdSend');
+            sendBtn?.addEventListener('click', (e) => {
+                e.stopPropagation();
                 this._sendCommand();
             });
         }
@@ -285,8 +472,11 @@
             const url = this.opts.commandsSendUrl;
             const point = this.currentPoint;
             const deviceId = point?.id;
-            const type = document.getElementById('vehicleMapPopupCmdType')?.value;
-            const btn = document.getElementById('vehicleMapPopupCmdSend');
+            const root = this.overlayHost?.isOpen() ? this.overlayHost._el : document;
+            const type = root.querySelector?.('#vehicleMapPopupCmdType')?.value
+                || document.getElementById('vehicleMapPopupCmdType')?.value;
+            const btn = root.querySelector?.('#vehicleMapPopupCmdSend')
+                || document.getElementById('vehicleMapPopupCmdSend');
             if (!url || !deviceId || !type) return;
 
             if (typeof this.opts.onSendCommand === 'function') {
