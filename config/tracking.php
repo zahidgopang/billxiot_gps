@@ -77,5 +77,6 @@ return [
      * Persist notification rows to vehicle_events / tc_events.
      * When false, status/geofence/alert pushes are sent via FCM only (no DB insert).
      */
-    'persist_notification_events' => filter_var(env('TRACKING_PERSIST_NOTIFICATION_EVENTS', false), FILTER_VALIDATE_BOOL),
+    /** When true, snap live fixes to the nearest road via Google Roads API (same key as Maps). */
+    'roads_snap_enabled' => filter_var(env('TRACKING_ROADS_SNAP_ENABLED', false), FILTER_VALIDATE_BOOL),
 ];

@@ -11,9 +11,9 @@
     'use strict';
 
     const DEFAULT_CENTER = { lat: 25.276987, lng: 55.296249 };
-    const TRAIL_MAX = 22;
-    // Minimum movement (deg, ~2.5 m) before a new trail vertex is committed.
-    const TRAIL_MIN_STEP_DEG = 0.000022;
+    const TRAIL_MAX = 120;
+    // Minimum travelled distance (m) before a new GPS vertex is committed to the trail.
+    const TRAIL_MIN_STEP_M = 2.0;
     const MEDIUM_SPEED = 60;
     const OVER_SPEED = 80;
     const STOP_MIN_SEC = 120;
@@ -323,14 +323,16 @@
         return haversineKm(a.lat, a.lng, b.lat, b.lng) * 1000;
     }
 
-    /** Move a lat/lng point along heading (0° = north) by distance in meters. */
-    function offsetByHeading(lat, lng, headingDeg, meters) {
-        const hRad = (Number(headingDeg) * Math.PI) / 180;
-        const cosLat = Math.cos((lat * Math.PI) / 180) || 1e-6;
-        return {
-            lat: lat + (meters * Math.cos(hRad)) / 111320,
-            lng: lng + (meters * Math.sin(hRad)) / (111320 * cosLat),
-        };
+    function normalizeGps(lat, lng) {
+        const a = parseFloat(lat);
+        const b = parseFloat(lng);
+        if (!hasGeo(a, b)) return null;
+        return { lat: a, lng: b };
+    }
+
+    /** Ease-in-out for marker glide between GPS fixes. */
+    function easeInOutQuad(t) {
+        return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
     }
 
     // Split a Date into local { date: 'YYYY-MM-DD', time: 'HH:MM' } for the history inputs.
@@ -450,6 +452,8 @@
             this._assignedRoutePolyline = null;
             /** @type {Map<number, google.maps.Polyline>} */
             this._vehicleRoutePolylines = new Map();
+            this._snapCache = new Map();
+            this._snapInflight = new Map();
             this.routeTripKit = null;
             this._routeTripDeviceId = null;
             this._routeBoundsFitted = false;
@@ -1713,7 +1717,7 @@
             const v = this.vehicles.get(id);
             const st = this.vehicleState(id);
             if (!this.map || !v || st.marker) return;
-            const pos = v.lat != null && v.lng != null ? { lat: v.lat, lng: v.lng } : null;
+            const pos = normalizeGps(v.lat, v.lng);
             st.marker = createMapMarker({
                 map: pos && !this.historyActive ? this.map : null,
                 position: pos || DEFAULT_CENTER,
@@ -1755,37 +1759,108 @@
             st.trailPolylines = [];
         }
 
+        /** Snap cache key — 5 decimal places (~1.1 m). */
+        _snapKey(lat, lng) {
+            return `${Number(lat).toFixed(5)},${Number(lng).toFixed(5)}`;
+        }
+
+        /** Return cached road snap if Roads API already resolved this fix. */
+        snapFromCache(lat, lng) {
+            return this._snapCache.get(this._snapKey(lat, lng)) || null;
+        }
+
         /**
-         * Live tail behind the marker — the path always terminates at the exact
-         * marker anchor so the polyline never lags dead-reckoning or animation.
+         * Optional Google Roads snap (non-blocking). Marker + trail always share the
+         * same coordinate once snap is applied.
          */
-        appendTrail(st, lat, lng, color, deviceId) {
-            if (!this.map || lat == null || lng == null) return;
-            const head = { lat: Number(lat), lng: Number(lng) };
+        queueRoadSnap(id, st, lat, lng, color, heading) {
+            if (!this.cfg.roadsSnapEnabled || !this.cfg.googleMapsKey) return;
+            const key = this._snapKey(lat, lng);
+            if (this._snapCache.has(key) || this._snapInflight.has(key)) return;
+            this._snapInflight.set(key, true);
+            const url = `https://roads.googleapis.com/v1/snapToRoads?path=${encodeURIComponent(`${lat},${lng}`)}&interpolate=false&key=${encodeURIComponent(this.cfg.googleMapsKey)}`;
+            fetch(url, { credentials: 'omit', cache: 'no-store' })
+                .then((r) => (r.ok ? r.json() : null))
+                .then((data) => {
+                    const loc = data?.snappedPoints?.[0]?.location;
+                    if (!loc || loc.latitude == null || loc.longitude == null) return;
+                    const snapped = normalizeGps(loc.latitude, loc.longitude);
+                    if (!snapped) return;
+                    this._snapCache.set(key, snapped);
+                    const vehicle = this.vehicles.get(id);
+                    const last = st.lastPoint;
+                    if (!vehicle || !last) return;
+                    if (Math.abs(last.lat - lat) > 1e-5 || Math.abs(last.lng - lng) > 1e-5) return;
+                    vehicle.lat = snapped.lat;
+                    vehicle.lng = snapped.lng;
+                    st.lastPoint = { ...last, lat: snapped.lat, lng: snapped.lng };
+                    if (st.trail.length > 0) {
+                        st.trail[st.trail.length - 1] = { lat: snapped.lat, lng: snapped.lng };
+                    }
+                    this.placeVehicleMarker(st, id, snapped.lat, snapped.lng, color, heading, true);
+                    this.renderLiveClusters();
+                })
+                .catch(() => {})
+                .finally(() => this._snapInflight.delete(key));
+        }
+
+        /**
+         * Commit a real GPS fix to the travelled-path buffer (not animation frames).
+         */
+        commitGpsTrailPoint(st, lat, lng) {
+            const head = normalizeGps(lat, lng);
+            if (!head) return;
             const committed = st.trail;
             const last = committed[committed.length - 1];
-
             if (!last) {
                 committed.push({ ...head });
-            } else if (
-                Math.abs(head.lat - last.lat) > TRAIL_MIN_STEP_DEG
-                || Math.abs(head.lng - last.lng) > TRAIL_MIN_STEP_DEG
-            ) {
+                return;
+            }
+            const stepM = distMeters(last, head);
+            if (stepM >= TRAIL_MIN_STEP_M) {
                 committed.push({ ...head });
                 while (committed.length > TRAIL_MAX) committed.shift();
-            } else {
+            } else if (stepM > 0.05) {
                 committed[committed.length - 1] = { ...head };
             }
+        }
 
-            const path = committed.slice();
-            const tail = path[path.length - 1];
-            if (!tail || tail.lat !== head.lat || tail.lng !== head.lng) {
-                path.push({ ...head });
+        /**
+         * Polyline path = committed GPS vertices + current render head (marker).
+         * While animating, the in-flight target is excluded so the tail follows
+         * the marker without a straight jump to the not-yet-reached fix.
+         */
+        buildTrailPath(st, renderLat, renderLng) {
+            const head = normalizeGps(renderLat, renderLng);
+            if (!head) return [];
+            const committed = st.trail.map((p) => ({ lat: p.lat, lng: p.lng }));
+            if (committed.length === 0) return [{ ...head }];
+
+            if (st.motion) {
+                const base = committed.length >= 2 ? committed.slice(0, -1) : committed.slice(0, 1);
+                const path = [...base, { ...head }];
+                if (path.length < 2 && committed.length >= 2) {
+                    return [committed[0], { ...head }];
+                }
+                return path.length >= 2 ? path : [{ ...head }];
             }
 
+            const path = [...committed];
+            path[path.length - 1] = { ...head };
+            return path;
+        }
+
+        syncTrailPolyline(st, lat, lng, color, deviceId) {
+            if (!this.map) return;
+            const key = st.lastPoint?.status_key || this.vehicles.get(deviceId)?.status_key || '';
+            if (!MOVING_KEYS.has(key)) {
+                this.clearTrail(st);
+                return;
+            }
+            const path = this.buildTrailPath(st, lat, lng);
             if (path.length < 2) {
-                const heading = (st.renderHeading ?? parseFloat(st.lastPoint?.heading)) || 0;
-                path.unshift(offsetByHeading(head.lat, head.lng, heading + 180, 2));
+                st.trailPolylines.forEach((l) => l.setMap(null));
+                return;
             }
 
             let line = st.trailPolylines[0];
@@ -1794,7 +1869,7 @@
                     map: this.map,
                     path,
                     strokeColor: color,
-                    strokeOpacity: 0.6,
+                    strokeOpacity: 0.75,
                     strokeWeight: 5,
                     zIndex: 80,
                     clickable: false,
@@ -1805,14 +1880,15 @@
                 line.setPath(path);
                 line.setOptions({ strokeColor: color });
             }
-
             const showTrail = this.markerShouldShowOnMap(deviceId, true);
             line.setMap(showTrail ? this.map : null);
         }
 
-        /** Marker + render cache — always sync trail to the same coordinates. */
-        placeVehicleMarker(st, id, lat, lng, color, heading) {
-            const pos = { lat: Number(lat), lng: Number(lng) };
+        /** Marker + render cache — trail tail locked to the same lat/lng. */
+        placeVehicleMarker(st, id, lat, lng, color, heading, skipSnap = false) {
+            const cached = this.snapFromCache(lat, lng);
+            const pos = cached || normalizeGps(lat, lng);
+            if (!pos) return;
             st.renderPos = pos;
             if (heading != null && Number.isFinite(Number(heading))) {
                 st.renderHeading = Number(heading);
@@ -1822,19 +1898,24 @@
             st.marker?.setPosition(pos);
             const vehicle = this.vehicles.get(id);
             if (vehicle) {
-                this.setVehicleMarkerIcon(st, { ...vehicle, color: color || colorForPoint(vehicle, this.stateColors) }, st.renderHeading);
+                this.setVehicleMarkerIcon(st, { ...vehicle, lat: pos.lat, lng: pos.lng, color: color || colorForPoint(vehicle, this.stateColors) }, st.renderHeading);
             }
             const key = st.lastPoint?.status_key || vehicle?.status_key || '';
             if (MOVING_KEYS.has(key)) {
-                this.appendTrail(st, pos.lat, pos.lng, color || colorForPoint(vehicle || {}, this.stateColors), id);
+                this.syncTrailPolyline(st, pos.lat, pos.lng, color || colorForPoint(vehicle || {}, this.stateColors), id);
+            }
+            if (!skipSnap && !cached) {
+                this.queueRoadSnap(id, st, pos.lat, pos.lng, color, st.renderHeading);
             }
         }
 
         applyPoint(id, point) {
-            if (!this.visible.has(id) || !point || point.lat == null || point.lng == null) return;
+            if (!this.visible.has(id) || !point) return;
+            const gps = normalizeGps(point.lat, point.lng);
+            if (!gps) return;
             const st = this.vehicleState(id);
             this.ensureMarker(id);
-            const merged = { ...this.vehicles.get(id), ...point, id };
+            const merged = { ...this.vehicles.get(id), ...point, ...gps, id };
             if (point.route_trip == null && this.vehicles.get(id)?.route_trip) {
                 merged.route_trip = this.vehicles.get(id).route_trip;
             }
@@ -1890,7 +1971,7 @@
             const spd = Math.max(0, parseFloat(merged.speed) || 0);
             const isDup = prev && samePosition(prev, merged);
 
-            // Duplicate fix while moving: stay on the reported GPS — no dead-reckoning drift.
+            // Duplicate fix while moving: hold on the reported GPS — no drift.
             if (isDup && moving && spd > 1) {
                 st.dupSince = null;
                 st.motion = null;
@@ -1899,6 +1980,7 @@
                 if (!Number.isFinite(h) || spd < 3) {
                     h = st.renderHeading != null ? st.renderHeading : 0;
                 }
+                this.commitGpsTrailPoint(st, merged.lat, merged.lng);
                 this.placeVehicleMarker(st, id, merged.lat, merged.lng, liveColor, h);
                 this.renderLiveClusters();
                 return;
@@ -1915,6 +1997,7 @@
                 st.lastPoint = merged;
                 st.marker.setTitle(this.labelFor(merged));
                 this.applyMarkerLabel(st, merged);
+                if (moving) this.commitGpsTrailPoint(st, merged.lat, merged.lng);
                 this.placeVehicleMarker(st, id, merged.lat, merged.lng, liveColor, h);
                 this.renderLiveClusters();
                 return;
@@ -1929,9 +2012,11 @@
          */
         startMotion(id, to) {
             const st = this.vehicleState(id);
-            const toLL = { lat: to.lat, lng: to.lng };
+            const toLL = normalizeGps(to.lat, to.lng);
+            if (!toLL) return;
             const from = st.renderPos
-                || (st.lastPoint ? { lat: st.lastPoint.lat, lng: st.lastPoint.lng } : toLL);
+                || (st.lastPoint ? normalizeGps(st.lastPoint.lat, st.lastPoint.lng) : toLL)
+                || toLL;
             const fromH = st.renderHeading != null ? st.renderHeading : parseFloat(to.heading || 0);
             const moving = MOVING_KEYS.has(to.status_key || 'offline');
             const speedKmh = Math.max(0, parseFloat(to.speed) || 0);
@@ -1946,6 +2031,7 @@
             else if (segMeters < 4) catchupMs = Math.min(catchupMs, 450);
 
             st.dupSince = null;
+            if (moving) this.commitGpsTrailPoint(st, toLL.lat, toLL.lng);
             st.motion = {
                 from,
                 to: toLL,
@@ -1984,12 +2070,12 @@
                 let done = false;
 
                 if (elapsed <= m.catchupMs) {
-                    const t = m.catchupMs > 0 ? Math.min(1, elapsed / m.catchupMs) : 1;
+                    const rawT = m.catchupMs > 0 ? Math.min(1, elapsed / m.catchupMs) : 1;
+                    const t = easeInOutQuad(rawT);
                     lat = m.from.lat + (m.to.lat - m.from.lat) * t;
                     lng = m.from.lng + (m.to.lng - m.from.lng) * t;
-                    const hT = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
-                    heading = lerpHeading(m.fromH, m.toH, hT);
-                    if (t >= 1) done = true;
+                    heading = lerpHeading(m.fromH, m.toH, t);
+                    if (rawT >= 1) done = true;
                 } else {
                     lat = m.to.lat;
                     lng = m.to.lng;
@@ -1999,7 +2085,14 @@
 
                 this.placeVehicleMarker(st, id, lat, lng, m.color, heading);
 
-                if (done) { st.motion = null; } else { active = true; }
+                if (done) {
+                    st.motion = null;
+                    if (MOVING_KEYS.has(st.lastPoint?.status_key || '')) {
+                        this.syncTrailPolyline(st, m.to.lat, m.to.lng, m.color, id);
+                    }
+                } else {
+                    active = true;
+                }
             });
 
             this.motionRaf = active ? requestAnimationFrame(this._tick) : null;
@@ -2222,13 +2315,15 @@
                     const loc = payload?.location && payload.location.lat != null
                         ? payload.location
                         : payload;
-                    if (!loc || loc.lat == null || loc.lng == null) return;
-                    if (loc.id == null) loc.id = id;
-                    if (loc.color == null) {
-                        loc.color = colorForPoint(loc, this.stateColors);
+                    const gps = loc ? normalizeGps(loc.lat, loc.lng) : null;
+                    if (!gps) return;
+                    const merged = { ...loc, ...gps };
+                    if (merged.id == null) merged.id = id;
+                    if (merged.color == null) {
+                        merged.color = colorForPoint(merged, this.stateColors);
                     }
                     this._lastReverbActivityAt = Date.now();
-                    this.applyPoint(id, loc);
+                    this.applyPoint(id, merged);
                     this.stopLivePolling();
                 });
                 this.echoChannels.set(id, channel);

@@ -2170,6 +2170,7 @@
             csrfToken: @json(csrf_token()),
             pollIntervalMs: @json((int) config('tracking.live_poll_interval_ms', 10000)),
             pollIntervalConnectedMs: @json((int) config('tracking.live_poll_interval_connected_ms', 30000)),
+            roadsSnapEnabled: @json((bool) config('tracking.roads_snap_enabled', false)),
             reverbStaleMs: @json(max(45000, (int) config('traccar.broadcast_interval_seconds', 30) * 1500)),
             animDurationMs: 1200,
             stateColors: @json($stateColors),
