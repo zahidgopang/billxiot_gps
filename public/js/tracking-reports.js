@@ -4,6 +4,9 @@
     if (!cfg) return;
 
     const PAGE_SIZES = [50, 100, 250, 500];
+    const PARALLEL_DEVICE_LIMIT = 3;
+    const BATCH_DEVICE_SIZE = 5;
+    const EXPORT_BATCH_SIZE = 8;
     const i18n = cfg.i18n || {};
     const colSets = i18n.columns || {};
 
@@ -14,6 +17,8 @@
         pageSize: 50,
         loading: false,
         lastPayload: null,
+        runId: 0,
+        abortController: null,
     };
 
     const $ = (id) => document.getElementById(id);
@@ -95,6 +100,125 @@
         return colSets[type] || colSets.summary || [];
     }
 
+    function queryParamsForIds(ids, runId) {
+        const p = queryParams();
+        if (!ids.length) {
+            p.set('ids', '');
+        } else {
+            p.set('ids', ids.join(','));
+        }
+        if (runId != null) {
+            p.set('_nonce', String(runId));
+        }
+        p.set('_ts', String(Date.now()));
+        return p;
+    }
+
+    function mergeReportPayloads(partials, orderedIds) {
+        if (!partials.length) return null;
+        const first = partials[0];
+        const byId = new Map();
+        partials.forEach((p) => {
+            (p.devices || []).forEach((d) => {
+                if (d.device_id != null) {
+                    byId.set(String(d.device_id), d);
+                }
+            });
+        });
+        const order = orderedIds && orderedIds.length
+            ? orderedIds.map(String)
+            : [...byId.keys()];
+        const devices = order.map((id) => byId.get(String(id))).filter(Boolean);
+        const totals = { ...(first.totals || {}) };
+
+        if (first.type === 'summary' || first.type === 'route') {
+            totals.device_count = devices.length;
+            totals.total_distance_km = round2(devices.reduce((s, d) => s + (Number(d.total_distance_km) || 0), 0));
+            totals.moving_time_seconds = devices.reduce((s, d) => s + (Number(d.moving_time_seconds) || 0), 0);
+            totals.stopped_time_seconds = devices.reduce((s, d) => s + (Number(d.stopped_time_seconds) || 0), 0);
+            totals.idle_time_seconds = devices.reduce((s, d) => s + (Number(d.idle_time_seconds) || 0), 0);
+            totals.parking_time_seconds = devices.reduce((s, d) => s + (Number(d.parking_time_seconds) || 0), 0);
+            totals.offline_time_seconds = devices.reduce((s, d) => s + (Number(d.offline_time_seconds) || 0), 0);
+            totals.trip_count = devices.reduce((s, d) => s + (Number(d.trip_count) || 0), 0);
+            totals.stop_count = devices.reduce((s, d) => s + (Number(d.stop_count) || 0), 0);
+            totals.overspeed_events = devices.reduce((s, d) => s + (Number(d.overspeed_events) || 0), 0);
+            totals.point_count = devices.reduce((s, d) => s + (Number(d.point_count) || 0), 0);
+            totals.max_speed_kmh = Math.max(0, ...devices.map((d) => Number(d.max_speed_kmh) || 0));
+        } else if (first.type === 'trips') {
+            totals.device_count = devices.length;
+            totals.trip_count = devices.reduce((s, d) => s + (Number(d.trip_count) || 0), 0);
+        } else if (first.type === 'stops') {
+            totals.device_count = devices.length;
+            totals.stop_count = devices.reduce((s, d) => s + (Number(d.stop_count) || 0), 0);
+        } else if (first.type === 'events') {
+            totals.device_count = devices.length;
+            totals.event_count = devices.reduce((s, d) => s + (Number(d.event_count) || 0), 0);
+        } else if (first.type === 'positions') {
+            totals.device_count = devices.length;
+            totals.position_count = devices.reduce((s, d) => s + (Number(d.position_count) || 0), 0);
+        }
+
+        const meta = {
+            devices_requested: partials.reduce((s, p) => s + (Number(p.meta?.devices_requested) || 0), 0),
+            devices_in_report: devices.length,
+            devices_capped: partials.some((p) => p.meta?.devices_capped),
+            positions_truncated: partials.some((p) => p.meta?.positions_truncated),
+            analytics_downsampled: partials.some((p) => p.meta?.analytics_downsampled),
+        };
+
+        return {
+            success: true,
+            type: first.type,
+            from: first.from,
+            to: first.to,
+            devices,
+            totals,
+            meta,
+        };
+    }
+
+    function round2(n) {
+        return Math.round(n * 100) / 100;
+    }
+
+    async function fetchReportPayload(ids, signal, runId) {
+        const body = queryParamsForIds(ids, runId);
+        const res = await fetch(cfg.generateUrl, {
+            method: 'POST',
+            credentials: 'same-origin',
+            cache: 'no-store',
+            signal,
+            headers: {
+                Accept: 'application/json',
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-CSRF-TOKEN': csrfToken(),
+                'X-Requested-With': 'XMLHttpRequest',
+                'Cache-Control': 'no-cache',
+                Pragma: 'no-cache',
+            },
+            body: body.toString(),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data.success === false) {
+            throw new Error(data.message || `HTTP ${res.status}`);
+        }
+        if (runId != null && data._nonce != null && String(data._nonce) !== String(runId)) {
+            return null;
+        }
+        return data;
+    }
+
+    async function runPool(items, limit, worker) {
+        const queue = [...items];
+        const workers = Array.from({ length: Math.min(limit, queue.length) }, async () => {
+            while (queue.length) {
+                const item = queue.shift();
+                await worker(item);
+            }
+        });
+        await Promise.all(workers);
+    }
+
     function reportNotice(flat) {
         const meta = flat.meta || {};
         const parts = [];
@@ -104,7 +228,22 @@
         if (meta.positions_truncated) {
             parts.push(i18n.positionsTruncated || 'Large GPS datasets were trimmed per vehicle. Use CSV export for full data.');
         }
+        if (meta.analytics_downsampled) {
+            parts.push(i18n.analyticsDownsampled || 'Time and stop totals were estimated from a large GPS sample. Distance uses all points.');
+        }
         return parts.join(' ');
+    }
+
+    function routeMapDevice(devices, preferredIds) {
+        const order = preferredIds && preferredIds.length ? preferredIds : [];
+        for (const id of order) {
+            const match = devices.find((d) => String(d.device_id) === String(id));
+            if (match?.points?.length) {
+                return match;
+            }
+        }
+
+        return devices.find((d) => d.points?.length) || null;
     }
 
     /** Flatten API payload into columns + rows for the table. */
@@ -336,27 +475,49 @@
         $('gtReportNext').addEventListener('click', () => { state.page++; renderPage(); });
     }
 
-    function setLoading(on) {
+    function setLoading(on, progressText) {
         state.loading = on;
         const overlay = $('gtReportOverlay');
         if (overlay) overlay.hidden = !on;
         const btn = $('gtReportRun');
         if (btn) btn.disabled = on;
-        if (on) showEmpty(null);
+        const progressEl = $('gtReportLoadingText');
+        if (progressEl) progressEl.textContent = progressText || '';
+        if (on) {
+            const empty = $('gtReportEmpty');
+            if (empty) { empty.hidden = true; empty.textContent = ''; }
+        }
     }
 
-    function showEmpty(msg) {
-        const el = $('gtReportEmpty');
-        if (!el) return;
-        if (!msg) { el.hidden = true; el.textContent = ''; return; }
-        el.hidden = false;
-        el.textContent = msg;
+    function resetReportView() {
+        state.columns = columnsFor($('gtReportType').value);
+        state.rows = [];
+        state.page = 1;
+        state.lastPayload = null;
+
+        const empty = $('gtReportEmpty');
+        if (empty) { empty.hidden = true; empty.textContent = ''; }
+
         $('gtReportHead').innerHTML = '';
         $('gtReportBody').innerHTML = '';
         $('gtReportPager').innerHTML = '';
-        $('gtReportCount').textContent = '';
+        const count = $('gtReportCount');
+        if (count) count.textContent = '';
+
         const kpis = $('gtReportKpis');
         if (kpis) { kpis.hidden = true; kpis.innerHTML = ''; }
+
+        const map = $('gtReportMap');
+        if (map) map.hidden = true;
+    }
+
+    function showEmpty(msg) {
+        resetReportView();
+        const el = $('gtReportEmpty');
+        if (!el) return;
+        if (!msg) return;
+        el.hidden = false;
+        el.textContent = msg;
     }
 
     function loadMap(points) {
@@ -382,53 +543,85 @@
         document.head.appendChild(s);
     }
 
+    function chunkIds(ids, size) {
+        const chunks = [];
+        for (let i = 0; i < ids.length; i += size) {
+            chunks.push(ids.slice(i, i + size));
+        }
+        return chunks;
+    }
+
     async function runReport() {
-        if (state.loading) return;
-        if (!selectedIds().length) {
+        const ids = selectedIds();
+        if (!ids.length) {
             showEmpty(i18n.selectVehicle || 'Select at least one vehicle.');
             return;
         }
 
-        $('gtReportMap').hidden = true;
-        setLoading(true);
+        if (state.abortController) {
+            state.abortController.abort();
+        }
+
+        const runId = ++state.runId;
+        const abortController = new AbortController();
+        state.abortController = abortController;
+        const isCurrentRun = () => runId === state.runId;
+        const requestedIds = [...ids];
+        const batches = chunkIds(requestedIds, BATCH_DEVICE_SIZE);
+
+        resetReportView();
+        renderHead();
+        renderPage();
+        setLoading(true, i18n.loadingReport || 'Loading report…');
+
         try {
-            const body = queryParams();
-            const res = await fetch(cfg.generateUrl, {
-                method: 'POST',
-                credentials: 'same-origin',
-                cache: 'no-store',
-                headers: {
-                    Accept: 'application/json',
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                    'X-CSRF-TOKEN': csrfToken(),
-                    'X-Requested-With': 'XMLHttpRequest',
-                },
-                body: body.toString(),
+            const partials = [];
+            let done = 0;
+            const updateProgress = () => {
+                if (!isCurrentRun()) return;
+                const tpl = i18n.loadingProgress || 'Loading :done / :total vehicles…';
+                setLoading(true, tpl.replace(':done', String(Math.min(done, requestedIds.length))).replace(':total', String(requestedIds.length)));
+            };
+
+            const consumePayload = (data, batchSize) => {
+                if (!isCurrentRun() || !data) return;
+                if (data._nonce != null && String(data._nonce) !== String(runId)) return;
+                partials.push(data);
+                done += batchSize || 1;
+                updateProgress();
+                const merged = mergeReportPayloads(partials, requestedIds);
+                state.lastPayload = merged;
+                const flat = flatten(merged);
+                state.columns = flat.columns;
+                state.rows = flat.rows;
+                renderKpis(flat);
+                renderHead();
+                renderPage();
+            };
+
+            updateProgress();
+            await runPool(batches, PARALLEL_DEVICE_LIMIT, async (batch) => {
+                if (!isCurrentRun()) return;
+                consumePayload(await fetchReportPayload(batch, abortController.signal, runId), batch.length);
             });
 
-            const data = await res.json().catch(() => ({}));
-            if (!res.ok || data.success === false) {
-                throw new Error(data.message || `HTTP ${res.status}`);
-            }
+            if (!isCurrentRun()) return;
 
-            state.lastPayload = data;
-            const flat = flatten(data);
-            state.columns = flat.columns;
-            state.rows = flat.rows;
-            state.page = 1;
+            const merged = mergeReportPayloads(partials, requestedIds);
+            state.lastPayload = merged;
+            const flat = flatten(merged);
 
-            if (flat.type === 'route' && flat.devices[0]?.points?.length && cfg.googleMapsKey) {
-                $('gtReportMap').hidden = false;
-                loadMap(flat.devices[0].points);
+            if (flat.type === 'route') {
+                const mapDevice = routeMapDevice(flat.devices || [], requestedIds);
+                if (mapDevice?.points?.length && cfg.googleMapsKey) {
+                    $('gtReportMap').hidden = false;
+                    loadMap(mapDevice.points);
+                }
             }
 
             if (!state.rows.length) {
                 showEmpty(i18n.noData || 'No data for the selected report and period.');
             } else {
-                showEmpty(null);
-                renderKpis(flat);
-                renderHead();
-                renderPage();
                 const notice = reportNotice(flat);
                 if (notice) {
                     const count = $('gtReportCount');
@@ -436,39 +629,139 @@
                 }
             }
         } catch (err) {
+            if (err.name === 'AbortError') return;
+            if (!isCurrentRun()) return;
             console.error('[reports] generate failed', err);
             showEmpty(err.message || i18n.loadFailed || 'Failed to load the report. Please try again.');
         } finally {
-            setLoading(false);
+            if (isCurrentRun()) {
+                state.abortController = null;
+                setLoading(false, '');
+            }
         }
     }
 
-    function exportFmt(fmt) {
-        if (!selectedIds().length) {
+    async function exportFmt(fmt) {
+        const ids = selectedIds();
+        if (!ids.length) {
             showEmpty(i18n.selectVehicle || 'Select at least one vehicle.');
             return;
         }
 
-        const form = document.createElement('form');
-        form.method = 'POST';
-        form.action = cfg.exportUrl;
-        form.style.display = 'none';
+        if (ids.length > 25) {
+            const ok = global.confirm?.(
+                i18n.exportManyConfirm || 'Exporting many vehicles can take a while. Continue?',
+            );
+            if (ok === false) return;
+        }
 
-        const addField = (name, value) => {
-            const input = document.createElement('input');
-            input.type = 'hidden';
-            input.name = name;
-            input.value = value;
-            form.appendChild(input);
-        };
+        const exportButtons = ['gtReportCsv', 'gtReportXlsx', 'gtReportPdf']
+            .map((id) => $(id))
+            .filter(Boolean);
+        exportButtons.forEach((btn) => { btn.disabled = true; });
 
-        addField('_token', csrfToken());
-        queryParams().forEach((value, key) => addField(key, value));
-        addField('format', fmt);
+        try {
+            if (ids.length <= EXPORT_BATCH_SIZE) {
+                await exportFmtBatch(fmt, ids, exportButtons);
+                return;
+            }
 
-        document.body.appendChild(form);
-        form.submit();
-        form.remove();
+            const batches = chunkIds(ids, EXPORT_BATCH_SIZE);
+            for (let i = 0; i < batches.length; i++) {
+                const batch = batches[i];
+                exportButtons.forEach((btn) => {
+                    btn.disabled = true;
+                    btn.dataset.exportLabel = btn.textContent;
+                    btn.textContent = `${i18n.exportBatch || 'Export'} ${i + 1}/${batches.length}…`;
+                });
+                await exportFmtBatch(fmt, batch, exportButtons, i + 1);
+            }
+        } catch (err) {
+            console.error('[reports] export failed', err);
+            alert(err.message || i18n.exportFailed || 'Export failed. Please try again.');
+        } finally {
+            exportButtons.forEach((btn) => {
+                btn.disabled = state.loading;
+                if (btn.dataset.exportLabel) {
+                    btn.textContent = btn.dataset.exportLabel;
+                    delete btn.dataset.exportLabel;
+                }
+            });
+        }
+    }
+
+    async function exportFmtBatch(fmt, ids, exportButtons, batchIndex) {
+        const body = queryParamsForIds(ids, null);
+        body.set('format', fmt);
+        body.set('_ts', String(Date.now()));
+
+        const res = await fetch(cfg.exportUrl, {
+            method: 'POST',
+            credentials: 'same-origin',
+            cache: 'no-store',
+            headers: {
+                Accept: '*/*',
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-CSRF-TOKEN': csrfToken(),
+                'X-Requested-With': 'XMLHttpRequest',
+                'Cache-Control': 'no-cache',
+                Pragma: 'no-cache',
+            },
+            body: body.toString(),
+        });
+
+        const contentType = res.headers.get('Content-Type') || '';
+        if (!res.ok || contentType.includes('json')) {
+            let message = i18n.exportFailed || 'Export failed. Please try again.';
+            try {
+                const data = contentType.includes('json') ? await res.json() : null;
+                if (data?.message) message = data.message;
+            } catch (_) { /* ignore parse errors */ }
+            throw new Error(message);
+        }
+
+        const blob = await res.blob();
+        if (!blob.size) {
+            throw new Error(i18n.exportFailed || 'Export failed. Please try again.');
+        }
+
+        const ext = fmt === 'xlsx' ? 'xls' : fmt;
+        const reportType = $('gtReportType')?.value || 'summary';
+        const suffix = batchIndex != null ? `-part${batchIndex}` : '';
+        const filename = parseExportFilename(res.headers.get('Content-Disposition'))
+            || `report-${reportType}${suffix}-${Date.now()}.${ext}`;
+
+        triggerFileDownload(blob, filename);
+    }
+
+    function parseExportFilename(header) {
+        if (!header) return null;
+        const utf8 = /filename\*=UTF-8''([^;]+)/i.exec(header);
+        if (utf8) {
+            try {
+                return decodeURIComponent(utf8[1].trim());
+            } catch (_) {
+                return utf8[1].trim();
+            }
+        }
+        const plain = /filename="?([^";]+)"?/i.exec(header);
+        return plain ? plain[1].trim() : null;
+    }
+
+    function triggerFileDownload(blob, filename) {
+        const url = URL.createObjectURL(blob);
+        const root = global.top || global;
+        const doc = root.document || document;
+        const link = doc.createElement('a');
+        link.href = url;
+        link.download = filename;
+        link.style.display = 'none';
+        doc.body.appendChild(link);
+        link.click();
+        window.setTimeout(() => {
+            URL.revokeObjectURL(url);
+            link.remove();
+        }, 1500);
     }
 
     function setVehicleChecks(checked) {
@@ -481,23 +774,57 @@
         return String(n).padStart(2, '0');
     }
 
-    function initDateTimes() {
+    function fmtDateTime(d) {
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    }
+
+    function applyDatePreset(preset) {
         const now = new Date();
-        const start = new Date(now);
-        start.setHours(0, 0, 0, 0);
-        const end = new Date(now);
-        end.setHours(23, 59, 0, 0);
-        const fmt = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-        $('gtReportFrom').value = fmt(start);
-        $('gtReportTo').value = fmt(end);
+        let start;
+        let end;
+
+        if (preset === 'yesterday') {
+            start = new Date(now);
+            start.setDate(start.getDate() - 1);
+            start.setHours(0, 0, 0, 0);
+            end = new Date(start);
+            end.setHours(23, 59, 0, 0);
+        } else if (preset === '7d') {
+            end = new Date(now);
+            end.setHours(23, 59, 0, 0);
+            start = new Date(now);
+            start.setDate(start.getDate() - 6);
+            start.setHours(0, 0, 0, 0);
+        } else {
+            start = new Date(now);
+            start.setHours(0, 0, 0, 0);
+            end = new Date(now);
+            end.setHours(23, 59, 0, 0);
+        }
+
+        $('gtReportFrom').value = fmtDateTime(start);
+        $('gtReportTo').value = fmtDateTime(end);
+    }
+
+    function initDateTimes() {
+        applyDatePreset('today');
     }
 
     $('gtReportRun')?.addEventListener('click', runReport);
+    $('gtReportType')?.addEventListener('change', () => {
+        resetReportView();
+        state.columns = columnsFor($('gtReportType').value);
+        renderHead();
+        renderPage();
+    });
     $('gtReportCsv')?.addEventListener('click', () => exportFmt('csv'));
     $('gtReportXlsx')?.addEventListener('click', () => exportFmt('xlsx'));
     $('gtReportPdf')?.addEventListener('click', () => exportFmt('pdf'));
     $('gtReportSelectAll')?.addEventListener('click', () => setVehicleChecks(true));
     $('gtReportSelectNone')?.addEventListener('click', () => setVehicleChecks(false));
+    document.querySelectorAll('[data-report-preset]').forEach((btn) => {
+        btn.addEventListener('click', () => applyDatePreset(btn.getAttribute('data-report-preset')));
+    });
 
     initDateTimes();
 })(window);

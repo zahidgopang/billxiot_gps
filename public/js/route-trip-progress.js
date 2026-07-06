@@ -581,6 +581,36 @@
             })).filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng));
         }
 
+        /** Trim driven path so it ends at the live vehicle — marker leads, polyline follows. */
+        trimPathAtVehicle(path) {
+            if (!path || path.length < 2) return path || [];
+            const vehicle = typeof this.opts.getVehiclePosition === 'function'
+                ? this.opts.getVehiclePosition()
+                : null;
+            if (!vehicle || !Number.isFinite(vehicle.lat) || !Number.isFinite(vehicle.lng)) {
+                return path;
+            }
+
+            let bestIdx = path.length - 1;
+            let bestDist = Infinity;
+            path.forEach((p, idx) => {
+                const dLat = p.lat - vehicle.lat;
+                const dLng = p.lng - vehicle.lng;
+                const dist = (dLat * dLat) + (dLng * dLng);
+                if (dist < bestDist) {
+                    bestDist = dist;
+                    bestIdx = idx;
+                }
+            });
+
+            const trimmed = path.slice(0, bestIdx + 1);
+            const tail = trimmed[trimmed.length - 1];
+            if (!tail || tail.lat !== vehicle.lat || tail.lng !== vehicle.lng) {
+                trimmed.push({ lat: vehicle.lat, lng: vehicle.lng });
+            }
+            return trimmed.length >= 2 ? trimmed : path;
+        }
+
         canShowPolyline() {
             const flag = this.opts.showPolyline;
             if (typeof flag === 'function') {
@@ -677,7 +707,7 @@
                 return;
             }
 
-            const actual = this.normalizePath(route.actual_polyline || []);
+            const actual = this.trimPathAtVehicle(this.normalizePath(route.actual_polyline || []));
             const navigation = this.normalizePath(route.navigation_polyline || route.dynamic_polyline || []);
             const join = this.normalizePath(route.join_polyline || []);
 

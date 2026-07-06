@@ -72,7 +72,9 @@ class UserDashboardService
         $onlineNow = $this->countOnlineDevices($devices);
         $alertDeviceIds = $this->alertDeviceIds($devices);
         $vehicleStates = $this->getVehicleStateCounts($devices, $alertDeviceIds);
-        $recentDevices = $devices->sortByDesc(fn (Device $d) => $d->latestLocation?->recorded_at)->take(5)->values();
+        $fleetCounts = $this->mapStatus->fleetCounts($devices);
+        $fleetDevices = $devices->sortByDesc(fn (Device $d) => $d->latestLocation?->recorded_at)->values();
+        $pageStats = $this->getDevicePageStats($devices);
         try {
             $activities = $this->getRecentActivities($deviceIds);
         } catch (\Throwable $e) {
@@ -80,22 +82,236 @@ class UserDashboardService
             $activities = collect();
         }
 
-        return [
+        try {
+            $distanceTodayKm = round($this->metrics->calculateTotalDistanceKm($deviceIds, 1), 1);
+        } catch (\Throwable $e) {
+            report($e);
+            $distanceTodayKm = 0;
+        }
+
+        return array_merge($pageStats, [
             'devices' => $devices,
-            'totalDevices' => $totalDevices,
-            'activeDevices' => $activeDevices,
             'totalDistanceKm' => round($totalDistanceKm),
+            'distanceTodayKm' => $distanceTodayKm,
             'activeAlerts' => $activeAlerts,
-            'onlineNow' => $onlineNow,
             'vehicleStates' => $vehicleStates,
-            'recentDevices' => $recentDevices,
+            'fleetCounts' => $fleetCounts,
+            'recentDevices' => $fleetDevices,
             'activities' => $activities,
             'alertDeviceIds' => $alertDeviceIds,
             'activePercent' => $totalDevices > 0 ? round(($activeDevices / $totalDevices) * 100) : 0,
             'onlinePercent' => $totalDevices > 0 ? round(($onlineNow / $totalDevices) * 100) : 0,
             'alertsPercent' => min(100, $activeAlerts * 20),
             'distancePercent' => min(100, (int) round($totalDistanceKm / 50)),
+            'chartData' => $this->buildChartPayload($devices, $deviceIds, $fleetCounts),
+            'mapMarkers' => $this->buildMapMarkers($devices),
+        ]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function buildChartPayload(Collection $devices, Collection $deviceIds, array $fleetCounts): array
+    {
+        $from = now()->subDays(7);
+
+        $alertCounts = [
+            'Overspeed' => $deviceIds->isEmpty() ? 0 : $this->events->countForDevices($deviceIds, $from, [VehicleEvent::TYPE_OVERSPEED]),
+            'Geofence' => $deviceIds->isEmpty() ? 0 : $this->events->countForDevices($deviceIds, $from, [VehicleEvent::TYPE_GEOFENCE_EXIT, VehicleEvent::TYPE_GEOFENCE_ENTER]),
+            'Ignition' => $deviceIds->isEmpty() ? 0 : $this->events->countForDevices($deviceIds, $from, [VehicleEvent::TYPE_IGNITION]),
+            'Power cut' => $deviceIds->isEmpty() ? 0 : $this->events->countForDevices($deviceIds, $from, [VehicleEvent::TYPE_POWER_CUT]),
+            'Offline' => $deviceIds->isEmpty() ? 0 : $this->events->countForDevices($deviceIds, $from, [VehicleEvent::TYPE_OFFLINE, VehicleEvent::TYPE_COMM_LOST_MOVING]),
         ];
+
+        $activityLabels = [];
+        $activityValues = [];
+        $activityWindow = self::ONLINE_MINUTES;
+        for ($h = 23; $h >= 0; $h--) {
+            $at = now()->subHours($h);
+            $activityLabels[] = $at->format('H:i');
+            try {
+                $activityValues[] = $deviceIds->isEmpty()
+                    ? 0
+                    : $this->metrics->onlineDevicesAtForDevices($deviceIds, $at, $activityWindow);
+            } catch (\Throwable) {
+                $activityValues[] = 0;
+            }
+        }
+
+        try {
+            $performance = $this->metrics->positionChartDataForDevices($deviceIds, 30);
+        } catch (\Throwable) {
+            $performance = ['labels' => [], 'gpsPings' => [], 'activeDevices' => []];
+        }
+
+        $donutParked = (int) (($fleetCounts['parked'] ?? 0) + ($fleetCounts['stopped'] ?? 0));
+        $donutIdle = (int) (($fleetCounts['idle'] ?? 0) + ($fleetCounts['delayed'] ?? 0) + ($fleetCounts['stale'] ?? 0) + ($fleetCounts['alert'] ?? 0));
+        $donutOffline = (int) ($fleetCounts['offline'] ?? 0);
+        $donutRunning = (int) ($fleetCounts['running'] ?? 0);
+
+        return [
+            'statusDonut' => [
+                'running' => $donutRunning,
+                'parked' => $donutParked,
+                'idle' => $donutIdle,
+                'offline' => $donutOffline,
+            ],
+            'activityArea' => [
+                'labels' => $activityLabels,
+                'values' => $activityValues,
+            ],
+            'alertsBar' => [
+                'labels' => array_keys($alertCounts),
+                'values' => array_values($alertCounts),
+            ],
+            'performanceLine' => [
+                'labels' => $performance['labels'] ?? [],
+                'gpsPings' => $performance['gpsPings'] ?? [],
+                'activeDevices' => $performance['activeDevices'] ?? [],
+            ],
+            'weeklyKm' => $this->topDevicesWeeklyKm($devices, 5),
+        ];
+    }
+
+    /**
+     * @return array{labels: list<string>, values: list<float>}
+     */
+    private function topDevicesWeeklyKm(Collection $devices, int $limit): array
+    {
+        if ($devices->isEmpty()) {
+            return ['labels' => [], 'values' => []];
+        }
+
+        $top = $devices
+            ->sortByDesc(fn (Device $d) => $d->latestLocation?->recorded_at?->getTimestamp() ?? 0)
+            ->take(max(1, $limit))
+            ->values();
+
+        $labels = [];
+        $values = [];
+
+        foreach ($top as $device) {
+            $labels[] = $device->listPrimaryLabel();
+            try {
+                $values[] = round($this->metrics->calculateTotalDistanceKm(collect([$device->id]), 7), 1);
+            } catch (\Throwable) {
+                $values[] = 0;
+            }
+        }
+
+        return compact('labels', 'values');
+    }
+
+    /**
+     * @return array<string, array{good: int, warn: int, bad: int}>
+     */
+    public function buildVehicleHealth(Collection $devices): array
+    {
+        $health = [
+            'gps' => ['good' => 0, 'warn' => 0, 'bad' => 0],
+            'battery' => ['good' => 0, 'warn' => 0, 'bad' => 0],
+            'engine' => ['good' => 0, 'warn' => 0, 'bad' => 0],
+            'ignition' => ['good' => 0, 'warn' => 0, 'bad' => 0],
+            'sim' => ['good' => 0, 'warn' => 0, 'bad' => 0],
+            'temperature' => ['good' => 0, 'warn' => 0, 'bad' => 0],
+        ];
+
+        foreach ($devices as $device) {
+            $latest = $device->latestLocation;
+            $map = $this->mapStatus->resolve($latest, $device);
+
+            if ($this->mapStatus->isRecentlyOnline($latest)) {
+                $health['gps']['good']++;
+            } elseif ($latest) {
+                $health['gps']['warn']++;
+            } else {
+                $health['gps']['bad']++;
+            }
+
+            $battery = is_numeric($latest?->battery_level) ? (int) $latest->battery_level : null;
+            if ($battery === null) {
+                $health['battery']['warn']++;
+            } elseif ($battery >= 50) {
+                $health['battery']['good']++;
+            } elseif ($battery >= 20) {
+                $health['battery']['warn']++;
+            } else {
+                $health['battery']['bad']++;
+            }
+
+            if ($device->status === 'active') {
+                $health['engine']['good']++;
+            } elseif ($device->status === 'inactive') {
+                $health['engine']['warn']++;
+            } else {
+                $health['engine']['bad']++;
+            }
+
+            if ($latest?->ignition) {
+                $health['ignition']['good']++;
+            } elseif ($this->mapStatus->isRecentlyOnline($latest)) {
+                $health['ignition']['warn']++;
+            } else {
+                $health['ignition']['bad']++;
+            }
+
+            $gsm = is_numeric($latest?->gsm_signal ?? null) ? (int) $latest->gsm_signal : null;
+            if ($gsm === null) {
+                $health['sim']['warn']++;
+            } elseif ($gsm >= 60) {
+                $health['sim']['good']++;
+            } elseif ($gsm >= 30) {
+                $health['sim']['warn']++;
+            } else {
+                $health['sim']['bad']++;
+            }
+
+            $temp = data_get($latest?->attributes, 'temperature')
+                ?? data_get($latest?->attributes, 'temp');
+            if (! is_numeric($temp)) {
+                $health['temperature']['warn']++;
+            } elseif ($temp >= -10 && $temp <= 45) {
+                $health['temperature']['good']++;
+            } elseif ($temp >= -20 && $temp <= 55) {
+                $health['temperature']['warn']++;
+            } else {
+                $health['temperature']['bad']++;
+            }
+        }
+
+        return $health;
+    }
+
+    /**
+     * @return list<array{id: int, name: string, lat: float, lng: float, status: string}>
+     */
+    public function buildMapMarkers(Collection $devices): array
+    {
+        $markers = [];
+
+        foreach ($devices as $device) {
+            $latest = $device->latestLocation;
+            if (! $latest || $latest->lat === null || $latest->lng === null) {
+                continue;
+            }
+            if (! $this->mapStatus->isRecentlyOnline($latest, $device)) {
+                continue;
+            }
+            if (! $this->mapStatus->hasValidGpsFix($latest)) {
+                continue;
+            }
+
+            $map = $this->mapStatus->resolve($latest, $device);
+            $markers[] = [
+                'id' => $device->id,
+                'name' => $device->listPrimaryLabel(),
+                'lat' => (float) $latest->lat,
+                'lng' => (float) $latest->lng,
+                'status' => $map['key'],
+            ];
+        }
+
+        return $markers;
     }
 
     /**
@@ -253,6 +469,7 @@ class UserDashboardService
             'activeAlerts' => 0,
             'onlineNow' => 0,
             'vehicleStates' => ['running' => 0, 'parked' => 0, 'maintenance' => 0, 'alerts' => 0],
+            'fleetCounts' => ['running' => 0, 'parked' => 0, 'idle' => 0, 'stopped' => 0, 'offline' => 0, 'with_gps' => 0],
             'recentDevices' => collect(),
             'activities' => collect(),
             'alertDeviceIds' => collect(),
@@ -260,6 +477,16 @@ class UserDashboardService
             'onlinePercent' => 0,
             'alertsPercent' => 0,
             'distancePercent' => 0,
+            'distanceTodayKm' => 0,
+            'offlineNow' => 0,
+            'chartData' => [
+                'statusDonut' => ['running' => 0, 'parked' => 0, 'idle' => 0, 'offline' => 0],
+                'activityArea' => ['labels' => [], 'values' => []],
+                'alertsBar' => ['labels' => [], 'values' => []],
+                'performanceLine' => ['labels' => [], 'gpsPings' => [], 'activeDevices' => []],
+                'weeklyKm' => ['labels' => [], 'values' => []],
+            ],
+            'mapMarkers' => [],
         ];
     }
 
@@ -298,6 +525,7 @@ class UserDashboardService
             'offlineNow' => $fleetCounts['offline'],
             'running' => $fleetCounts['running'],
             'parked' => $fleetCounts['parked'],
+            'parkedIdle' => $fleetCounts['parked'] + $fleetCounts['idle'] + $fleetCounts['stopped'],
             'idle' => $fleetCounts['idle'],
             'maintenance' => $devices->whereIn('status', ['inactive', 'blocked'])->count(),
             'alerts' => $fleetCounts['alert'],

@@ -79,3 +79,13 @@ if (! function_exists('app_datetime_api')) {
         return \App\Support\DateTime\AppDateTime::toApi($dt);
     }
 }
+
+if (! function_exists('pdf_shape_text')) {
+    /**
+     * Shape Arabic text for dompdf (connected letters, correct visual order).
+     */
+    function pdf_shape_text(?string $text): string
+    {
+        return \App\Support\Pdf\ArabicPdfText::shape($text);
+    }
+}

@@ -3,27 +3,23 @@
 @section('title', __('app.tracking.history_title') . ' - ' . __('app.brand'))
 
 @push('styles')
+    @include('tracking.partials.module-styles')
     <link rel="stylesheet" href="{{ asset('css/fleet-map.css') }}?v={{ filemtime(public_path('css/fleet-map.css')) }}">
     <style>
-        @if($panel === 'user')
         body.gt-page-active { overflow: hidden; }
         body.gt-page-active .content-wrap {
-            height: calc(100dvh - 96px);
-            max-height: calc(100dvh - 96px);
+            height: calc(100dvh - var(--tracking-topbar-height, 52px));
+            max-height: calc(100dvh - var(--tracking-topbar-height, 52px));
             overflow: hidden;
             padding: 0 !important;
         }
-        @else
-        .content-wrap { padding: 0 !important; }
-        .footer-premium { display: none; }
-        @endif
 
         .gt-page {
             display: flex;
             flex-direction: column;
-            height: @if($panel === 'user') 100% @else calc(100vh - 64px) @endif;
+            height: 100%;
             min-height: 420px;
-            background: var(--light-bg, #f8fafc);
+            background: var(--apple-bg-secondary);
         }
 
         .gt-toolbar {
@@ -33,16 +29,19 @@
             align-items: center;
             justify-content: space-between;
             gap: 0.75rem;
-            padding: 0.75rem 1rem;
-            background: #fff;
-            border-bottom: 1px solid var(--border-color, #e0e0e0);
+            padding: 0.65rem 1rem;
+            background: var(--apple-bg-primary);
+            border-bottom: 0.5px solid var(--apple-separator);
         }
 
         .gt-toolbar__title {
             display: flex;
             align-items: center;
             gap: 0.5rem;
-            font-weight: 700;
+            font-weight: 600;
+            font-size: 0.9375rem;
+            letter-spacing: -0.02em;
+            color: var(--apple-label);
         }
 
         .gt-filters {
@@ -51,14 +50,14 @@
             gap: 0.5rem;
             align-items: flex-end;
             padding: 0.75rem;
-            background: #fff;
-            border-bottom: 1px solid var(--border-color, #e0e0e0);
+            background: var(--apple-bg-group);
+            border-bottom: 0.5px solid var(--apple-separator);
         }
 
         .gt-filters label {
             font-size: 0.75rem;
             margin-bottom: 0.15rem;
-            color: var(--text-secondary, #64748b);
+            color: var(--apple-secondary);
         }
 
         .gt-filters > div { display: flex; flex-direction: column; }
@@ -77,7 +76,7 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            background: rgba(248, 250, 252, 0.85);
+            background: rgba(245, 245, 247, 0.88);
             z-index: 4;
             pointer-events: none;
         }
@@ -95,13 +94,14 @@
             flex-shrink: 0;
             display: flex;
             flex-direction: column;
-            background: #fff;
-            border-inline-end: 1px solid var(--border-color, #e0e0e0);
+            background: var(--apple-bg-sidebar);
+            border-inline-end: 0.5px solid var(--apple-separator);
         }
 
         .gt-sidebar-head {
             padding: 0.75rem;
-            border-bottom: 1px solid var(--border-color, #e0e0e0);
+            border-bottom: 0.5px solid var(--apple-separator);
+            background: var(--apple-bg-primary);
         }
 
         .gt-sidebar-actions {
@@ -209,7 +209,7 @@
                 width: 100%;
                 max-height: 36vh;
                 border-inline-end: none;
-                border-bottom: 1px solid var(--border-color, #e0e0e0);
+                border-bottom: 0.5px solid var(--apple-separator);
             }
         }
     </style>

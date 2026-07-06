@@ -22,10 +22,7 @@ trait ResolvesTrackingPanel
 
     protected function layoutForPanel(string $panel): string
     {
-        return match ($panel) {
-            'user' => 'user.layout_user',
-            default => 'tracking.layouts.app',
-        };
+        return 'tracking.layouts.app';
     }
 
     /**

@@ -175,6 +175,7 @@ final class ReportLabels
         'selectVehicle' => (string) __('app.tracking.report_select_vehicle'),
         'devicesCapped' => (string) __('app.tracking.report_devices_capped'),
         'positionsTruncated' => (string) __('app.tracking.report_positions_truncated'),
+        'analyticsDownsampled' => (string) __('app.tracking.report_analytics_downsampled'),
         'columns' => [
                 'summary' => self::columnsForType('summary'),
                 'trips' => self::columnsForType('trips'),

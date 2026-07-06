@@ -21,16 +21,17 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        background: rgba(255, 255, 255, 0.7);
+        background: rgba(245, 245, 247, 0.82);
+        backdrop-filter: blur(4px);
         z-index: 5;
-        border-radius: 8px;
+        border-radius: 12px;
     }
     .gt-report-overlay[hidden] { display: none !important; }
     .gt-report-empty {
         padding: 2.5rem 1rem;
         text-align: center;
-        color: #94a3b8;
-        font-size: 0.9rem;
+        color: var(--apple-secondary);
+        font-size: 0.875rem;
     }
     .gt-report-empty[hidden] { display: none !important; }
     #gtReportTable td, #gtReportTable th { white-space: nowrap; font-size: 0.8125rem; }
@@ -45,30 +46,32 @@
     }
     .gt-report-kpis[hidden] { display: none !important; }
     .gt-report-kpi {
-        background: #f8fafc;
-        border: 1px solid #e2e8f0;
-        border-radius: 8px;
+        background: var(--apple-bg-group);
+        border: 0.5px solid var(--tc-border-soft);
+        border-radius: 12px;
         padding: 0.55rem 0.7rem;
     }
     .gt-report-kpi-label {
         display: block;
-        font-size: 0.68rem;
-        text-transform: uppercase;
-        letter-spacing: 0.03em;
-        color: #64748b;
+        font-size: 0.6875rem;
+        font-weight: 500;
+        letter-spacing: -0.01em;
+        color: var(--apple-secondary);
         margin-bottom: 0.15rem;
+        text-transform: none;
     }
     .gt-report-kpi-value {
-        font-size: 0.95rem;
-        font-weight: 700;
-        color: #0f172a;
+        font-size: 0.9375rem;
+        font-weight: 600;
+        letter-spacing: -0.018em;
+        color: var(--apple-label);
         direction: ltr;
         unicode-bidi: embed;
     }
     #gtReportMap {
         height: 280px;
-        border-radius: 8px;
-        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        border: 0.5px solid var(--tc-border);
     }
     .gt-report-vehicle-actions {
         display: flex;
@@ -76,7 +79,10 @@
         margin-bottom: 0.35rem;
     }
     .gt-report-vehicle-actions .btn { font-size: 0.72rem; padding: 0.15rem 0.45rem; }
-    .gt-report-subtitle { color: #64748b; font-size: 0.875rem; margin-bottom: 1rem; }
+    .gt-report-subtitle { color: var(--apple-secondary); font-size: 0.8125rem; margin-bottom: 1rem; letter-spacing: -0.01em; }
+    .gt-report-presets { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-bottom: 0.35rem; }
+    .gt-report-presets .btn { font-size: 0.72rem; padding: 0.15rem 0.5rem; border-radius: 999px; }
+    .gt-report-loading-text { font-size: 0.8125rem; color: var(--tc-text-muted); margin-top: 0.35rem; }
 </style>
 @endpush
 @section('content')
@@ -102,6 +108,11 @@
                     <option value="ar" @selected(app()->getLocale() === 'ar')>{{ __('app.tracking.report_lang_ar') }}</option>
                 </select>
                 <label class="form-label small mt-2">{{ __('app.tracking.date_from') }}</label>
+                <div class="gt-report-presets">
+                    <button type="button" class="btn btn-outline-secondary btn-sm" data-report-preset="today">{{ __('app.tracking.report_preset_today') }}</button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm" data-report-preset="yesterday">{{ __('app.tracking.report_preset_yesterday') }}</button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm" data-report-preset="7d">{{ __('app.tracking.report_preset_7d') }}</button>
+                </div>
                 <input type="datetime-local" id="gtReportFrom" class="form-control form-control-sm admin-ltr" dir="ltr">
                 <label class="form-label small mt-2">{{ __('app.tracking.date_to') }}</label>
                 <input type="datetime-local" id="gtReportTo" class="form-control form-control-sm admin-ltr" dir="ltr">
@@ -138,7 +149,10 @@
                     </div>
                     <div class="gt-report-empty" id="gtReportEmpty" hidden></div>
                     <div class="gt-report-overlay" id="gtReportOverlay" hidden>
-                        <div class="spinner-border text-primary" role="status" aria-hidden="true"></div>
+                        <div class="text-center">
+                            <div class="spinner-border text-primary" role="status" aria-hidden="true"></div>
+                            <div class="gt-report-loading-text" id="gtReportLoadingText"></div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -162,6 +176,13 @@
         'selectVehicle' => __('app.tracking.report_select_vehicle'),
         'devicesCapped' => __('app.tracking.report_devices_capped'),
         'positionsTruncated' => __('app.tracking.report_positions_truncated'),
+        'analyticsDownsampled' => __('app.tracking.report_analytics_downsampled'),
+        'presetToday' => __('app.tracking.report_preset_today'),
+        'presetYesterday' => __('app.tracking.report_preset_yesterday'),
+        'preset7d' => __('app.tracking.report_preset_7d'),
+        'loadingProgress' => __('app.tracking.report_loading_progress'),
+        'loadingReport' => __('app.tracking.report_loading'),
+        'exportFailed' => __('app.tracking.report_export_failed'),
     ]);
 @endphp
 <script>

@@ -7,7 +7,8 @@
        title="{{ __('app.language.english') }}"
        @if($current === 'en') aria-current="true" @endif>EN</a>
     <a href="{{ route('locale.switch', 'ar') }}"
-       class="lang-toggle__btn {{ $current === 'ar' ? 'lang-toggle__btn--active' : '' }}"
+       class="lang-toggle__btn lang-toggle__btn--ar {{ $current === 'ar' ? 'lang-toggle__btn--active' : '' }}"
        title="{{ __('app.language.arabic') }}"
-       @if($current === 'ar') aria-current="true" @endif>ع</a>
+       lang="ar"
+       @if($current === 'ar') aria-current="true" @endif>AR</a>
 </div>

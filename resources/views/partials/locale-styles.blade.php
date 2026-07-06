@@ -44,4 +44,34 @@
         background: var(--admin-primary, #1976D2);
         color: #fff;
     }
+
+    /* Apple HIG user panel — light top bar */
+    body.user-panel.apple-hig .navbar .lang-toggle {
+        border: 1px solid #C7C7CC;
+        background: #FFFFFF;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+    }
+    body.user-panel.apple-hig .navbar .lang-toggle__btn {
+        color: #3A3A3C;
+        min-width: 42px;
+        height: 36px;
+        font-size: 0.8125rem;
+        font-weight: 700;
+        letter-spacing: 0.03em;
+    }
+    body.user-panel.apple-hig .navbar .lang-toggle__btn:hover {
+        color: #1D1D1F;
+        background: #F2F2F7;
+    }
+    body.user-panel.apple-hig .navbar .lang-toggle__btn--active {
+        background: #007AFF;
+        color: #FFFFFF;
+    }
+    body.user-panel.apple-hig .navbar .lang-toggle__btn + .lang-toggle__btn {
+        border-inline-start: 1px solid #C7C7CC;
+    }
+    body.user-panel.apple-hig .navbar .lang-toggle__btn--ar {
+        font-family: 'Cairo', 'Segoe UI', Tahoma, sans-serif;
+        font-weight: 700;
+    }
 </style>

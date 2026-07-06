@@ -128,8 +128,8 @@
             box-shadow: 0 8px 25px rgba(25, 118, 210, 0.4);
         }
 
-        /* Sidebar Toggle Button - FIXED POSITION */
-        #toggleSidebar {
+        /* Sidebar Toggle Button — legacy shell only (Apple HIG uses user-panel-apple.css) */
+        body:not(.apple-hig) #toggleSidebar {
             width: 44px;
             height: 44px;
             border-radius: 12px;
@@ -147,7 +147,7 @@
             z-index: 1100; /* Higher than sidebar */
         }
 
-        #toggleSidebar:hover {
+        body:not(.apple-hig) #toggleSidebar:hover {
             background: var(--secondary-blue);
             transform: translateY(-2px);
             box-shadow: 0 8px 20px rgba(25, 118, 210, 0.4);
@@ -170,10 +170,8 @@
             box-shadow: 0 8px 20px rgba(239, 68, 68, 0.4) !important;
         }
 
-        /* =============================
-           Premium Sidebar - FIXED POSITION
-        ============================= */
-        .filter-panel#filterPanel.user-dashboard-sidebar {
+        /* Legacy drawer sidebar (non–Apple HIG pages only) */
+        body:not(.apple-hig) .filter-panel#filterPanel.user-dashboard-sidebar {
             width: 380px;
             position: fixed;
             top: 0;
@@ -188,8 +186,8 @@
             box-sizing: border-box;
         }
 
-        html[dir="ltr"] .filter-panel#filterPanel.user-dashboard-sidebar,
-        body.user-panel-ltr #filterPanel.user-dashboard-sidebar {
+        html[dir="ltr"] body:not(.apple-hig) .filter-panel#filterPanel.user-dashboard-sidebar,
+        body:not(.apple-hig).user-panel-ltr #filterPanel.user-dashboard-sidebar {
             left: 0 !important;
             right: auto !important;
             transform: translateX(-100%);
@@ -197,8 +195,8 @@
             box-shadow: 10px 0 40px rgba(0, 0, 0, 0.3);
         }
 
-        html[dir="rtl"] .filter-panel#filterPanel.user-dashboard-sidebar,
-        body.user-panel-rtl #filterPanel.user-dashboard-sidebar {
+        html[dir="rtl"] body:not(.apple-hig) .filter-panel#filterPanel.user-dashboard-sidebar,
+        body:not(.apple-hig).user-panel-rtl #filterPanel.user-dashboard-sidebar {
             left: auto !important;
             right: 0 !important;
             transform: translateX(100%);
@@ -207,10 +205,10 @@
             box-shadow: -10px 0 40px rgba(0, 0, 0, 0.35);
         }
 
-        html[dir="rtl"] .filter-panel#filterPanel.user-dashboard-sidebar.show,
-        body.user-panel-rtl #filterPanel.user-dashboard-sidebar.show,
-        html[dir="ltr"] .filter-panel#filterPanel.user-dashboard-sidebar.show,
-        body.user-panel-ltr #filterPanel.user-dashboard-sidebar.show {
+        html[dir="rtl"] body:not(.apple-hig) .filter-panel#filterPanel.user-dashboard-sidebar.show,
+        body:not(.apple-hig).user-panel-rtl #filterPanel.user-dashboard-sidebar.show,
+        html[dir="ltr"] body:not(.apple-hig) .filter-panel#filterPanel.user-dashboard-sidebar.show,
+        body:not(.apple-hig).user-panel-ltr #filterPanel.user-dashboard-sidebar.show {
             transform: translateX(0) !important;
         }
 
@@ -358,37 +356,37 @@
            Responsive Design
         ============================= */
         @media (max-width: 768px) {
-            .filter-panel.user-dashboard-sidebar {
+            body:not(.apple-hig) .filter-panel.user-dashboard-sidebar {
                 width: min(320px, 88vw);
                 max-width: 100vw;
                 padding: 1rem;
             }
 
-            .navbar {
+            body:not(.apple-hig) .navbar {
                 padding: 0.8rem 1rem;
             }
 
-            .user-avatar {
+            body:not(.apple-hig) .user-avatar {
                 width: 36px;
                 height: 36px;
                 font-size: 1rem;
             }
 
-            #toggleSidebar {
+            body:not(.apple-hig) #toggleSidebar {
                 width: 40px;
                 height: 40px;
                 margin-inline-end: 10px;
             }
 
-            /* Show close button on mobile */
-            .close-sidebar {
+            /* Show close button on mobile — legacy shell only */
+            body:not(.apple-hig) .close-sidebar {
                 display: flex;
             }
 
         }
 
         @media (max-width: 576px) {
-            .filter-panel.user-dashboard-sidebar {
+            body:not(.apple-hig) .filter-panel.user-dashboard-sidebar {
                 width: min(280px, 90vw);
             }
         }
@@ -588,29 +586,30 @@
         @include('partials.rtl-head')
     @endif
     @stack('styles')
+    <link rel="stylesheet" href="{{ asset('css/user-panel-apple.css') }}?v={{ @filemtime(public_path('css/user-panel-apple.css')) }}">
     @if(($htmlDir ?? 'ltr') === 'rtl')
     <style>
-        /* Arabic: user menu drawer — physical right edge (wins over map/global rtl.css) */
-        body.user-panel-rtl #filterPanel.user-dashboard-sidebar {
+        /* Legacy drawer rules — skip Apple HIG shell (handled in user-panel-apple.css) */
+        body.user-panel-rtl:not(.apple-hig) #filterPanel.user-dashboard-sidebar {
             left: auto !important;
             right: 0 !important;
         }
-        body.user-panel-rtl #filterPanel.user-dashboard-sidebar:not(.show) {
+        body.user-panel-rtl:not(.apple-hig) #filterPanel.user-dashboard-sidebar:not(.show) {
             transform: translateX(100%) !important;
         }
-        body.user-panel-rtl #filterPanel.user-dashboard-sidebar.show {
+        body.user-panel-rtl:not(.apple-hig) #filterPanel.user-dashboard-sidebar.show {
             transform: translateX(0) !important;
         }
-        body.user-panel-rtl .filter-header {
+        body.user-panel-rtl:not(.apple-hig) .filter-header {
             flex-direction: row !important;
             text-align: right;
         }
-        body.user-panel-rtl #filterPanel .card,
-        body.user-panel-rtl #filterPanel .filter-header h5 {
+        body.user-panel-rtl:not(.apple-hig) #filterPanel .card,
+        body.user-panel-rtl:not(.apple-hig) #filterPanel .filter-header h5 {
             text-align: right;
         }
         @media (max-width: 768px) {
-            body.user-panel-rtl #filterPanel.user-dashboard-sidebar {
+            body.user-panel-rtl:not(.apple-hig) #filterPanel.user-dashboard-sidebar {
                 width: min(320px, 88vw) !important;
                 border-radius: 20px 0 0 20px !important;
             }
@@ -619,127 +618,43 @@
     @endif
 </head>
 
-<body class="user-panel {{ ($htmlDir ?? 'ltr') === 'rtl' ? 'user-panel-rtl' : 'user-panel-ltr' }} {{ request()->boolean('embed') ? 'tracking-embed' : '' }}" dir="{{ $htmlDir ?? 'ltr' }}" data-map-session-end="{{ route('map.session.end') }}">
-<!-- Premium Navbar -->
-<nav class="navbar navbar-expand-lg px-3 user-navbar w-100 d-flex align-items-center justify-content-between">
-    <div class="nav-start d-flex align-items-center">
-        <!-- Sidebar Toggle - FIXED Z-INDEX -->
+<body class="user-panel apple-hig {{ ($htmlDir ?? 'ltr') === 'rtl' ? 'user-panel-rtl' : 'user-panel-ltr' }} {{ request()->boolean('embed') ? 'tracking-embed' : '' }}" dir="{{ $htmlDir ?? 'ltr' }}" data-map-session-end="{{ route('map.session.end') }}">
+<nav class="navbar navbar-expand-lg user-navbar w-100 d-flex align-items-center justify-content-between" dir="{{ $htmlDir ?? 'ltr' }}">
+    <div class="nav-start d-flex align-items-center flex-shrink-0">
         <button type="button" id="toggleSidebar" aria-label="{{ __('app.user.nav.menu') }}" aria-expanded="false">
-            <i class="fa fa-sliders-h" aria-hidden="true"></i>
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke-width="1.75" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5"/></svg>
         </button>
-
-        <!-- Brand Logo -->
-        <a class="navbar-brand d-flex align-items-center" href="{{ route('user.dashboard') }}" aria-label="{{ __('app.common.dashboard') }}">
-            @include('partials.brand-logo', ['size' => 'lg', 'onDark' => true])
+        <a class="navbar-brand d-flex align-items-center ms-2 me-0" href="{{ route('user.dashboard') }}" aria-label="{{ __('app.common.dashboard') }}">
+            @include('partials.brand-logo', ['size' => 'md', 'onDark' => false])
         </a>
     </div>
 
-    <div class="nav-end navbar-nav ms-auto d-flex align-items-center gap-2">
+    <div class="ud-search d-none d-md-block">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.75" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"/></svg>
+        <input type="search" id="udGlobalSearch" placeholder="{{ __('app.user.devices.search_placeholder') }}" aria-label="{{ __('app.user.devices.search_placeholder') }}">
+    </div>
+
+    <div class="nav-end navbar-nav ms-auto d-flex align-items-center gap-2 flex-shrink-0">
+        <a href="{{ route('user.tracking.events.index') }}" class="ud-btn ud-btn--secondary d-none d-sm-inline-flex" style="padding:8px 10px;" title="{{ __('app.tracking.events_nav') }}" aria-label="{{ __('app.tracking.events_nav') }}">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" viewBox="0 0 24 24" stroke-width="1.75" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0"/></svg>
+        </a>
         @include('partials.language-toggle')
-        <!-- User Info -->
-        <div class="nav-item d-flex align-items-center">
+        <a href="{{ route('user.profile') }}" class="d-flex align-items-center text-decoration-none" title="{{ __('app.user.nav.my_profile') }}">
             @include('partials.user-avatar', [
                 'user' => auth()->user(),
                 'size' => 36,
                 'class' => 'user-avatar',
             ])
-            <span class="nav-link d-none d-md-block" style="color: white;">{{ auth()->user()->name }}</span>
-        </div>
-
-        <div class="nav-item">
-            <form method="POST" action="{{ route('logout') }}">
-                @csrf
-                <button type="submit" class="btn logout-btn">
-                    <i class="fa fa-power-off me-2" aria-hidden="true"></i>
-                    <span class="d-none d-md-inline">{{ __('app.common.logout') }}</span>
-                </button>
-            </form>
-        </div>
+        </a>
     </div>
 </nav>
 
-<!-- Sidebar (fixed to viewport — outside content-wrap for correct RTL) -->
-<div class="sidebar-overlay" id="sidebarOverlay"></div>
-<div class="filter-panel user-dashboard-sidebar" id="filterPanel" role="dialog" aria-modal="true" aria-hidden="true">
-        <!-- Sidebar Header with Close Button -->
-        <div class="filter-header d-flex align-items-center justify-content-between">
-            <h5 class="mb-0">
-                <i class="fa fa-user-circle text-primary me-2"></i> {{ __('app.user.nav.menu') }}
-            </h5>
-            <div class="close-sidebar" id="closeSidebar">
-                <i class="fa fa-times"></i>
-            </div>
-        </div>
-
-        <!-- Dashboard -->
-        <div class="card p-3 mb-3">
-            <h6 class="mb-2">{{ __('app.common.dashboard') }}</h6>
-            <p class="small text-muted" style="color: rgb(178 178 178 / 75%) !important;">{{ __('app.forms.go_dashboard_desc') }}</p>
-
-            <a href="{{ route('user.dashboard') }}" class="btn btn-primary btn-sm w-100">
-                {{ __('app.forms.open_dashboard') }}
-            </a>
-        </div>
-
-        <!-- My Devices -->
-        <div class="card p-3 mb-3">
-            <h6 class="mb-2">{{ __('app.user.devices.title') }}</h6>
-            <p class="small text-muted" style="color: rgb(178 178 178 / 75%) !important;">{{ __('app.forms.manage_devices_desc') }}</p>
-
-            <a href="{{ route('user.devices.index') }}" class="btn btn-secondary btn-sm w-100">
-                {{ __('app.forms.view_devices') }}
-            </a>
-        </div>
-
-        <!-- Global Tracking -->
-        <div class="card p-3 mb-3">
-            <h6 class="mb-2">{{ __('app.tracking.hub_nav') }}</h6>
-            <div class="d-grid gap-1">
-                <a href="{{ route('user.tracking.index') }}" class="btn btn-primary btn-sm">{{ __('app.tracking.live_link') }}</a>
-                <a href="{{ route('user.tracking.history') }}" class="btn btn-outline-primary btn-sm">{{ __('app.tracking.history_link') }}</a>
-                <a href="{{ route('user.tracking.reports.index') }}" class="btn btn-outline-secondary btn-sm">{{ __('app.tracking.reports_nav') }}</a>
-                <a href="{{ route('user.tracking.events.index') }}" class="btn btn-outline-secondary btn-sm">{{ __('app.tracking.events_nav') }}</a>
-                <a href="{{ route('user.tracking.settings.index') }}" class="btn btn-outline-secondary btn-sm">{{ __('app.tracking.settings_nav') }}</a>
-            </div>
-        </div>
-
-        <!-- Profile -->
-        <div class="card p-3 mb-3">
-            <h6 class="mb-2">{{ __('app.user.nav.my_profile') }}</h6>
-            <p class="mb-1"><strong>{{ __('app.forms.name') }}:</strong> {{ auth()->user()->name }}</p>
-            <p class="mb-1"><strong>{{ __('app.forms.email') }}:</strong> <span class="admin-ltr" dir="ltr">{{ auth()->user()->email }}</span></p>
-
-            <a href="{{ route('user.profile') }}" class="btn btn-primary btn-sm w-100 mt-2">
-                {{ __('app.forms.view_edit_profile') }}
-            </a>
-        </div>
-
-        <!-- Password -->
-        <div class="card p-3 mb-3">
-            <h6 class="mb-2">{{ __('app.user.nav.security') }}</h6>
-            <p class="small text-muted" style="color: rgb(178 178 178 / 75%) !important;">{{ __('app.forms.security_settings_desc') }}</p>
-
-            <a href="{{ route('user.change.password') }}" class="btn btn-warning btn-sm w-100">
-                {{ __('app.user.nav.change_password') }}
-            </a>
-        </div>
-
-        <!-- Logout -->
-        <div class="card p-3 mb-3">
-            <h6 class="mb-2">{{ __('app.user.nav.manage_account') }}</h6>
-
-            <form method="POST" action="{{ route('logout') }}">
-                @csrf
-                <button class="btn btn-danger btn-sm w-100">
-                    <i class="fa fa-power-off me-1"></i> {{ __('app.common.logout') }}
-                </button>
-            </form>
-        </div>
-</div>
-
-<!-- Page Content -->
-<div class="content-wrap">
-    @yield('content')
+<div class="ud-app" dir="{{ $htmlDir ?? 'ltr' }}" data-layout-dir="{{ $htmlDir ?? 'ltr' }}">
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+    @include('user.partials.apple-sidebar-shell')
+    <div class="content-wrap ud-main" dir="{{ $htmlDir ?? 'ltr' }}">
+        @yield('content')
+    </div>
 </div>
 
 <!-- JS Libraries -->
@@ -755,156 +670,23 @@
 @include('partials.session-expired-handler')
 @include('partials.reverb-echo')
 
+<script src="{{ protected_js('user-panel-apple.js') }}"></script>
 <script>
-    // Fixed Sidebar Toggle - Single Click Functionality
-    document.addEventListener('DOMContentLoaded', function() {
-        const toggleBtn = document.getElementById('toggleSidebar');
-        const sidebar = document.getElementById('filterPanel');
-        const overlay = document.getElementById('sidebarOverlay');
-        const closeBtn = document.getElementById('closeSidebar');
-
-        let isSidebarOpen = false;
-        let clickTimer = null;
-
-        function isUserPanelRtl() {
-            return document.documentElement.getAttribute('dir') === 'rtl'
-                || document.body.getAttribute('dir') === 'rtl'
-                || document.body.classList.contains('user-panel-rtl');
-        }
-
-        function applyUserSidebarPosition() {
-            if (!sidebar) return;
-            const rtl = isUserPanelRtl();
-            sidebar.style.insetInlineStart = '';
-            sidebar.style.insetInlineEnd = '';
-            if (rtl) {
-                sidebar.style.left = 'auto';
-                sidebar.style.right = '0';
-                sidebar.style.transform = sidebar.classList.contains('show')
-                    ? 'translateX(0)'
-                    : 'translateX(100%)';
-            } else {
-                sidebar.style.left = '0';
-                sidebar.style.right = 'auto';
-                sidebar.style.transform = sidebar.classList.contains('show')
-                    ? 'translateX(0)'
-                    : 'translateX(-100%)';
-            }
-        }
-
-        function openSidebar() {
-            isSidebarOpen = true;
-            sidebar.classList.add('show');
-            applyUserSidebarPosition();
-            overlay.classList.add('show');
-            document.body.classList.add('user-sidebar-open');
-            sidebar.setAttribute('aria-hidden', 'false');
-            document.body.style.overflow = 'hidden';
-            toggleBtn.setAttribute('aria-expanded', 'true');
-
-            const icon = toggleBtn.querySelector('i');
-            icon.classList.remove('fa-sliders-h');
-            icon.classList.add('fa-times');
-        }
-
-        function closeSidebar() {
-            isSidebarOpen = false;
-            sidebar.classList.remove('show');
-            applyUserSidebarPosition();
-            overlay.classList.remove('show');
-            document.body.classList.remove('user-sidebar-open');
-            sidebar.setAttribute('aria-hidden', 'true');
-            document.body.style.overflow = '';
-            toggleBtn.setAttribute('aria-expanded', 'false');
-
-            const icon = toggleBtn.querySelector('i');
-            icon.classList.remove('fa-times');
-            icon.classList.add('fa-sliders-h');
-        }
-
-        function toggleSidebar() {
-            if (isSidebarOpen) {
-                closeSidebar();
-            } else {
-                openSidebar();
-            }
-        }
-
-        // Single click event with debouncing
-        toggleBtn.addEventListener('click', function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-
-            // Clear any existing timer
-            if (clickTimer) {
-                clearTimeout(clickTimer);
-            }
-
-            // Set new timer to handle the click
-            clickTimer = setTimeout(() => {
-                toggleSidebar();
-                clickTimer = null;
-            }, 50); // Small delay to prevent double-click issues
-        });
-
-        // Close sidebar when clicking overlay
-        overlay.addEventListener('click', function(e) {
-            if (isSidebarOpen) {
-                closeSidebar();
-            }
-        });
-
-        // Close sidebar when clicking close button
-        if (closeBtn) {
-            closeBtn.addEventListener('click', function(e) {
-                e.preventDefault();
-                e.stopPropagation();
-                closeSidebar();
+    document.addEventListener('DOMContentLoaded', function () {
+        const globalSearch = document.getElementById('udGlobalSearch');
+        const fleetSearch = document.getElementById('udFleetSearch');
+        if (globalSearch && fleetSearch) {
+            globalSearch.addEventListener('input', function () {
+                fleetSearch.value = globalSearch.value;
+                fleetSearch.dispatchEvent(new Event('input', { bubbles: true }));
             });
-        }
-
-        // Close sidebar on escape key
-        document.addEventListener('keydown', function(e) {
-            if (e.key === 'Escape' && isSidebarOpen) {
-                closeSidebar();
-            }
-        });
-
-        // Close sidebar when clicking outside on mobile
-        document.addEventListener('click', function(e) {
-            if (isSidebarOpen && window.innerWidth <= 768) {
-                if (!sidebar.contains(e.target) && e.target !== toggleBtn && !toggleBtn.contains(e.target)) {
-                    closeSidebar();
+        } else if (globalSearch) {
+            globalSearch.addEventListener('keydown', function (e) {
+                if (e.key === 'Enter') {
+                    window.location.href = @json(route('user.devices.index'));
                 }
-            }
-        });
-
-        // Close sidebar on window resize (for responsive behavior)
-        let resizeTimer;
-        window.addEventListener('resize', function() {
-            clearTimeout(resizeTimer);
-            resizeTimer = setTimeout(function() {
-                if (window.innerWidth > 768 && isSidebarOpen) {
-                    closeSidebar();
-                }
-            }, 250);
-        });
-
-        applyUserSidebarPosition();
-
-        // Initialize - ensure sidebar is closed on load
-        closeSidebar();
-
-        // Add hover effects to cards
-        document.querySelectorAll('.premium-card').forEach(card => {
-            card.addEventListener('mouseenter', function() {
-                this.style.transform = 'translateY(-5px)';
             });
-
-            card.addEventListener('mouseleave', function() {
-                this.style.transform = 'translateY(0)';
-            });
-        });
+        }
     });
 </script>
 

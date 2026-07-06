@@ -118,14 +118,17 @@
             } else {
                 this.routeTripKit?.clear();
             }
-            this.loadRouteTripForDevice(id);
+            if (!cached?.route) {
+                this.loadRouteTripForDevice(id);
+            }
         }
 
         async loadRouteTripForDevice(id) {
             const url = this.cfg.devicePanelUrl;
             if (!url || Number(this._routeTripDeviceId) !== Number(id)) return;
+            if (this.vehicles.get(id)?.route_trip?.route) return;
             try {
-                const res = await fetch(`${url}?device_id=${encodeURIComponent(id)}&_=${Date.now()}`, {
+                const res = await fetch(`${url}?device_id=${encodeURIComponent(id)}&sections=route_trip&_=${Date.now()}`, {
                     credentials: 'same-origin',
                     cache: 'no-store',
                     headers: { Accept: 'application/json' },

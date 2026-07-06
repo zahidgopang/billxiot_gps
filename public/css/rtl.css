@@ -298,17 +298,17 @@ html[dir="rtl"] .dashboard-container {
 }
 
 /* Navbar: natural RTL flex order (do not row-reverse — breaks toggle/brand/menu) */
-html[dir="rtl"] body.user-panel .user-navbar {
+html[dir="rtl"] body.user-panel:not(.apple-hig) .user-navbar {
     direction: rtl;
     flex-direction: row;
 }
 
-html[dir="rtl"] body.user-panel .user-navbar .nav-start,
-html[dir="rtl"] body.user-panel .user-navbar .nav-end {
+html[dir="rtl"] body.user-panel:not(.apple-hig) .user-navbar .nav-start,
+html[dir="rtl"] body.user-panel:not(.apple-hig) .user-navbar .nav-end {
     flex-direction: row;
 }
 
-html[dir="rtl"] body.user-panel #toggleSidebar {
+html[dir="rtl"] body.user-panel:not(.apple-hig) #toggleSidebar {
     margin-inline-end: 15px;
     margin-inline-start: 0;
 }
@@ -323,10 +323,10 @@ html[dir="rtl"] body.user-panel .navbar-brand img {
     margin-inline-start: 0;
 }
 
-/* User dashboard sidebar — physical right in Arabic (do NOT use inset-inline-* here) */
-html[dir="rtl"] body.user-panel #filterPanel.user-dashboard-sidebar,
-html[dir="rtl"] body.user-panel-rtl #filterPanel.user-dashboard-sidebar,
-body.user-panel-rtl #filterPanel.user-dashboard-sidebar {
+/* User dashboard sidebar — physical right in Arabic (legacy drawer; not Apple HIG shell) */
+html[dir="rtl"] body.user-panel:not(.apple-hig) #filterPanel.user-dashboard-sidebar,
+html[dir="rtl"] body.user-panel-rtl:not(.apple-hig) #filterPanel.user-dashboard-sidebar,
+body.user-panel-rtl:not(.apple-hig) #filterPanel.user-dashboard-sidebar {
     left: auto !important;
     right: 0 !important;
     border-inline-end: none !important;
@@ -334,54 +334,54 @@ body.user-panel-rtl #filterPanel.user-dashboard-sidebar {
     box-shadow: -10px 0 40px rgba(0, 0, 0, 0.35) !important;
 }
 
-html[dir="rtl"] body.user-panel #filterPanel.user-dashboard-sidebar:not(.show),
-html[dir="rtl"] body.user-panel-rtl #filterPanel.user-dashboard-sidebar:not(.show),
-body.user-panel-rtl #filterPanel.user-dashboard-sidebar:not(.show) {
+html[dir="rtl"] body.user-panel:not(.apple-hig) #filterPanel.user-dashboard-sidebar:not(.show),
+html[dir="rtl"] body.user-panel-rtl:not(.apple-hig) #filterPanel.user-dashboard-sidebar:not(.show),
+body.user-panel-rtl:not(.apple-hig) #filterPanel.user-dashboard-sidebar:not(.show) {
     transform: translateX(100%) !important;
 }
 
-html[dir="ltr"] body.user-panel #filterPanel.user-dashboard-sidebar,
-html[dir="ltr"] body.user-panel-ltr #filterPanel.user-dashboard-sidebar,
-body.user-panel-ltr #filterPanel.user-dashboard-sidebar {
+html[dir="ltr"] body.user-panel:not(.apple-hig) #filterPanel.user-dashboard-sidebar,
+html[dir="ltr"] body.user-panel-ltr:not(.apple-hig) #filterPanel.user-dashboard-sidebar,
+body.user-panel-ltr:not(.apple-hig) #filterPanel.user-dashboard-sidebar {
     left: 0 !important;
     right: auto !important;
 }
 
-html[dir="ltr"] body.user-panel #filterPanel.user-dashboard-sidebar:not(.show),
-html[dir="ltr"] body.user-panel-ltr #filterPanel.user-dashboard-sidebar:not(.show),
-body.user-panel-ltr #filterPanel.user-dashboard-sidebar:not(.show) {
+html[dir="ltr"] body.user-panel:not(.apple-hig) #filterPanel.user-dashboard-sidebar:not(.show),
+html[dir="ltr"] body.user-panel-ltr:not(.apple-hig) #filterPanel.user-dashboard-sidebar:not(.show),
+body.user-panel-ltr:not(.apple-hig) #filterPanel.user-dashboard-sidebar:not(.show) {
     transform: translateX(-100%) !important;
 }
 
-html[dir="rtl"] body.user-panel #filterPanel.user-dashboard-sidebar.show,
-html[dir="rtl"] body.user-panel-rtl #filterPanel.user-dashboard-sidebar.show,
-body.user-panel-rtl #filterPanel.user-dashboard-sidebar.show,
-html[dir="ltr"] body.user-panel #filterPanel.user-dashboard-sidebar.show,
-html[dir="ltr"] body.user-panel-ltr #filterPanel.user-dashboard-sidebar.show,
-body.user-panel-ltr #filterPanel.user-dashboard-sidebar.show {
+html[dir="rtl"] body.user-panel:not(.apple-hig) #filterPanel.user-dashboard-sidebar.show,
+html[dir="rtl"] body.user-panel-rtl:not(.apple-hig) #filterPanel.user-dashboard-sidebar.show,
+body.user-panel-rtl:not(.apple-hig) #filterPanel.user-dashboard-sidebar.show,
+html[dir="ltr"] body.user-panel:not(.apple-hig) #filterPanel.user-dashboard-sidebar.show,
+html[dir="ltr"] body.user-panel-ltr:not(.apple-hig) #filterPanel.user-dashboard-sidebar.show,
+body.user-panel-ltr:not(.apple-hig) #filterPanel.user-dashboard-sidebar.show {
     transform: translateX(0) !important;
 }
 
-html[dir="rtl"] body.user-panel .filter-header {
+html[dir="rtl"] body.user-panel:not(.apple-hig) .filter-header {
     flex-direction: row !important;
     text-align: right;
 }
 
-html[dir="rtl"] body.user-panel #filterPanel .card,
-html[dir="rtl"] body.user-panel #filterPanel .card h6,
-html[dir="rtl"] body.user-panel #filterPanel .card p,
-html[dir="rtl"] body.user-panel #filterPanel .filter-header h5 {
+html[dir="rtl"] body.user-panel:not(.apple-hig) #filterPanel .card,
+html[dir="rtl"] body.user-panel:not(.apple-hig) #filterPanel .card h6,
+html[dir="rtl"] body.user-panel:not(.apple-hig) #filterPanel .card p,
+html[dir="rtl"] body.user-panel:not(.apple-hig) #filterPanel .filter-header h5 {
     text-align: right;
 }
 
-html[dir="rtl"] body.user-panel #toggleSidebar {
+html[dir="rtl"] body.user-panel:not(.apple-hig) #toggleSidebar {
     margin-left: 0 !important;
     margin-right: 0 !important;
     margin-inline-end: 15px !important;
     margin-inline-start: 0 !important;
 }
 
-html[dir="rtl"] body.user-panel .user-navbar .nav-start {
+html[dir="rtl"] body.user-panel:not(.apple-hig) .user-navbar .nav-start {
     flex-direction: row;
 }
 
@@ -389,18 +389,18 @@ html[dir="rtl"] body.user-panel .sidebar-overlay.show {
     z-index: 1048;
 }
 
-html[dir="rtl"] body.user-panel #filterPanel.user-dashboard-sidebar {
+html[dir="rtl"] body.user-panel:not(.apple-hig) #filterPanel.user-dashboard-sidebar {
     z-index: 1055;
 }
 
 @media (max-width: 768px) {
-    html[dir="rtl"] body.user-panel #filterPanel.user-dashboard-sidebar {
+    html[dir="rtl"] body.user-panel:not(.apple-hig) #filterPanel.user-dashboard-sidebar {
         width: min(320px, 88vw) !important;
         max-width: 100vw;
         border-radius: 20px 0 0 20px !important;
     }
 
-    html[dir="ltr"] body.user-panel #filterPanel.user-dashboard-sidebar {
+    html[dir="ltr"] body.user-panel:not(.apple-hig) #filterPanel.user-dashboard-sidebar {
         border-radius: 0 20px 20px 0 !important;
     }
 }

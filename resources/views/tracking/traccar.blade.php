@@ -7,44 +7,22 @@
     <link rel="stylesheet" href="{{ asset('css/vehicle-map-popup.css') }}?v={{ filemtime(public_path('css/vehicle-map-popup.css')) }}">
     <link rel="stylesheet" href="{{ asset('css/route-trip-bar.css') }}?v={{ filemtime(public_path('css/route-trip-bar.css')) }}">
     <style>
-        /* ===== Design tokens (single source of truth; dark-mode-ready) =====
-           Defined on :root so they resolve everywhere, including menus/info-windows
-           that get appended outside the .tc-app subtree. */
+        /* Map-specific tokens (extends shared design-tokens partial) */
         :root {
-            --tc-radius-sm: 7px;
-            --tc-radius: 11px;
-            --tc-radius-lg: 16px;
-            /* Soft, layered shadows for a premium depth */
-            --tc-shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 3px rgba(16, 24, 40, 0.05);
-            --tc-shadow: 0 8px 20px -10px rgba(16, 24, 40, 0.22), 0 2px 6px -2px rgba(16, 24, 40, 0.10);
-            --tc-shadow-lg: 0 24px 48px -16px rgba(16, 24, 40, 0.30), 0 8px 20px -12px rgba(16, 24, 40, 0.16);
-            /* Neutrals — refined cool slate */
-            --tc-bg: #eff2f7;
-            --tc-surface: #ffffff;
-            --tc-surface-2: #f6f8fb;
-            --tc-surface-3: #eef1f6;
-            --tc-border: #e6ebf2;
-            --tc-border-strong: #d6dce6;
-            --tc-border-soft: #eef2f7;
-            --tc-text: #1c2533;
-            --tc-text-soft: #475467;
-            --tc-text-muted: #7a8699;
-            --tc-text-faint: #9aa6b6;
-            /* Accent — refined indigo (moderate, premium) */
-            --tc-primary: #4154d6;
-            --tc-primary-strong: #3343b8;
-            --tc-primary-soft: #eef1fd;
-            --tc-primary-softer: #f5f7fe;
-            /* Status palette (spec colors, slightly desaturated for a softer look) */
-            --tc-running: #1f9d57;
-            --tc-running-soft: #e7f6ee;
-            --tc-idle: #d99a16;
-            --tc-idle-soft: #fbf2dc;
-            --tc-stopped: #e8763a;
-            --tc-stopped-soft: #fcefe6;
-            --tc-offline: #e1556a;
-            --tc-offline-soft: #fcebef;
-            --tc-alert: #d6394d;
+            --tc-shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.08), 0 0 0 0.5px rgba(0, 0, 0, 0.04);
+            --tc-border-strong: rgba(60, 60, 67, 0.18);
+            --tc-text-soft: #3a3a3c;
+            --tc-primary-strong: #0062cc;
+            --tc-primary-softer: rgba(0, 122, 255, 0.06);
+            --tc-running: #34c759;
+            --tc-running-soft: rgba(52, 199, 89, 0.12);
+            --tc-idle: #ff9500;
+            --tc-idle-soft: rgba(255, 149, 0, 0.12);
+            --tc-stopped: #ff9500;
+            --tc-stopped-soft: rgba(255, 149, 0, 0.12);
+            --tc-offline: #ff3b30;
+            --tc-offline-soft: rgba(255, 59, 48, 0.12);
+            --tc-alert: #ff3b30;
         }
 
         /* Dark mode scaffold — flip by adding data-theme="dark" on .tc-app (no logic change needed). */
@@ -67,184 +45,256 @@
         @if($panel === 'user')
         body.gt-page-active { overflow: hidden; }
         body.gt-page-active .content-wrap {
-            height: calc(100dvh - 96px);
-            max-height: calc(100dvh - 96px);
+            height: calc(100dvh - var(--tracking-topbar-height, 52px));
+            max-height: calc(100dvh - var(--tracking-topbar-height, 52px));
             overflow: hidden;
             padding: 0 !important;
         }
-        @else
+        body.gt-page-active .tc-app { height: 100%; }
+        @endif
         .content-wrap { padding: 0 !important; }
         .footer-premium { display: none; }
-        @endif
 
         .tc-app {
             display: flex;
             flex-direction: column;
-            height: @if($panel === 'user') 100% @else calc(100vh - 64px) @endif;
+            height: calc(100vh - var(--tracking-topbar-height, 52px));
             min-height: 460px;
             background: var(--tc-bg);
             position: relative;
             --tc-chrome-panel: 0px;
+            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', 'Helvetica Neue', sans-serif;
+            letter-spacing: -0.018em;
         }
-        .tc-app.tc-app--nav-open {
-            --tc-nav-bar-height: 96px;
-        }
-        .tc-app.tc-app--nav-open:has(.tc-panel--open) {
-            --tc-chrome-panel: min(360px, 94vw);
-        }
-
-        /* ===== Top icon toolbar (Traccar style) ===== */
-        .tc-iconbar {
-            position: absolute;
-            top: 12px;
-            inset-inline-start: 12px;
-            z-index: 10;
-            display: inline-flex;
-            align-items: center;
-            gap: 0.15rem;
-            flex-wrap: nowrap;
-            background: var(--tc-surface);
-            border-radius: 10px;
-            box-shadow: var(--tc-shadow);
-            padding: 0;
-            width: 42px;
-            height: 42px;
-            max-width: 42px;
-            max-height: 42px;
-            overflow: visible;
-            border: none;
-            opacity: 1;
-            pointer-events: auto;
-            transition: max-width 0.28s ease, max-height 0.24s ease, width 0.28s ease, height 0.24s ease,
-                border-radius 0.2s ease, box-shadow 0.2s ease, top 0.24s ease, inset 0.24s ease, padding 0.24s ease;
-        }
-        .tc-app.tc-app--nav-open .tc-iconbar {
-            top: 0;
-            inset-inline-start: 0;
-            right: 0;
-            width: 100%;
-            height: auto;
-            max-width: 100%;
-            max-height: 96px;
-            border-radius: 0;
-            box-shadow: var(--tc-shadow-sm);
-            border-bottom: 1px solid var(--tc-border);
-            padding: 0.4rem 0.7rem;
-            flex-wrap: wrap;
-            overflow-x: auto;
-            overflow-y: visible;
+        .tc-app:has(.tc-panel--open) {
+            --tc-chrome-panel: 0px;
         }
 
-        .tc-nav-toggle {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            position: relative;
+        /* Desktop: fleet panel sits beside the map (no overlay, no dimming). */
+        @media (min-width: 769px) {
+            .tc-main.tc-main--drawer .tc-panel {
+                position: relative;
+                top: auto;
+                bottom: auto;
+                inset-inline-start: auto;
+                transform: none;
+                z-index: 4;
+                box-shadow: none;
+                width: min(360px, 34vw);
+                max-width: 360px;
+                transition: width 0.28s ease, min-width 0.28s ease, opacity 0.2s ease, border-color 0.28s ease;
+                overflow: hidden;
+            }
+            .tc-main.tc-main--drawer .tc-panel:not(.tc-panel--open) {
+                width: 0;
+                min-width: 0;
+                max-width: 0;
+                border-inline-end-color: transparent;
+                opacity: 0;
+                pointer-events: none;
+            }
+            .tc-main.tc-main--drawer .tc-map-wrap {
+                flex: 1;
+                min-width: 0;
+                width: auto;
+            }
+            .tc-panel-backdrop {
+                display: none !important;
+            }
+        }
+
+        /* ===== Apple-style module navigation ===== */
+        .tc-workspace-nav {
             flex-shrink: 0;
-            width: 42px;
-            height: 42px;
-            border: none;
-            border-radius: 10px;
-            background: transparent;
-            color: var(--tc-primary);
-            font-size: 1.05rem;
-            cursor: pointer;
-            overflow: visible;
-        }
-        .tc-app.tc-app--nav-open .tc-nav-toggle {
-            background: var(--tc-primary);
-            color: #fff;
-        }
-
-        .tc-iconbar-links {
-            display: inline-flex;
+            display: flex;
             align-items: center;
-            gap: 0.15rem;
-            flex: 0 0 auto;
-            width: 0;
-            max-width: 0;
-            opacity: 0;
-            overflow: hidden;
-            pointer-events: none;
-            transition: opacity 0.18s ease, max-width 0.28s ease;
+            gap: 0.35rem;
+            min-height: 34px;
+            padding: 0.25rem 0.5rem;
+            background: var(--apple-bg-primary);
+            border-bottom: 0.5px solid var(--tc-border);
+            z-index: 30;
         }
-        .tc-app.tc-app--nav-open .tc-iconbar-links {
-            flex: 1;
-            width: auto;
-            max-width: none;
-            opacity: 1;
-            overflow: visible;
-            pointer-events: auto;
+        html.tc-module-nav-collapsed .tc-workspace-nav,
+        body.tc-module-nav-collapsed .tc-workspace-nav {
+            display: none;
+        }
+        html.tc-module-nav-collapsed .tc-workspace-nav__reveal,
+        body.tc-module-nav-collapsed .tc-workspace-nav__reveal {
+            display: flex;
         }
 
-        .tc-nav-close {
+        .tc-workspace-nav__reveal {
             display: none;
             align-items: center;
             justify-content: center;
-            width: 38px;
-            height: 38px;
-            border: 1px solid var(--tc-border);
-            border-radius: var(--tc-radius-sm);
-            background: var(--tc-surface);
-            color: var(--tc-text-muted);
-            font-size: 1rem;
-            cursor: pointer;
-            flex-shrink: 0;
+            width: 100%;
+            min-height: 28px;
+            padding: 0.2rem 0.65rem;
+            background: var(--apple-bg-primary);
+            border-bottom: 0.5px solid var(--tc-border-soft);
         }
-        .tc-app.tc-app--nav-open .tc-nav-close {
+        .tc-workspace-nav__reveal-btn {
             display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            border: none;
+            border-radius: 6px;
+            background: transparent;
+            color: #007aff;
+            font-size: 0.6875rem;
+            font-weight: 510;
+            letter-spacing: -0.01em;
+            padding: 0.2rem 0.5rem;
+            cursor: pointer;
         }
-        .tc-nav-close:hover {
-            background: var(--tc-surface-2);
-            color: var(--tc-primary);
-            border-color: var(--tc-primary);
+        .tc-workspace-nav__reveal-btn:hover {
+            background: rgba(0, 122, 255, 0.08);
+        }
+        .tc-workspace-nav__reveal-btn i { font-size: 0.65rem; opacity: 0.85; }
+
+        .tc-workspace-nav__panel-btn {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            width: 30px;
+            height: 30px;
+            border: none;
+            border-radius: 8px;
+            background: rgba(118, 118, 128, 0.12);
+            color: #3a3a3c;
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: background 0.2s ease, color 0.2s ease, transform 0.15s ease;
+        }
+        .tc-workspace-nav__panel-btn:hover {
+            background: rgba(118, 118, 128, 0.18);
+            color: #1d1d1f;
+        }
+        .tc-workspace-nav__panel-btn.active,
+        .tc-app.tc-app--panel-open .tc-workspace-nav__panel-btn {
+            background: #007aff;
+            color: #fff;
         }
 
-        .tc-nav-toggle .tc-toggle-badge {
+        .tc-workspace-nav__collapse-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            width: 26px;
+            height: 26px;
+            border: none;
+            border-radius: 6px;
+            background: transparent;
+            color: #86868b;
+            font-size: 0.7rem;
+            cursor: pointer;
+            transition: background 0.2s ease, color 0.2s ease;
+        }
+        .tc-workspace-nav__collapse-btn:hover {
+            background: rgba(118, 118, 128, 0.12);
+            color: #3a3a3c;
+        }
+
+        .tc-workspace-nav__track {
+            display: flex;
+            align-items: center;
+            flex: 1;
+            min-width: 0;
+            padding: 2px;
+            border-radius: 9px;
+            background: var(--apple-bg-secondary);
+            overflow-x: auto;
+            scrollbar-width: none;
+            -webkit-overflow-scrolling: touch;
+        }
+        .tc-workspace-nav__track::-webkit-scrollbar { display: none; }
+
+        .tc-workspace-nav__links {
+            display: inline-flex;
+            align-items: center;
+            gap: 2px;
+            min-width: min-content;
+        }
+
+        .tc-workspace-nav__links a {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.3rem;
+            padding: 0.22rem 0.5rem;
+            border-radius: 6px;
+            color: #636366;
+            text-decoration: none;
+            font-size: 0.6875rem;
+            font-weight: 500;
+            letter-spacing: -0.02em;
+            line-height: 1.25;
+            white-space: nowrap;
+            transition: background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+        }
+        .tc-workspace-nav__links a i {
+            font-size: 0.6875rem;
+            opacity: 0.75;
+            width: 1em;
+            text-align: center;
+            color: #8e8e93;
+        }
+        .tc-workspace-nav__links a span {
+            text-transform: none;
+        }
+        .tc-workspace-nav__links a:hover {
+            color: #1d1d1f;
+        }
+        .tc-workspace-nav__links a:hover i { opacity: 0.95; color: #636366; }
+        .tc-workspace-nav__links a.active {
+            background: var(--apple-bg-primary);
+            color: #1d1d1f;
+            font-weight: 600;
+            box-shadow: var(--tc-shadow-sm);
+        }
+        .tc-workspace-nav__links a.active i {
+            opacity: 1;
+            color: #007aff;
+        }
+
+        .tc-workspace-nav__actions {
+            display: inline-flex;
+            align-items: center;
+            flex-shrink: 0;
+            margin-inline-start: 0.15rem;
+        }
+
+        .tc-workspace-nav__panel-btn .tc-toggle-badge {
             position: absolute;
-            top: -5px;
-            inset-inline-end: -5px;
-            min-width: 20px;
-            height: 20px;
-            padding: 0 5px;
+            top: -4px;
+            inset-inline-end: -4px;
+            min-width: 16px;
+            height: 16px;
+            padding: 0 4px;
             border-radius: 999px;
-            background: var(--tc-alert);
+            background: #ff3b30;
             color: #fff;
-            font-size: 0.65rem;
-            font-weight: 700;
+            font-size: 0.5625rem;
+            font-weight: 600;
             display: inline-flex;
             align-items: center;
             justify-content: center;
             line-height: 1;
-            box-shadow: 0 0 0 2px var(--tc-surface);
-            z-index: 12;
+            box-shadow: 0 0 0 1.5px #fff;
             pointer-events: none;
         }
-        .tc-app.tc-app--nav-open .tc-nav-toggle .tc-toggle-badge {
-            box-shadow: 0 0 0 2px var(--tc-primary);
-        }
-        .tc-nav-toggle .tc-toggle-badge[hidden] {
-            display: none !important;
-        }
+        .tc-workspace-nav__panel-btn .tc-toggle-badge[hidden] { display: none !important; }
 
-        .tc-iconbar a {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            width: 38px;
-            height: 38px;
-            border-radius: var(--tc-radius-sm);
-            color: var(--tc-text-muted);
-            text-decoration: none;
-            font-size: 1.02rem;
-            transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
-        }
+        /* Legacy aliases */
+        .tc-iconbar { display: contents; }
+        .tc-nav-toggle, .tc-nav-close, .tc-iconbar-links { display: none; }
+        .tc-workspace-nav__divider { display: none; }
+        .tc-workspace-nav__tool-btn { display: none; }
 
-        .tc-iconbar a:hover { background: var(--tc-primary-soft); color: var(--tc-primary); }
-        .tc-iconbar a.active { background: var(--tc-primary); color: #fff; box-shadow: 0 4px 10px -3px color-mix(in srgb, var(--tc-primary) 55%, transparent); }
-        .tc-iconbar .tc-iconbar-sep { flex: 1; }
-
-        /* Alert controls (sound + desktop notifications) */
+        /* Alert controls in map area (legacy fallback) */
         .tc-alert-controls { display: flex; align-items: center; gap: 0.25rem; flex-shrink: 0; }
         .tc-alert-btn {
             display: inline-flex;
@@ -289,8 +339,7 @@
             position: relative;
         }
 
-        /* Backdrop when navigation drawer is open */
-           fully inert when closed and never intercepts map taps. */
+        /* Backdrop when fleet drawer is open — fully inert when closed. */
         .tc-panel-backdrop {
             position: absolute;
             inset: 0;
@@ -303,18 +352,19 @@
         }
         .tc-panel-backdrop.show { opacity: 1; visibility: visible; pointer-events: auto; }
 
-        /* ===== Left panel ===== */
+        /* ===== Left panel (Apple sidebar) ===== */
         .tc-panel {
-            width: min(360px, 94vw);
+            width: min(272px, 94vw);
             flex-shrink: 0;
             display: flex;
             flex-direction: column;
-            background: var(--tc-surface);
-            border-inline-end: 1px solid var(--tc-border);
+            background: var(--tc-sidebar);
+            border-inline-end: 0.5px solid var(--tc-border);
             z-index: 4;
         }
 
-        /* Slide-out drawer (all breakpoints when workspace sidebar is enabled) */
+        /* Slide-out drawer on small screens only */
+        @media (max-width: 768px) {
         .tc-main.tc-main--drawer .tc-panel {
             position: absolute;
             top: 0;
@@ -331,32 +381,45 @@
         [dir="rtl"] .tc-main.tc-main--drawer .tc-panel { transform: translateX(106%); }
         .tc-main.tc-main--drawer .tc-panel.tc-panel--open { transform: none; }
         .tc-main.tc-main--drawer .tc-map-wrap { width: 100%; flex: 1; }
+        .tc-app:has(.tc-panel--open) {
+            --tc-chrome-panel: min(340px, 86vw);
+        }
+        }
 
         .tc-tabs {
             display: flex;
-            border-bottom: 1px solid var(--tc-border);
+            gap: 2px;
+            padding: 0.45rem 0.65rem 0.35rem;
+            background: var(--tc-sidebar);
+            border-bottom: 0.5px solid var(--tc-border-soft);
         }
 
         .tc-tab {
             flex: 1;
-            padding: 0.6rem 0.4rem;
+            padding: 0.38rem 0.4rem;
             text-align: center;
-            font-size: 0.82rem;
-            font-weight: 600;
-            color: var(--tc-text-muted);
-            background: var(--tc-surface-2);
+            font-size: 0.8125rem;
+            font-weight: 500;
+            letter-spacing: -0.02em;
+            color: #636366;
+            background: transparent;
             border: none;
-            border-bottom: 2px solid transparent;
+            border-bottom: none;
+            border-radius: 8px;
             cursor: pointer;
             white-space: nowrap;
-            transition: color 0.14s ease, background 0.14s ease, border-color 0.14s ease;
+            transition: color 0.14s ease, background 0.14s ease;
         }
 
-        .tc-tab:hover { color: var(--tc-primary); background: var(--tc-surface); }
+        .tc-tab:hover { color: #1d1d1f; background: rgba(118, 118, 128, 0.08); }
         .tc-tab.active {
-            color: var(--tc-primary);
-            background: var(--tc-surface);
-            border-bottom-color: var(--tc-primary);
+            color: #007aff;
+            background: rgba(0, 122, 255, 0.1);
+            font-weight: 600;
+        }
+
+        .tc-panel .tc-list {
+            background: var(--tc-sidebar);
         }
 
         .tc-tab-body {
@@ -368,7 +431,11 @@
 
         .tc-tab-body.active { display: flex; }
 
-        .tc-tab-head { padding: 0.6rem; border-bottom: 1px solid var(--tc-border); }
+        .tc-tab-head {
+            padding: 0.6rem;
+            border-bottom: 0.5px solid var(--tc-border-soft);
+            background: var(--apple-bg-group);
+        }
 
         .tc-filter-chips {
             display: flex;
@@ -378,45 +445,47 @@
         }
 
         .tc-chip {
-            border: 1px solid var(--tc-border);
-            background: var(--tc-surface);
-            color: var(--tc-text-soft);
+            border: none;
+            background: var(--apple-bg-primary);
+            color: #636366;
             border-radius: 999px;
-            padding: 0.22rem 0.65rem;
-            font-size: 0.72rem;
-            font-weight: 600;
+            padding: 0.28rem 0.7rem;
+            font-size: 0.75rem;
+            font-weight: 500;
+            letter-spacing: -0.01em;
             cursor: pointer;
             display: inline-flex;
             align-items: center;
-            gap: 0.3rem;
+            gap: 0.35rem;
             transition: all 0.14s ease;
         }
-        .tc-chip:hover { border-color: var(--tc-primary); color: var(--tc-primary); }
+        .tc-chip:hover { background: rgba(118, 118, 128, 0.18); color: #1d1d1f; }
 
         .tc-chip .tc-chip-count {
-            background: var(--tc-surface-3);
+            background: var(--apple-bg-secondary);
             border-radius: 999px;
             padding: 0 0.35rem;
-            font-size: 0.68rem;
-            color: var(--tc-text-muted);
+            font-size: 0.6875rem;
+            color: #8e8e93;
+            font-weight: 600;
         }
 
-        .tc-chip.active { background: var(--tc-primary); border-color: var(--tc-primary); color: #fff; box-shadow: 0 3px 8px -3px color-mix(in srgb, var(--tc-primary) 55%, transparent); }
-        .tc-chip.active:hover { color: #fff; }
+        .tc-chip.active { background: #007aff; color: #fff; box-shadow: 0 2px 8px rgba(0, 122, 255, 0.28); }
+        .tc-chip.active:hover { color: #fff; background: #0062cc; }
         .tc-chip.active .tc-chip-count { background: rgba(255, 255, 255, 0.25); color: #fff; }
 
         .tc-list-head {
             display: flex;
             align-items: center;
             gap: 0.5rem;
-            padding: 0.4rem 0.7rem;
-            background: var(--tc-surface-2);
-            border-bottom: 1px solid var(--tc-border);
-            font-size: 0.7rem;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            color: var(--tc-text-muted);
+            padding: 0.45rem 0.75rem;
+            background: var(--apple-bg-group);
+            border-bottom: 0.5px solid var(--tc-border-soft);
+            font-size: 0.6875rem;
+            font-weight: 600;
+            text-transform: none;
+            letter-spacing: -0.01em;
+            color: #86868b;
         }
 
         .tc-list-head .tc-col { width: 16px; text-align: center; flex-shrink: 0; }
@@ -427,14 +496,15 @@
         .tc-row {
             display: flex;
             align-items: flex-start;
-            gap: 0.5rem;
-            padding: 0.6rem 0.7rem;
-            border-bottom: 1px solid var(--tc-border-soft);
+            gap: 0.4rem;
+            padding: 0.45rem 0.6rem;
+            border-bottom: 0.5px solid var(--tc-border-soft);
             cursor: pointer;
+            background: var(--apple-bg-primary);
         }
 
-        .tc-allrow { background: var(--tc-surface); }
-        .tc-allrow:hover { background: var(--tc-surface); }
+        .tc-allrow { background: var(--apple-bg-primary); }
+        .tc-allrow:hover { background: var(--apple-bg-primary); }
 
         .tc-row .tc-check { width: 16px; height: 16px; margin-top: 0.18rem; flex-shrink: 0; cursor: pointer; }
         .tc-check-spacer { width: 16px; flex-shrink: 0; }
@@ -462,35 +532,35 @@
             gap: 0.4rem;
             flex-wrap: wrap;
         }
-        .tc-row-title { font-weight: 600; font-size: 0.86rem; color: var(--tc-text); }
+        .tc-row-title { font-weight: 600; font-size: 0.8125rem; color: var(--tc-text); }
 
         .tc-status-badge {
             display: inline-flex;
             align-items: center;
-            gap: 0.32rem;
-            font-size: 0.66rem;
-            font-weight: 700;
+            gap: 0.22rem;
+            font-size: 0.58rem;
+            font-weight: 600;
             line-height: 1;
             white-space: nowrap;
-            padding: 0.2rem 0.45rem;
+            padding: 0.12rem 0.35rem;
             border-radius: 999px;
             color: var(--st, var(--tc-text-muted));
-            background: color-mix(in srgb, var(--st, var(--tc-text-muted)) 15%, #fff);
-            border: 1px solid color-mix(in srgb, var(--st, var(--tc-text-muted)) 35%, transparent);
+            background: color-mix(in srgb, var(--st, var(--tc-text-muted)) 12%, #fff);
+            border: 1px solid color-mix(in srgb, var(--st, var(--tc-text-muted)) 28%, transparent);
         }
         .tc-status-badge::before {
             content: '';
-            width: 7px;
-            height: 7px;
+            width: 5px;
+            height: 5px;
             border-radius: 50%;
             background: var(--st, var(--tc-text-muted));
             flex-shrink: 0;
         }
         .tc-row-meta {
-            font-size: 0.72rem;
+            font-size: 0.66rem;
             color: var(--tc-text-muted);
-            margin-top: 0.1rem;
-            line-height: 1.35;
+            margin-top: 0.06rem;
+            line-height: 1.25;
             display: block;
         }
 
@@ -579,13 +649,7 @@
             flex: 1;
             min-height: 0;
             --tc-chrome-top: 12px;
-            --tc-chrome-start: 58px;
-            --tc-nav-bar-height: 0px;
-        }
-        .tc-app.tc-app--nav-open .tc-map-area {
-            --tc-chrome-top: calc(var(--tc-nav-bar-height) + 8px);
             --tc-chrome-start: calc(var(--tc-chrome-panel, 0px) + 12px);
-            --tc-nav-bar-height: 96px;
         }
 
         /* Company card — separate overlay on map (not part of hub top bar) */
@@ -728,26 +792,25 @@
             gap: 8px;
             margin-top: 8px;
         }
-        /* Reference-style map info cards (company / driver / route) */
+        /* Apple-style map info cards (company / driver) */
         .tc-map-area--dark-panels {
-            --tc-panel-bg: #0F2D57;
-            --tc-panel-bg-deep: #061E49;
-            --tc-panel-text: #FFFFFF;
-            --tc-panel-label: #E2E8F0;
-            --tc-panel-radius: 22px;
-            --tc-panel-shadow: 0 8px 20px rgba(0, 0, 0, 0.18);
+            --tc-panel-bg: var(--apple-bg-card);
+            --tc-panel-bg-deep: var(--apple-bg-group);
+            --tc-panel-text: #1d1d1f;
+            --tc-panel-label: #86868b;
+            --tc-panel-radius: 16px;
+            --tc-panel-shadow: var(--tc-shadow);
         }
         .tc-info-card {
             position: relative;
             width: 100%;
             pointer-events: auto;
             background: var(--tc-panel-bg);
-            border: none;
+            border: 0.5px solid var(--tc-border);
             border-radius: var(--tc-panel-radius);
             box-shadow: var(--tc-panel-shadow);
             color: var(--tc-panel-text);
             overflow: hidden;
-            background-image: linear-gradient(145deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0));
         }
         .tc-info-card[hidden] { display: none !important; }
         .tc-info-card__collapse {
@@ -770,15 +833,16 @@
         .tc-info-card:not(.is-open) .tc-info-card__collapse {
             position: static;
             width: 100%;
-            min-height: 46px;
+            min-height: 44px;
             display: flex;
             align-items: center;
             justify-content: space-between;
             gap: 12px;
-            padding: 12px 16px;
+            padding: 11px 14px;
             color: var(--tc-panel-text);
-            font-size: 14px;
-            font-weight: 800;
+            font-size: 0.8125rem;
+            font-weight: 600;
+            letter-spacing: -0.018em;
             text-align: start;
         }
         .tc-info-card:not(.is-open) .tc-info-card__collapse::before {
@@ -808,7 +872,7 @@
             align-items: center;
             gap: 10px;
             padding: 8px 0;
-            border-bottom: 1px solid var(--tc-panel-bg-deep);
+            border-bottom: 0.5px solid rgba(60, 60, 67, 0.08);
         }
         .tc-info-row:first-child { padding-top: 0; }
         .tc-info-row:last-child { border-bottom: 0; padding-bottom: 0; }
@@ -826,16 +890,17 @@
         }
         .tc-info-row__label-en {
             flex: 0 1 46%;
-            font-size: 12px;
-            font-weight: 600;
+            font-size: 0.6875rem;
+            font-weight: 500;
             color: var(--tc-panel-label);
             line-height: 1.35;
             text-align: start;
+            letter-spacing: -0.01em;
         }
         .tc-info-row__label-ar {
             flex: 0 1 46%;
-            font-size: 12px;
-            font-weight: 600;
+            font-size: 0.6875rem;
+            font-weight: 500;
             color: var(--tc-panel-label);
             direction: rtl;
             text-align: end;
@@ -846,18 +911,20 @@
             flex: 0 0 22px;
             width: 22px;
             text-align: center;
-            font-size: 16px;
-            color: var(--tc-panel-text);
+            font-size: 0.875rem;
+            color: #007aff;
             line-height: 1;
             align-self: center;
+            opacity: 0.85;
         }
         .tc-info-row__value {
             display: block;
             width: 100%;
-            font-size: 15px;
-            font-weight: 800;
+            font-size: 0.875rem;
+            font-weight: 600;
             color: var(--tc-panel-text);
             line-height: 1.4;
+            letter-spacing: -0.018em;
             word-break: normal;
             overflow-wrap: break-word;
             white-space: normal;
@@ -865,11 +932,11 @@
             unicode-bidi: plaintext;
         }
         .tc-info-row__value--phone {
-            font-size: 16px;
-            letter-spacing: 0.01em;
+            font-size: 0.9375rem;
+            letter-spacing: -0.01em;
         }
         .tc-info-row__value a {
-            color: inherit;
+            color: #007aff;
             text-decoration: none;
             font-weight: inherit;
             display: inline;
@@ -893,13 +960,13 @@
         .tc-driver-card__fields .tc-info-row:first-child { padding-top: 0; }
         .tc-driver-card__fields .tc-info-row:last-child { border-bottom: 0; padding-bottom: 0; }
         .tc-driver-card__photo-wrap {
-            flex: 0 0 64px;
-            width: 64px;
-            height: 64px;
-            background: #fff;
-            border-radius: 10px;
+            flex: 0 0 56px;
+            width: 56px;
+            height: 56px;
+            background: var(--apple-bg-secondary);
+            border-radius: 12px;
             overflow: hidden;
-            box-shadow: 0 4px 12px rgba(6, 30, 73, 0.35);
+            box-shadow: 0 0 0 0.5px var(--tc-border);
         }
         .tc-driver-card__photo {
             width: 100%;
@@ -925,62 +992,70 @@
             text-align: center;
         }
 
-        /* Dark map panels: company, driver, route footer */
+        /* Route progress bar — Apple elevated card on map */
         .tc-map-area--dark-panels .tc-info-card,
         .tc-map-area--dark-panels .route-trip-bar__card {
-            background: var(--tc-panel-bg);
-            border: none;
-            border-radius: var(--tc-panel-radius);
-            box-shadow: var(--tc-panel-shadow);
-            color: var(--tc-panel-text);
+            background: var(--apple-bg-card);
+            border: 0.5px solid var(--tc-border);
+            border-radius: 16px;
+            box-shadow: var(--tc-shadow);
+            color: #1d1d1f;
         }
         .tc-map-area--dark-panels .route-trip-bar__head-title,
         .tc-map-area--dark-panels .route-trip-bar__stat-label,
         .tc-map-area--dark-panels .route-trip-bar__hint,
         .tc-map-area--dark-panels .route-trip-bar__compact-hint {
-            color: var(--tc-panel-label);
+            color: #86868b;
             font-weight: 500;
+            font-size: 0.75rem;
+            letter-spacing: -0.01em;
         }
         .tc-map-area--dark-panels .route-trip-bar__stat-value,
         .tc-map-area--dark-panels .route-trip-bar__pct,
         .tc-map-area--dark-panels .route-trip-bar__meta {
-            color: var(--tc-panel-text);
-            font-weight: 700;
+            color: #1d1d1f;
+            font-weight: 600;
+            letter-spacing: -0.018em;
         }
         .tc-map-area--dark-panels .route-trip-bar__stat-value--muted {
-            color: var(--tc-panel-label);
+            color: #86868b;
         }
         .tc-map-area--dark-panels .route-trip-bar__pct {
             font-weight: 700;
+            font-size: 1rem;
+            color: #007aff;
         }
-        .tc-map-area--dark-panels .route-trip-bar__pct--warn { color: #fca5a5; }
-        .tc-map-area--dark-panels .route-trip-bar__pct--frozen { color: #fde68a; }
+        .tc-map-area--dark-panels .route-trip-bar__pct--warn { color: #ff3b30; }
+        .tc-map-area--dark-panels .route-trip-bar__pct--frozen { color: #ff9500; }
         .tc-map-area--dark-panels .route-trip-bar__nav-badge {
-            font-weight: 700;
+            font-weight: 600;
+            font-size: 0.6875rem;
             border: none;
-            background: var(--tc-panel-bg-deep);
-            color: var(--tc-panel-text);
+            background: var(--apple-bg-secondary);
+            color: #636366;
+            border-radius: 6px;
         }
         .tc-map-area--dark-panels .route-trip-bar__nav-badge--on_assigned,
         .tc-map-area--dark-panels .route-trip-bar__nav-badge--destination_reached {
-            color: #bbf7d0;
-            background: rgba(22, 101, 52, 0.45);
+            color: #248a3d;
+            background: rgba(52, 199, 89, 0.14);
         }
         .tc-map-area--dark-panels .route-trip-bar__nav-badge--off_route {
-            color: #fecaca;
-            background: rgba(185, 28, 28, 0.4);
+            color: #ff3b30;
+            background: rgba(255, 59, 48, 0.12);
         }
         .tc-map-area--dark-panels .route-trip-bar__compact:hover {
-            background: rgba(255, 255, 255, 0.04);
+            background: rgba(118, 118, 128, 0.06);
         }
         .tc-map-area--dark-panels .route-trip-bar__chevron {
-            color: var(--tc-panel-label);
+            color: #86868b;
         }
         .tc-map-area--dark-panels .route-trip-bar__manage-link {
-            color: #FFFFFF;
-            font-weight: 700;
-            text-decoration: underline;
+            color: #007aff;
+            font-weight: 600;
+            text-decoration: none;
         }
+        .tc-map-area--dark-panels .route-trip-bar__manage-link:hover { text-decoration: underline; }
         .tc-map-area--dark-panels .route-trip-bar--footer .route-trip-bar__compact {
             padding: 14px 18px;
             gap: 10px;
@@ -989,16 +1064,17 @@
             margin-bottom: 6px;
         }
         .tc-map-area--dark-panels .route-trip-bar--footer .route-trip-bar__head-title {
-            font-size: 12px;
-            font-weight: 700;
-            color: var(--tc-panel-label);
+            font-size: 0.75rem;
+            font-weight: 500;
+            color: #86868b;
             text-transform: none;
-            letter-spacing: 0;
+            letter-spacing: -0.01em;
         }
         .tc-map-area--dark-panels .route-trip-bar--footer .route-trip-bar__pct {
-            font-size: 17px;
-            font-weight: 900;
-            color: var(--tc-panel-text);
+            font-size: 1.0625rem;
+            font-weight: 700;
+            color: #007aff;
+            letter-spacing: -0.022em;
         }
         .tc-map-area--dark-panels .route-trip-bar--footer .route-trip-bar__stats--compact {
             display: flex;
@@ -1012,17 +1088,18 @@
             align-items: baseline;
         }
         .tc-map-area--dark-panels .route-trip-bar--footer .route-trip-bar__stat-label {
-            font-size: 12px;
-            font-weight: 700;
-            color: var(--tc-panel-label);
+            font-size: 0.75rem;
+            font-weight: 500;
+            color: #86868b;
             text-transform: none;
-            letter-spacing: 0;
+            letter-spacing: -0.01em;
             opacity: 1;
         }
         .tc-map-area--dark-panels .route-trip-bar--footer .route-trip-bar__stat-value {
-            font-size: 14px;
-            font-weight: 900;
-            color: var(--tc-panel-text);
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: #1d1d1f;
+            letter-spacing: -0.018em;
         }
         .tc-map-area--dark-panels .route-trip-bar--footer .route-trip-bar__route-line {
             margin-top: 8px;
@@ -1031,7 +1108,7 @@
         .tc-map-area--dark-panels .route-trip-bar--footer .route-trip-bar__line-bg {
             height: 5px;
             top: 10px;
-            background: var(--tc-panel-bg-deep);
+            background: var(--apple-bg-secondary);
         }
         .tc-map-area--dark-panels .route-trip-bar--footer .route-trip-bar__line-fill {
             height: 4px;
@@ -1089,7 +1166,7 @@
             top: auto;
             inset-inline-end: auto;
         }
-        #tcMap { position: absolute; inset: 0; background: var(--tc-surface-3); }
+        #tcMap { position: absolute; inset: 0; background: var(--apple-bg-secondary); }
 
         .tc-map-controls {
             position: absolute;
@@ -1210,7 +1287,7 @@
         }
         .tc-map-error[hidden] { display: none !important; }
 
-        /* Footer info panel (Data / Graph / Messages) */
+        /* Footer info panel (Data / Graph / Messages) — Apple elevated sheet */
         .tc-footer {
             height: var(--tc-footer-height, 250px);
             min-height: 120px;
@@ -1218,11 +1295,11 @@
             flex-shrink: 0;
             display: flex;
             flex-direction: column;
-            background: #0F2D57;
-            border-top: none;
-            box-shadow: 0 -8px 20px rgba(0, 0, 0, 0.18);
+            background: var(--apple-bg-card);
+            border-top: 0.5px solid var(--tc-border);
+            box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.06);
             z-index: 5;
-            color: #FFFFFF;
+            color: #1d1d1f;
             position: relative;
         }
         .tc-footer-resize {
@@ -1230,84 +1307,135 @@
             height: 10px;
             cursor: ns-resize;
             touch-action: none;
-            background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02));
-            border-bottom: 1px solid #061E49;
+            background: transparent;
+            border-bottom: none;
             display: flex;
             align-items: center;
             justify-content: center;
         }
         .tc-footer-resize::after {
             content: '';
-            width: 44px;
-            height: 4px;
+            width: 36px;
+            height: 5px;
             border-radius: 999px;
-            background: rgba(214, 220, 230, 0.55);
+            background: rgba(60, 60, 67, 0.18);
         }
         .tc-footer-resize:hover::after,
         .tc-footer-resize:active::after {
-            background: rgba(255, 255, 255, 0.85);
+            background: rgba(60, 60, 67, 0.32);
         }
         .tc-footer[hidden] { display: none !important; }
         .tc-footer-head {
             display: flex;
             align-items: center;
-            gap: 0.75rem;
-            padding: 0 0.7rem;
-            border-bottom: 1px solid #061E49;
-            font-size: 0.82rem;
-            font-weight: 700;
-            color: #FFFFFF;
-            background: #061E49;
+            gap: 0.5rem;
+            padding: 0 0.65rem;
+            min-height: 40px;
+            border-bottom: 0.5px solid rgba(60, 60, 67, 0.1);
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: #1d1d1f;
+            background: transparent;
         }
-        .tc-footer-tabs { display: flex; gap: 0.2rem; }
+        .tc-footer-tabs {
+            display: flex;
+            gap: 2px;
+            padding: 3px;
+            border-radius: 9px;
+            background: var(--apple-bg-secondary);
+        }
         .tc-ftab {
             border: none;
             background: none;
-            padding: 0.55rem 0.7rem;
-            font-size: 0.85rem;
-            font-weight: 700;
-            color: #D6DCE6;
-            border-bottom: 2px solid transparent;
+            padding: 0.28rem 0.55rem;
+            font-size: 0.6875rem;
+            font-weight: 500;
+            letter-spacing: -0.018em;
+            color: #636366;
+            border-radius: 7px;
+            border-bottom: none;
             cursor: pointer;
+            transition: background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
         }
-        .tc-ftab:hover { color: #FFFFFF; }
+        .tc-ftab:hover { color: #1d1d1f; }
         .tc-ftab.active {
-            color: #FFFFFF;
-            border-bottom-color: #FFFFFF;
+            color: #1d1d1f;
+            font-weight: 600;
+            background: var(--apple-bg-primary);
+            box-shadow: var(--tc-shadow-sm);
         }
         .tc-footer-title {
             flex: 1;
-            font-weight: 700;
-            color: #FFFFFF;
+            font-weight: 600;
+            font-size: 0.75rem;
+            letter-spacing: -0.018em;
+            color: #1d1d1f;
             text-align: center;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
         }
+        .tc-footer-head .tc-footer-close {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 28px;
+            height: 28px;
+            border: none;
+            border-radius: 8px;
+            background: rgba(118, 118, 128, 0.12);
+            color: #636366;
+            font-size: 0.8125rem;
+            cursor: pointer;
+            transition: background 0.2s ease, color 0.2s ease;
+        }
+        .tc-footer-head .tc-footer-close:hover {
+            background: rgba(118, 118, 128, 0.2);
+            color: #1d1d1f;
+        }
         .tc-footer-body {
             flex: 1;
             min-height: 0;
             position: relative;
-            background: #0F2D57;
+            background: transparent;
         }
         .tc-footer .tc-hist-stat {
-            background: #061E49;
-            border: none;
+            background: var(--apple-bg-group);
+            border: 0.5px solid var(--tc-border-soft);
             border-radius: 12px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+            box-shadow: none;
         }
-        .tc-footer .tc-hist-stat-lbl { color: #D6DCE6; font-weight: 500; }
-        .tc-footer .tc-hist-stat-val { color: #FFFFFF; font-weight: 700; }
-        .tc-footer .tc-empty { color: #D6DCE6; }
+        .tc-footer .tc-hist-stat-lbl { color: #86868b; font-weight: 500; font-size: 0.625rem; }
+        .tc-footer .tc-hist-stat-val { color: #1d1d1f; font-weight: 600; font-size: 0.8125rem; letter-spacing: -0.018em; }
+        .tc-footer .tc-empty { color: #86868b; font-size: 0.75rem; }
         .tc-footer .tc-fbody[data-fbody="messages"] .tc-msg-list li {
-            border-bottom-color: #061E49;
-            color: #FFFFFF;
+            border-bottom-color: rgba(60, 60, 67, 0.08);
+            color: #1d1d1f;
             font-weight: 500;
+            font-size: 0.75rem;
         }
         .tc-footer .tc-fbody[data-fbody="messages"] .tc-msg-time {
-            color: #D6DCE6;
+            color: #86868b;
+            font-size: 0.6875rem;
         }
-        .tc-fbody { position: absolute; inset: 0; padding: 0.5rem 0.8rem; overflow: auto; display: none; }
+        .tc-footer .tc-data-col {
+            background: var(--apple-bg-group);
+            border: 0.5px solid var(--tc-border-soft);
+            border-radius: 10px;
+        }
+        .tc-footer .tc-data-col h6 {
+            color: #007aff;
+            font-size: 0.625rem;
+            font-weight: 600;
+            letter-spacing: -0.01em;
+            text-transform: none;
+            margin-bottom: 0.25rem;
+        }
+        .tc-footer .tc-kv .tc-kv-k { color: #86868b; font-size: 0.6875rem; }
+        .tc-footer .tc-kv .tc-kv-v { color: #1d1d1f; font-weight: 600; font-size: 0.75rem; }
+        .tc-footer .tc-kv { padding: 0.08rem 0; }
+        .tc-footer .tc-muted { color: #86868b; font-size: 0.6875rem; font-weight: 500; }
+        .tc-fbody { position: absolute; inset: 0; padding: 0.4rem 0.65rem; overflow: auto; display: none; }
         .tc-fbody.active { display: block; }
         /* Data tab scrolls horizontally (Traccar-style strip), never grows the footer height. */
         .tc-fbody[data-fbody="data"] { overflow-x: scroll; overflow-y: hidden; scrollbar-width: thin; scrollbar-color: var(--tc-text-faint) var(--tc-border-soft); }
@@ -1338,29 +1466,29 @@
         #tcSpeedChart { width: 100% !important; height: 100% !important; }
 
         /* Data tab: Traccar-style horizontally-scrollable widget cards */
-        .tc-data-grid { display: flex; flex-wrap: nowrap; gap: 0.6rem; align-items: stretch; height: 100%; }
+        .tc-data-grid { display: flex; flex-wrap: nowrap; gap: 0.45rem; align-items: stretch; height: 100%; }
         .tc-data-col {
             box-sizing: border-box;
-            flex: 0 0 250px;
-            width: 250px;
+            flex: 0 0 200px;
+            width: 200px;
             border: 1px solid var(--tc-border);
             border-radius: var(--tc-radius);
             background: var(--tc-surface-2);
-            padding: 0.55rem 0.75rem;
+            padding: 0.45rem 0.6rem;
             overflow-y: auto;
         }
-        .tc-data-col h6 { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.5px; color: var(--tc-primary); margin: 0 0 0.35rem; font-weight: 700; }
-        .tc-kv { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; padding: 0.12rem 0; font-size: 0.8rem; border-bottom: 1px dashed var(--tc-border-soft); }
-        .tc-kv .tc-kv-k { color: var(--tc-text-muted); display: inline-flex; align-items: center; gap: 0.4rem; }
-        .tc-kv .tc-kv-v { color: var(--tc-text); font-weight: 600; text-align: end; }
+        .tc-data-col h6 { font-size: 0.625rem; text-transform: none; letter-spacing: -0.01em; color: var(--tc-primary); margin: 0 0 0.28rem; font-weight: 600; }
+        .tc-kv { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; padding: 0.08rem 0; font-size: 0.75rem; border-bottom: 1px dashed var(--tc-border-soft); }
+        .tc-kv .tc-kv-k { color: var(--tc-text-muted); display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.6875rem; }
+        .tc-kv .tc-kv-v { color: var(--tc-text); font-weight: 600; text-align: end; font-size: 0.75rem; }
         .tc-kv .tc-kv-v a { color: var(--tc-primary); text-decoration: none; }
         .tc-mini-events { list-style: none; margin: 0; padding: 0; }
-        .tc-mini-events li { font-size: 0.78rem; padding: 0.18rem 0; border-bottom: 1px dashed var(--tc-border-soft); display: flex; justify-content: space-between; gap: 0.75rem; }
+        .tc-mini-events li { font-size: 0.6875rem; padding: 0.14rem 0; border-bottom: 1px dashed var(--tc-border-soft); display: flex; justify-content: space-between; gap: 0.5rem; }
         .tc-mini-events li[data-tc-locate] { cursor: pointer; }
         .tc-mini-events li[data-tc-locate]:hover { color: var(--tc-primary); }
-        .tc-mini-events .tc-me-time { color: var(--tc-text-faint); white-space: nowrap; }
-        .tc-ctrl-row { display: flex; gap: 0.4rem; margin-top: 0.3rem; }
-        .tc-ctrl-row .form-select, .tc-ctrl-row .form-control { font-size: 0.8rem; }
+        .tc-mini-events .tc-me-time { color: var(--tc-text-faint); white-space: nowrap; font-size: 0.625rem; }
+        .tc-ctrl-row { display: flex; gap: 0.35rem; margin-top: 0.25rem; }
+        .tc-ctrl-row .form-select, .tc-ctrl-row .form-control { font-size: 0.6875rem; }
 
         /* Mileage bar chart (Traccar-style daily bars) */
         .tc-bars { display: flex; align-items: flex-end; gap: 0.45rem; height: 150px; padding-top: 0.4rem; }
@@ -1371,8 +1499,8 @@
 
         /* Speedometer gauge */
         .tc-gauge { width: 100%; max-width: 190px; display: block; margin: 0.4rem auto 0; }
-        .tc-gauge-val { font-size: 22px; font-weight: 700; fill: var(--tc-text); }
-        .tc-gauge-unit { font-size: 9px; fill: var(--tc-text-faint); }
+        .tc-gauge-val { font-size: 18px; font-weight: 700; fill: var(--tc-text); }
+        .tc-gauge-unit { font-size: 8px; fill: var(--tc-text-faint); }
 
         /* Notes / Photo */
         .tc-notes { font-size: 0.82rem; color: var(--tc-text-soft); white-space: pre-wrap; word-break: break-word; }
@@ -1415,9 +1543,9 @@
         }
 
         /* ===== Enhanced vehicle list meta (badges/indicators) ===== */
-        .tc-meta-chips { display: flex; flex-wrap: wrap; gap: 0.3rem 0.5rem; align-items: center; margin-top: 0.15rem; }
-        .tc-meta-chip { display: inline-flex; align-items: center; gap: 0.22rem; font-size: 0.72rem; color: var(--tc-text-muted); }
-        .tc-meta-chip i { font-size: 0.72rem; }
+        .tc-meta-chips { display: flex; flex-wrap: wrap; gap: 0.2rem 0.35rem; align-items: center; margin-top: 0.08rem; }
+        .tc-meta-chip { display: inline-flex; align-items: center; gap: 0.18rem; font-size: 0.625rem; color: var(--tc-text-muted); }
+        .tc-meta-chip i { font-size: 0.625rem; }
         .tc-ign-on { color: var(--tc-running); }
         .tc-ign-off { color: var(--tc-text-muted); }
         .tc-sig-strong { color: var(--tc-running); }
@@ -1470,23 +1598,18 @@
 
         /* ===== Tablet ===== */
         @media (max-width: 1024px) and (min-width: 769px) {
-            .tc-panel { width: min(320px, 42vw); }
+            .tc-panel { width: min(272px, 38vw); }
             .tc-map-controls .btn { width: 40px; height: 40px; }
         }
 
         /* ===== Mobile / small tablet: panel becomes an off-canvas drawer ===== */
         @media (max-width: 768px) {
             /* Toolbar scrolls horizontally instead of wrapping into tall rows */
-            .tc-iconbar {
-                flex-wrap: nowrap;
-                overflow-x: auto;
-                overflow-y: hidden;
-                -webkit-overflow-scrolling: touch;
-                scrollbar-width: none;
+            .tc-workspace-nav__links a span {
+                max-width: 5.5rem;
+                overflow: hidden;
+                text-overflow: ellipsis;
             }
-            .tc-iconbar::-webkit-scrollbar { display: none; }
-            .tc-iconbar a { flex: 0 0 auto; width: 40px; height: 40px; }
-            .tc-iconbar .tc-iconbar-sep { display: none; }
 
             /* Drawer width tweaks on small screens */
             .tc-main.tc-main--drawer .tc-panel,
@@ -1494,7 +1617,7 @@
                 width: 86vw;
                 max-width: 340px;
             }
-            .tc-app.tc-app--nav-open:has(.tc-panel--open) {
+            .tc-app:has(.tc-panel--open) {
                 --tc-chrome-panel: min(340px, 86vw);
             }
 
@@ -1529,7 +1652,7 @@
         }
 
         @media (max-width: 768px) and (orientation: landscape) {
-            .tc-panel { width: 62vw; max-width: 320px; }
+            .tc-panel { width: 58vw; max-width: 272px; }
             .tc-footer { max-height: 70dvh; }
         }
 
@@ -1595,47 +1718,75 @@
     </div>
     @endpush
     @endif
-    <div class="tc-app{{ ! empty($ui['map_only']) ? ' tc-app--map-only' : '' }}">
+    <script>
+    (function () {
+        var root = document.documentElement;
+        var body = document.body;
+        root.classList.add('tc-module-nav-open');
+        root.classList.remove('tc-module-nav-collapsed');
+        if (body) {
+            body.classList.add('tc-module-nav-open');
+            body.classList.remove('tc-module-nav-collapsed');
+        }
+        try { localStorage.removeItem('tcModuleNavOpen'); } catch (e) { /* ignore */ }
+    }());
+    </script>
+    <div class="tc-app tc-app--panel-open{{ ! empty($ui['map_only']) ? ' tc-app--map-only' : '' }}">
         @if(! empty($ui['iconbar']) || ! empty($ui['panel_toggle']))
-        <div class="tc-iconbar" id="tcIconbar">
-            <button type="button" class="tc-nav-toggle" id="tcNavToggle"
-                    aria-label="{{ __('app.tracking.hub_nav') }}" title="{{ __('app.tracking.hub_nav') }}"
-                    aria-expanded="false" aria-controls="tcIconbar tcPanel">
-                <i class="fas fa-bars"></i>
+        <div class="tc-workspace-nav" id="tcWorkspaceNav" role="navigation" aria-label="{{ __('app.tracking.hub_nav') }}">
+            <button type="button" class="tc-workspace-nav__panel-btn active" id="tcPanelToggle"
+                    aria-label="{{ __('app.tracking.tab_objects') }}" title="{{ __('app.tracking.tab_objects') }}"
+                    aria-expanded="true" aria-controls="tcPanel">
+                <i class="fas fa-list-ul"></i>
                 @if(! empty($ui['panel_toggle']))
                 <span class="tc-toggle-badge" id="tcToggleBadge" hidden>0</span>
                 @endif
             </button>
             @if(! empty($ui['iconbar']))
-            <div class="tc-iconbar-links" id="tcIconbarLinks">
-                @foreach($iconLinks as $link)
-                    @php
-                        $hubKey = $link['key'];
-                        $showHub = ! empty($link['hub']) || ! empty($hubPerms[$hubKey]);
-                    @endphp
-                    @if($showHub && $link['route'] && Route::has($link['route']))
-                        @if(!empty($link['active']))
-                            <a href="{{ route($link['route']) }}" class="active"
-                               title="{{ $link['label'] }}" aria-label="{{ $link['label'] }}">
-                                <i class="fas {{ $link['icon'] }}"></i>
-                            </a>
-                        @else
-                            <a href="{{ route($link['route']) }}"
-                               data-tc-module="{{ route($link['route']) }}"
-                               data-tc-module-title="{{ $link['label'] }}"
-                               data-tc-module-icon="{{ $link['icon'] }}"
-                               title="{{ $link['label'] }}" aria-label="{{ $link['label'] }}">
-                                <i class="fas {{ $link['icon'] }}"></i>
-                            </a>
+            <div class="tc-workspace-nav__track">
+                <div class="tc-workspace-nav__links" id="tcIconbarLinks">
+                    @foreach($iconLinks as $link)
+                        @php
+                            $hubKey = $link['key'];
+                            $showHub = ! empty($link['hub']) || ! empty($hubPerms[$hubKey]);
+                        @endphp
+                        @if($showHub && $link['route'] && Route::has($link['route']))
+                            @if(!empty($link['active']))
+                                <a href="{{ route($link['route']) }}" class="active"
+                                   title="{{ $link['label'] }}" aria-label="{{ $link['label'] }}">
+                                    <i class="fas {{ $link['icon'] }}"></i>
+                                    <span>{{ $link['label'] }}</span>
+                                </a>
+                            @else
+                                <a href="{{ route($link['route']) }}"
+                                   data-tc-module="{{ route($link['route']) }}"
+                                   data-tc-module-title="{{ $link['label'] }}"
+                                   data-tc-module-icon="{{ $link['icon'] }}"
+                                   title="{{ $link['label'] }}" aria-label="{{ $link['label'] }}">
+                                    <i class="fas {{ $link['icon'] }}"></i>
+                                    <span>{{ $link['label'] }}</span>
+                                </a>
+                            @endif
                         @endif
-                    @endif
-                @endforeach
+                    @endforeach
+                </div>
             </div>
-            <button type="button" class="tc-nav-close" id="tcNavClose"
-                    aria-label="{{ __('app.common.close') }}" title="{{ __('app.common.close') }}">
-                <i class="fas fa-times"></i>
-            </button>
+            <div class="tc-workspace-nav__actions">
+                <button type="button" class="tc-workspace-nav__collapse-btn" id="tcNavClose"
+                        aria-label="{{ __('app.tracking.nav_collapse') }}" title="{{ __('app.tracking.nav_collapse') }}">
+                    <i class="fas fa-chevron-up"></i>
+                </button>
+            </div>
             @endif
+        </div>
+        <div class="tc-workspace-nav__reveal" id="tcNavReveal">
+            <button type="button" class="tc-workspace-nav__reveal-btn" id="tcNavRevealBtn">
+                <i class="fas fa-chevron-down"></i><span>{{ __('app.tracking.nav_show') }}</span>
+            </button>
+        </div>
+        {{-- Legacy hooks for scripts --}}
+        <div class="tc-iconbar" id="tcIconbar" hidden aria-hidden="true">
+            <button type="button" class="tc-nav-toggle" id="tcNavToggle" tabindex="-1"></button>
         </div>
         @endif
 
@@ -1644,7 +1795,7 @@
             <div class="tc-panel-backdrop" id="tcPanelBackdrop"></div>
             @endif
             @if(! empty($ui['sidebar']))
-            <aside class="tc-panel" id="tcPanel">
+            <aside class="tc-panel tc-panel--open" id="tcPanel">
                 <div class="tc-tabs" role="tablist">
                     @if(! empty($tabPerms['objects']))
                     <button type="button" class="tc-tab{{ $firstSidebarTab === 'objects' ? ' active' : '' }}" data-tab="objects">{{ __('app.tracking.tab_objects') }}</button>
@@ -1676,12 +1827,10 @@
                     </div>
                     <div class="tc-list-head">
                         <span class="tc-col" title="{{ __('app.tracking.col_show') }}"><i class="fas fa-eye"></i></span>
-                        <span class="tc-col" title="{{ __('app.tracking.col_follow') }}"><i class="fas fa-shoe-prints"></i></span>
                         <span class="tc-head-label">{{ __('app.tracking.object') }}</span>
                     </div>
                     <div class="tc-row tc-allrow">
                         <input type="checkbox" id="tcCheckAll" class="form-check-input tc-check" checked title="{{ __('app.tracking.col_show') }}">
-                        <span class="tc-check-spacer"></span>
                         <span class="tc-row-info"><span class="tc-row-title">{{ __('app.tracking.filter_all') }} <span id="tcAllCount" class="text-muted"></span></span></span>
                     </div>
                     <div class="tc-list" id="tcVehicleList"></div>
@@ -1961,7 +2110,7 @@
                             <button type="button" class="tc-ftab" data-ftab="messages">{{ __('app.tracking.ft_messages') }}</button>
                         </div>
                         <span class="tc-footer-title" id="tcFooterTitle"></span>
-                        <button type="button" class="btn btn-sm btn-link text-white p-0" id="tcFooterClose" aria-label="{{ __('app.tracking.hide') }}">
+                        <button type="button" class="tc-footer-close" id="tcFooterClose" aria-label="{{ __('app.tracking.hide') }}">
                             <i class="fas fa-times"></i>
                         </button>
                     </div>
@@ -2060,6 +2209,10 @@
                 lblPosition: @json(__('app.tracking.lbl_position')),
                 lblAngle: @json(__('app.tracking.lbl_angle')),
                 hide: @json(__('app.tracking.hide')),
+                navPin: @json(__('app.tracking.nav_pin')),
+                navUnpin: @json(__('app.tracking.nav_unpin')),
+                navShow: @json(__('app.tracking.nav_show')),
+                navCollapse: @json(__('app.tracking.nav_collapse')),
                 companyMapExpand: @json(__('app.tracking.company_map_expand')),
                 companyMapCollapse: @json(__('app.tracking.company_map_collapse')),
                 companyMapVehicleName: @json(__('app.tracking.company_map_label_vehicle_name')),

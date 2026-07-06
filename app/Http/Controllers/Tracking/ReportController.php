@@ -9,6 +9,7 @@ use App\Http\Controllers\Controller;
 use App\Services\Tracking\GlobalTrackingService;
 use App\Services\Tracking\Reports\ReportExportService;
 use App\Services\Tracking\Reports\ReportService;
+use App\Support\Tracking\HistoryRangeBounds;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -40,9 +41,10 @@ class ReportController extends Controller
     public function generate(Request $request): JsonResponse
     {
         $this->applyReportLocale($request);
-        set_time_limit(120);
 
         $ids = $this->resolveReportDeviceIds($request);
+        set_time_limit(min(300, 45 + count($ids) * 6));
+
         if ($ids === []) {
             return $this->noStoreJson([
                 'success' => false,
@@ -55,6 +57,10 @@ class ReportController extends Controller
         try {
             $range = $this->resolveReportRange($request);
             $type = (string) $request->input('type', $request->query('type', 'summary'));
+            $nonce = (string) $request->input('_nonce', '');
+
+            // Release session lock so parallel report requests (one device each) are not serialized.
+            $request->session()->save();
 
             $report = $this->reports->generate(
                 $request->user(),
@@ -64,7 +70,10 @@ class ReportController extends Controller
                 $range['to'],
             );
 
-            return $this->noStoreJson(array_merge(['success' => true], $report));
+            return $this->noStoreJson(array_merge(
+                ['success' => true, '_nonce' => $nonce],
+                $report,
+            ));
         } catch (\Throwable $e) {
             report($e);
 
@@ -80,26 +89,35 @@ class ReportController extends Controller
     public function export(Request $request): StreamedResponse|\Illuminate\Http\Response
     {
         $this->applyReportLocale($request);
-        set_time_limit(180);
+        set_time_limit(300);
 
         $ids = $this->resolveReportDeviceIds($request);
         if ($ids === []) {
             abort(422, (string) __('app.tracking.report_select_vehicle'));
         }
 
-        $range = $this->resolveReportRange($request);
-        $type = (string) $request->input('type', $request->query('type', 'summary'));
-        $format = (string) $request->input('format', $request->query('format', 'csv'));
+        try {
+            $range = $this->resolveReportRange($request);
+            $type = (string) $request->input('type', $request->query('type', 'summary'));
+            $format = (string) $request->input('format', $request->query('format', 'csv'));
 
-        $report = $this->reports->generate(
-            $request->user(),
-            $type,
-            $ids,
-            $range['from'],
-            $range['to'],
-        );
+            $request->session()->save();
 
-        return $this->export->export($report, $format);
+            $report = $this->reports->generate(
+                $request->user(),
+                $type,
+                $ids,
+                $range['from'],
+                $range['to'],
+                forExport: true,
+            );
+
+            return $this->export->export($report, $format);
+        } catch (\Throwable $e) {
+            report($e);
+
+            abort(500, (string) __('app.tracking.report_export_failed'));
+        }
     }
 
     /**
@@ -118,40 +136,36 @@ class ReportController extends Controller
     }
 
     /**
-     * @return array{from: Carbon, to: Carbon|null}
+     * Reports honour datetime-local inputs; date-only filters expand to full calendar days.
+     *
+     * @return array{from: Carbon, to: Carbon}
      */
     private function resolveReportRange(Request $request): array
     {
-        $fromInput = trim((string) $request->input('from', $request->query('from', '')));
-        $toInput = trim((string) $request->input('to', $request->query('to', '')));
-        $tz = config('app.timezone');
+        $fromInput = trim((string) ($request->query('from', $request->input('from', ''))));
+        $toInput = trim((string) ($request->query('to', $request->input('to', ''))));
+        $tz = (string) config('app.timezone');
 
         if ($fromInput === '') {
-            return ['from' => now()->subHours(24), 'to' => null];
+            return [
+                'from' => now()->subHours(24),
+                'to' => now(),
+            ];
         }
 
-        $from = $this->parseReportDateTime($fromInput, $tz, true);
+        $from = $this->parseHistoryDate($fromInput, $tz, true);
         $to = $toInput !== ''
-            ? $this->parseReportDateTime($toInput, $tz, false)
-            : $from->copy()->endOfDay();
+            ? $this->parseHistoryDate($toInput, $tz, false)
+            : ($this->isDateOnlyInput($fromInput) ? $from->copy()->endOfDay() : now());
 
-        return \App\Support\Tracking\HistoryRangeBounds::normalize($from, $to);
-    }
-
-    private function parseReportDateTime(string $value, string $tz, bool $start): Carbon
-    {
-        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $value)) {
-            $date = Carbon::createFromFormat('Y-m-d', $value, $tz)->startOfDay();
-
-            return $start ? $date : $date->copy()->endOfDay();
+        if ($this->isDateOnlyInput($fromInput) && ($toInput === '' || $this->isDateOnlyInput($toInput))) {
+            return HistoryRangeBounds::normalize($from, $to);
         }
 
-        if (preg_match('/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/', $value)) {
-            return Carbon::parse(str_replace('T', ' ', $value), $tz);
+        if ($to->lessThan($from)) {
+            [$from, $to] = [$to->copy(), $from->copy()];
         }
 
-        return $start
-            ? Carbon::parse($value, $tz)->startOfDay()
-            : Carbon::parse($value, $tz)->endOfDay();
+        return ['from' => $from, 'to' => $to];
     }
 }

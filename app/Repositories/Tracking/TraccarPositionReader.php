@@ -110,8 +110,69 @@ class TraccarPositionReader implements PositionReaderInterface
             return collect();
         }
 
+        return $this->historyQuery([$traccarDeviceId], $from, $to, $order)
+            ->map(fn ($row) => $this->mapper->toDeviceLocation($row, $device->id));
+    }
+
+    /**
+     * @param  list<Device>  $devices
+     * @return array<int, Collection<int, DeviceLocation>>
+     */
+    public function historyForDevices(
+        array $devices,
+        ?Carbon $from = null,
+        ?Carbon $to = null,
+        string $order = 'asc'
+    ): array {
+        if (! TraccarSchema::isReady() || $devices === []) {
+            return [];
+        }
+
+        $traccarToLaravel = [];
+        foreach ($devices as $device) {
+            $traccarId = $this->resolveTraccarDeviceId($device);
+            if ($traccarId) {
+                $traccarToLaravel[(int) $traccarId] = (int) $device->id;
+            }
+        }
+
+        if ($traccarToLaravel === []) {
+            return [];
+        }
+
+        $rows = $this->historyQuery(array_keys($traccarToLaravel), $from, $to, $order);
+        $grouped = [];
+        foreach ($traccarToLaravel as $laravelId) {
+            $grouped[$laravelId] = collect();
+        }
+
+        foreach ($rows as $row) {
+            $laravelId = $traccarToLaravel[(int) $row->deviceid] ?? null;
+            if ($laravelId) {
+                $grouped[$laravelId]->push($this->mapper->toDeviceLocation($row, $laravelId));
+            }
+        }
+
+        return $grouped;
+    }
+
+    /**
+     * @param  list<int>  $traccarDeviceIds
+     */
+    private function historyQuery(array $traccarDeviceIds, ?Carbon $from, ?Carbon $to, string $order)
+    {
         $query = DB::table(config('traccar.tables.positions', 'tc_positions'))
-            ->where('deviceid', $traccarDeviceId);
+            ->select([
+                'id',
+                'deviceid',
+                'fixtime',
+                'latitude',
+                'longitude',
+                'speed',
+                'course',
+                'attributes',
+            ])
+            ->whereIn('deviceid', $traccarDeviceIds);
 
         if ($from) {
             $fromBound = HistoryRangeBounds::isCalendarDayStart($from)
@@ -133,8 +194,7 @@ class TraccarPositionReader implements PositionReaderInterface
         return $query
             ->orderBy('fixtime', $direction)
             ->orderBy('id', $direction)
-            ->get()
-            ->map(fn ($row) => $this->mapper->toDeviceLocation($row, $device->id));
+            ->get();
     }
 
     public function previousBefore(Device $device, int $excludeLocationId, ?int $excludeTraccarPositionId = null): ?DeviceLocation

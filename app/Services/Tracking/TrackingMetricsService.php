@@ -110,6 +110,14 @@ class TrackingMetricsService
      */
     public function positionChartData(int $days = 7): array
     {
+        return $this->positionChartDataForDevices(collect(), $days);
+    }
+
+    /**
+     * @return array{labels: array<int, string>, gpsPings: array<int, int>, activeDevices: array<int, int>}
+     */
+    public function positionChartDataForDevices(Collection $deviceIds, int $days = 7): array
+    {
         $start = now()->subDays($days - 1)->startOfDay();
         $labels = [];
         $gpsCounts = [];
@@ -119,24 +127,51 @@ class TrackingMetricsService
             $table = config('traccar.tables.positions', 'tc_positions');
             $off = $this->appOffset();
             $startUtc = $this->utc($start);
-            $gpsByDay = DB::table($table)
-                ->where('fixtime', '>=', $startUtc)
-                ->selectRaw('DATE(CONVERT_TZ(fixtime, ?, ?)) as day, COUNT(*) as total', ['+00:00', $off])
-                ->groupBy('day')
-                ->pluck('total', 'day');
-            $devicesByDay = DB::table($table)
-                ->where('fixtime', '>=', $startUtc)
-                ->selectRaw('DATE(CONVERT_TZ(fixtime, ?, ?)) as day, COUNT(DISTINCT deviceid) as total', ['+00:00', $off])
-                ->groupBy('day')
-                ->pluck('total', 'day');
+            $traccarIds = $deviceIds->isEmpty()
+                ? null
+                : $deviceIds
+                    ->map(fn ($id) => $this->idMap->get(TraccarEntityMap::TYPE_DEVICE, (int) $id))
+                    ->filter()
+                    ->values()
+                    ->all();
+
+            if ($traccarIds !== null) {
+                if ($traccarIds === []) {
+                    $gpsByDay = collect();
+                    $devicesByDay = collect();
+                } else {
+                    $gpsByDay = $gpsQuery->whereIn('deviceid', $traccarIds)
+                        ->selectRaw('DATE(CONVERT_TZ(fixtime, ?, ?)) as day, COUNT(*) as total', ['+00:00', $off])
+                        ->groupBy('day')
+                        ->pluck('total', 'day');
+                    $devicesByDay = $devQuery->whereIn('deviceid', $traccarIds)
+                        ->selectRaw('DATE(CONVERT_TZ(fixtime, ?, ?)) as day, COUNT(DISTINCT deviceid) as total', ['+00:00', $off])
+                        ->groupBy('day')
+                        ->pluck('total', 'day');
+                }
+            } else {
+                $gpsByDay = $gpsQuery
+                    ->selectRaw('DATE(CONVERT_TZ(fixtime, ?, ?)) as day, COUNT(*) as total', ['+00:00', $off])
+                    ->groupBy('day')
+                    ->pluck('total', 'day');
+                $devicesByDay = $devQuery
+                    ->selectRaw('DATE(CONVERT_TZ(fixtime, ?, ?)) as day, COUNT(DISTINCT deviceid) as total', ['+00:00', $off])
+                    ->groupBy('day')
+                    ->pluck('total', 'day');
+            }
         } elseif (Schema::hasTable('device_locations')) {
-            $gpsByDay = DB::table('device_locations')
-                ->where('recorded_at', '>=', $start)
+            $gpsQuery = DB::table('device_locations')->where('recorded_at', '>=', $start);
+            $devQuery = DB::table('device_locations')->where('recorded_at', '>=', $start);
+            if ($deviceIds->isNotEmpty()) {
+                $gpsQuery->whereIn('device_id', $deviceIds);
+                $devQuery->whereIn('device_id', $deviceIds);
+            }
+
+            $gpsByDay = $gpsQuery
                 ->selectRaw('DATE(recorded_at) as day, COUNT(*) as total')
                 ->groupBy('day')
                 ->pluck('total', 'day');
-            $devicesByDay = DB::table('device_locations')
-                ->where('recorded_at', '>=', $start)
+            $devicesByDay = $devQuery
                 ->selectRaw('DATE(recorded_at) as day, COUNT(DISTINCT device_id) as total')
                 ->groupBy('day')
                 ->pluck('total', 'day');
@@ -178,6 +213,44 @@ class TrackingMetricsService
 
         return (int) DB::table('device_locations')
             ->whereBetween('recorded_at', [$from, $to])
+            ->distinct('device_id')
+            ->count('device_id');
+    }
+
+    public function onlineDevicesAtForDevices(Collection $deviceIds, Carbon $at, int $windowMinutes = 5): int
+    {
+        if ($deviceIds->isEmpty()) {
+            return 0;
+        }
+
+        $from = $at->copy()->subMinutes($windowMinutes);
+        $to = $at;
+
+        if (TraccarMode::readsTraccar() && TraccarSchema::isReady()) {
+            $traccarIds = $deviceIds
+                ->map(fn ($id) => $this->idMap->get(TraccarEntityMap::TYPE_DEVICE, (int) $id))
+                ->filter()
+                ->values()
+                ->all();
+
+            if ($traccarIds === []) {
+                return 0;
+            }
+
+            return (int) DB::table(config('traccar.tables.positions', 'tc_positions'))
+                ->whereBetween('fixtime', [$this->utc($from), $this->utc($to)])
+                ->whereIn('deviceid', $traccarIds)
+                ->distinct('deviceid')
+                ->count('deviceid');
+        }
+
+        if (! Schema::hasTable('device_locations')) {
+            return 0;
+        }
+
+        return (int) DB::table('device_locations')
+            ->whereBetween('recorded_at', [$from, $to])
+            ->whereIn('device_id', $deviceIds)
             ->distinct('device_id')
             ->count('device_id');
     }

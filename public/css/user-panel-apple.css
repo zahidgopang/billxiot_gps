@@ -1,0 +1,920 @@
+/* Apple HIG-inspired user panel shell */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+:root {
+    --apple-bg: #F5F5F7;
+    --apple-card: #FFFFFF;
+    --apple-blue: #007AFF;
+    --apple-green: #34C759;
+    --apple-orange: #FF9F0A;
+    --apple-red: #FF3B30;
+    --apple-purple: #AF52DE;
+    --apple-text: #1D1D1F;
+    --apple-muted: #6E6E73;
+    --apple-border: #E5E5EA;
+    --apple-hover: #F2F2F7;
+    --apple-radius: 20px;
+    --apple-radius-sm: 14px;
+    --apple-shadow: 0 8px 30px rgba(0, 0, 0, 0.05);
+    --ud-topbar-h: 60px;
+    --ud-sidebar-w: 240px;
+    --ud-sidebar-collapsed: 72px;
+}
+
+body.user-panel.apple-hig {
+    background: var(--apple-bg);
+    color: var(--apple-text);
+    font-family: Inter, -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif;
+    font-size: 14px;
+    font-weight: 500;
+    margin: 0;
+}
+
+body.user-panel.apple-hig .navbar.user-navbar {
+    background: rgba(255, 255, 255, 0.92) !important;
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-bottom: 1px solid #ECECEC !important;
+    box-shadow: none !important;
+    height: var(--ud-topbar-h) !important;
+    min-height: var(--ud-topbar-h) !important;
+    max-height: var(--ud-topbar-h) !important;
+    padding: 0 20px !important;
+}
+
+body.user-panel.apple-hig .navbar-brand,
+body.user-panel.apple-hig .nav-link {
+    color: var(--apple-text) !important;
+}
+
+body.user-panel.apple-hig .navbar-brand .brand-logo {
+    height: 36px !important;
+    filter: none !important;
+}
+
+body.user-panel.apple-hig #toggleSidebar {
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    background: var(--apple-hover);
+    color: var(--apple-text);
+    border: 1px solid var(--apple-border);
+    font-size: 1rem;
+}
+
+body.user-panel.apple-hig #toggleSidebar:hover {
+    background: var(--apple-border);
+    transform: none;
+    box-shadow: none;
+}
+
+body.user-panel.apple-hig .user-avatar {
+    background: var(--apple-blue) !important;
+    box-shadow: none !important;
+    width: 36px;
+    height: 36px;
+    font-size: 0.875rem;
+}
+
+body.user-panel.apple-hig .logout-btn {
+    background: var(--apple-card) !important;
+    border: 1px solid var(--apple-border) !important;
+    color: var(--apple-red) !important;
+    border-radius: 12px !important;
+    box-shadow: none !important;
+    font-weight: 600 !important;
+    padding: 0.45rem 0.9rem !important;
+}
+
+body.user-panel.apple-hig .logout-btn:hover {
+    background: #FFF5F5 !important;
+    transform: none;
+}
+
+body.user-panel.apple-hig .ud-search {
+    flex: 1;
+    max-width: 420px;
+    margin: 0 16px;
+    position: relative;
+}
+
+body.user-panel.apple-hig .ud-search input {
+    width: 100%;
+    height: 38px;
+    border: 1px solid var(--apple-border);
+    border-radius: 12px;
+    background: var(--apple-hover);
+    padding: 0 14px 0 38px;
+    font-size: 14px;
+    color: var(--apple-text);
+    transition: border-color 0.2s, background 0.2s;
+}
+
+body.user-panel.apple-hig .ud-search input:focus {
+    outline: none;
+    border-color: var(--apple-blue);
+    background: #fff;
+}
+
+body.user-panel.apple-hig .ud-search svg {
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 16px;
+    height: 16px;
+    color: var(--apple-muted);
+    pointer-events: none;
+}
+
+body.user-panel.apple-hig .ud-app {
+    display: flex;
+    min-height: calc(100vh - var(--ud-topbar-h));
+}
+
+/* Desktop: CSS grid pins sidebar left (EN) or right (AR) — immune to flex RTL quirks */
+@media (min-width: 992px) {
+    body.user-panel.apple-hig .ud-app {
+        display: grid;
+        grid-template-columns: var(--ud-sidebar-w) minmax(0, 1fr);
+        grid-template-areas: 'sidebar main';
+        transition: grid-template-columns 0.22s ease;
+    }
+
+    html[dir="rtl"] body.user-panel.apple-hig .ud-app,
+    body.user-panel.apple-hig.user-panel-rtl .ud-app,
+    body.user-panel.apple-hig .ud-app[data-layout-dir="rtl"] {
+        grid-template-columns: minmax(0, 1fr) var(--ud-sidebar-w);
+        grid-template-areas: 'main sidebar';
+    }
+
+    body.user-panel.apple-hig #filterPanel.user-dashboard-sidebar {
+        grid-area: sidebar;
+    }
+
+    body.user-panel.apple-hig .ud-main {
+        grid-area: main;
+    }
+
+    /* Toggle closed: collapse sidebar column (works in both LTR and RTL) */
+    body.user-panel.apple-hig .ud-app.sidebar-nav-closed {
+        grid-template-columns: 0 minmax(0, 1fr);
+    }
+
+    html[dir="rtl"] body.user-panel.apple-hig .ud-app.sidebar-nav-closed,
+    body.user-panel.apple-hig.user-panel-rtl .ud-app.sidebar-nav-closed,
+    body.user-panel.apple-hig .ud-app[data-layout-dir="rtl"].sidebar-nav-closed {
+        grid-template-columns: minmax(0, 1fr) 0;
+    }
+
+    body.user-panel.apple-hig .ud-app.sidebar-nav-closed #filterPanel.user-dashboard-sidebar {
+        width: var(--ud-sidebar-w) !important;
+        min-width: 0 !important;
+        overflow: hidden;
+        border-color: transparent !important;
+        padding-inline: 0 !important;
+    }
+}
+
+body.user-panel.apple-hig .filter-panel.user-dashboard-sidebar {
+    position: relative !important;
+    top: auto !important;
+    left: auto !important;
+    right: auto !important;
+    transform: none !important;
+    width: var(--ud-sidebar-w) !important;
+    height: auto !important;
+    min-height: calc(100vh - var(--ud-topbar-h));
+    flex-shrink: 0;
+    background: var(--apple-card) !important;
+    border-inline-end: 1px solid var(--apple-border) !important;
+    border-inline-start: none !important;
+    box-shadow: none !important;
+    padding: 16px 12px !important;
+    overflow-x: hidden;
+    overflow-y: auto;
+    transition: width 0.22s ease, padding 0.22s ease, opacity 0.22s ease, border-color 0.22s ease;
+    z-index: 10;
+}
+
+/* Arabic: sidebar sits on the right — border on its inner (left) edge */
+html[dir="rtl"] body.user-panel.apple-hig .filter-panel.user-dashboard-sidebar,
+body.user-panel.apple-hig.user-panel-rtl .filter-panel.user-dashboard-sidebar {
+    border-inline-end: none !important;
+    border-inline-start: 1px solid var(--apple-border) !important;
+}
+
+/* Desktop sidebar open/close handled via .ud-app.sidebar-nav-closed grid (see above) */
+
+body.user-panel.apple-hig .filter-header {
+    border-bottom: none !important;
+    margin-bottom: 12px !important;
+    padding-bottom: 0 !important;
+}
+
+body.user-panel.apple-hig .filter-header h5 {
+    color: var(--apple-muted) !important;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+body.user-panel.apple-hig .close-sidebar {
+    display: none !important;
+}
+
+body.user-panel.apple-hig .filter-panel .card {
+    background: transparent !important;
+    border: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    color: inherit !important;
+}
+
+body.user-panel.apple-hig .ud-nav {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+body.user-panel.apple-hig .ud-nav a {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    border-radius: var(--apple-radius-sm);
+    color: var(--apple-muted);
+    text-decoration: none;
+    font-size: 14px;
+    font-weight: 500;
+    transition: background 0.2s, color 0.2s;
+}
+
+body.user-panel.apple-hig .ud-nav a:hover {
+    background: var(--apple-hover);
+    color: var(--apple-text);
+}
+
+body.user-panel.apple-hig .ud-nav a.active {
+    background: var(--apple-blue);
+    color: #fff;
+}
+
+body.user-panel.apple-hig .ud-nav a.active svg {
+    stroke: #fff;
+}
+
+body.user-panel.apple-hig .ud-nav svg {
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+    stroke: currentColor;
+}
+
+body.user-panel.apple-hig .content-wrap,
+body.user-panel.apple-hig .ud-main {
+    flex: 1;
+    min-width: 0;
+    padding: 24px;
+    background: var(--apple-bg);
+}
+
+body.user-panel.apple-hig .sidebar-overlay {
+    display: none;
+}
+
+@media (max-width: 991px) {
+    body.user-panel.apple-hig .ud-app {
+        display: block;
+    }
+
+    body.user-panel.apple-hig .filter-panel.user-dashboard-sidebar {
+        position: fixed !important;
+        top: var(--ud-topbar-h) !important;
+        left: 0 !important;
+        height: calc(100vh - var(--ud-topbar-h)) !important;
+        width: min(280px, 88vw) !important;
+        transform: translateX(-100%) !important;
+        z-index: 1050;
+        box-shadow: var(--apple-shadow) !important;
+    }
+
+    body.user-panel.apple-hig.user-panel-rtl .filter-panel.user-dashboard-sidebar,
+    html[dir="rtl"] body.user-panel.apple-hig .filter-panel.user-dashboard-sidebar {
+        left: auto !important;
+        right: 0 !important;
+        transform: translateX(100%) !important;
+        border-radius: 20px 0 0 20px !important;
+    }
+
+    body.user-panel.apple-hig .filter-panel.user-dashboard-sidebar.show {
+        transform: translateX(0) !important;
+    }
+
+    body.user-panel.apple-hig .sidebar-overlay.show {
+        display: block;
+        opacity: 1;
+        visibility: visible;
+    }
+
+    body.user-panel.apple-hig .close-sidebar {
+        display: flex !important;
+        background: var(--apple-hover) !important;
+        color: var(--apple-muted) !important;
+        border: 1px solid var(--apple-border) !important;
+    }
+
+    body.user-panel.apple-hig .ud-search {
+        display: none;
+    }
+}
+
+/* Dashboard */
+.ud-dashboard {
+    max-width: 1440px;
+    margin: 0 auto;
+}
+
+.ud-page-title {
+    font-size: 32px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    margin: 0 0 6px;
+    color: var(--apple-text);
+}
+
+.ud-page-sub {
+    font-size: 14px;
+    color: var(--apple-muted);
+    margin: 0 0 24px;
+}
+
+.ud-alert {
+    background: #fff;
+    border: 1px solid var(--apple-border);
+    border-radius: var(--apple-radius-sm);
+    padding: 14px 16px;
+    margin-bottom: 16px;
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    font-size: 14px;
+}
+
+.ud-alert--warn { border-color: #FFE4B5; background: #FFFBF0; }
+.ud-alert--ok { border-color: #B7F0C6; background: #F0FFF4; }
+
+.ud-kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 24px;
+    margin-bottom: 24px;
+}
+
+@media (max-width: 1200px) { .ud-kpi-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 576px) { .ud-kpi-grid { grid-template-columns: 1fr; } }
+
+.ud-card {
+    background: var(--apple-card);
+    border: 1px solid var(--apple-border);
+    border-radius: var(--apple-radius);
+    padding: 24px;
+    box-shadow: var(--apple-shadow);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    height: 100%;
+}
+
+.ud-card:hover {
+    transform: translateY(-2px) scale(1.02);
+}
+
+.ud-kpi-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.ud-kpi-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--apple-muted);
+    margin: 0;
+}
+
+.ud-kpi-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    background: var(--apple-hover);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--apple-text);
+}
+
+.ud-kpi-value {
+    font-size: 34px;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    line-height: 1.1;
+    color: var(--apple-text);
+}
+
+.ud-kpi-meta {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--apple-muted);
+    margin-top: 8px;
+}
+
+.ud-kpi-meta .up { color: var(--apple-green); }
+
+.ud-grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    margin-bottom: 24px;
+}
+
+.ud-grid-map {
+    display: grid;
+    grid-template-columns: 1.2fr 0.8fr;
+    gap: 24px;
+    margin-bottom: 24px;
+}
+
+.ud-grid-bottom {
+    display: grid;
+    grid-template-columns: 1.4fr 0.6fr;
+    gap: 24px;
+    margin-bottom: 24px;
+}
+
+@media (max-width: 991px) {
+    .ud-grid-2, .ud-grid-map, .ud-grid-bottom { grid-template-columns: 1fr; }
+}
+
+.ud-card-title {
+    font-size: 15px;
+    font-weight: 600;
+    margin: 0 0 16px;
+    color: var(--apple-text);
+}
+
+.ud-chart { min-height: 260px; }
+
+.ud-map-wrap {
+    height: 280px;
+    border-radius: var(--apple-radius-sm);
+    overflow: hidden;
+    background: var(--apple-hover);
+    border: 1px solid var(--apple-border);
+}
+
+.ud-map-empty {
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--apple-muted);
+    font-size: 14px;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.ud-health-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+}
+
+.ud-health-item {
+    padding: 12px;
+    border-radius: 14px;
+    background: var(--apple-hover);
+    border: 1px solid var(--apple-border);
+}
+
+.ud-health-item strong {
+    display: block;
+    font-size: 13px;
+    margin-bottom: 8px;
+}
+
+.ud-health-dots {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.ud-dot {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 999px;
+}
+
+.ud-dot--g { background: #E8FAEF; color: #248A3D; }
+.ud-dot--y { background: #FFF4E0; color: #B25000; }
+.ud-dot--r { background: #FFEBEA; color: #C41E16; }
+
+.ud-timeline {
+    max-height: 360px;
+    overflow-y: auto;
+    padding-right: 4px;
+}
+
+.ud-timeline-item {
+    display: grid;
+    grid-template-columns: 52px 20px 1fr;
+    gap: 12px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--apple-border);
+    animation: udFadeIn 0.35s ease both;
+}
+
+.ud-timeline-time {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--apple-muted);
+}
+
+.ud-timeline-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-top: 4px;
+}
+
+.ud-timeline-title {
+    font-size: 14px;
+    font-weight: 600;
+    margin: 0 0 2px;
+}
+
+.ud-timeline-desc {
+    font-size: 12px;
+    color: var(--apple-muted);
+    margin: 0;
+}
+
+.ud-actions {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+}
+
+.ud-action {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 16px 10px;
+    border-radius: 18px;
+    border: 1px solid var(--apple-border);
+    background: #fff;
+    color: var(--apple-text);
+    text-decoration: none;
+    font-size: 12px;
+    font-weight: 600;
+    text-align: center;
+    transition: transform 0.2s, background 0.2s, border-color 0.2s;
+}
+
+.ud-action:hover {
+    background: var(--apple-hover);
+    transform: translateY(-2px);
+    color: var(--apple-text);
+    border-color: #D1D1D6;
+}
+
+.ud-action svg { width: 22px; height: 22px; stroke: var(--apple-text); }
+
+.ud-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 10px 16px;
+    border-radius: 12px;
+    font-size: 14px;
+    font-weight: 600;
+    border: 1px solid transparent;
+    cursor: pointer;
+    text-decoration: none;
+    transition: background 0.2s, transform 0.2s;
+}
+
+.ud-btn--primary { background: var(--apple-blue); color: #fff; }
+.ud-btn--primary:hover { background: #0062CC; color: #fff; }
+.ud-btn--secondary { background: #fff; border-color: var(--apple-border); color: var(--apple-text); }
+.ud-btn--secondary:hover { background: var(--apple-hover); color: var(--apple-text); }
+
+.ud-table-wrap {
+    overflow: auto;
+    border-radius: var(--apple-radius-sm);
+    border: 1px solid var(--apple-border);
+}
+
+.ud-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+}
+
+.ud-table thead {
+    position: sticky;
+    top: 0;
+    background: var(--apple-hover);
+    z-index: 1;
+}
+
+.ud-table th {
+    text-align: start;
+    padding: 12px 14px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--apple-muted);
+    border-bottom: 1px solid var(--apple-border);
+}
+
+.ud-table td {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--apple-border);
+    vertical-align: middle;
+}
+
+.ud-table tbody tr:hover { background: var(--apple-hover); }
+
+.ud-badge {
+    display: inline-flex;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.ud-badge--ok { background: #E8FAEF; color: #248A3D; }
+.ud-badge--warn { background: #FFF4E0; color: #B25000; }
+.ud-badge--muted { background: var(--apple-hover); color: var(--apple-muted); }
+.ud-badge--danger { background: #FFEBEA; color: #C41E16; }
+
+.ud-table-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+}
+
+.ud-table-search {
+    min-width: 200px;
+    height: 38px;
+    border: 1px solid var(--apple-border);
+    border-radius: 12px;
+    padding: 0 12px;
+    background: #fff;
+}
+
+.ud-skel {
+    background: linear-gradient(90deg, #eee 25%, #f5f5f5 50%, #eee 75%);
+    background-size: 200% 100%;
+    animation: udShimmer 1.2s infinite;
+    border-radius: 8px;
+    height: 260px;
+}
+
+@keyframes udShimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
+@keyframes udFadeIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.ud-fade-in { animation: udFadeIn 0.4s ease both; }
+
+body.user-panel.apple-hig .vehicle-list-name {
+    color: var(--apple-text);
+    font-weight: 600;
+}
+
+body.user-panel.apple-hig .vehicle-list-plate {
+    color: var(--apple-muted);
+}
+
+/* ==========================================================================
+   Apple HIG shell — RTL (Arabic). Must load after rtl.css.
+   ========================================================================== */
+
+html[dir="rtl"] body.user-panel.apple-hig,
+body.user-panel.apple-hig.user-panel-rtl {
+    font-family: 'Cairo', Inter, -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+/* Sidebar shell — explicit RTL direction */
+html[dir="rtl"] body.user-panel.apple-hig #filterPanel.user-dashboard-sidebar,
+body.user-panel.apple-hig.user-panel-rtl #filterPanel.user-dashboard-sidebar {
+    direction: rtl;
+    text-align: right;
+}
+
+/* Nav links: natural RTL flex (icon on right, label to its left) — do NOT row-reverse */
+html[dir="rtl"] body.user-panel.apple-hig .ud-nav,
+body.user-panel.apple-hig.user-panel-rtl .ud-nav {
+    direction: rtl;
+}
+
+html[dir="rtl"] body.user-panel.apple-hig .ud-nav a,
+body.user-panel.apple-hig.user-panel-rtl .ud-nav a {
+    flex-direction: row;
+    justify-content: flex-start;
+    text-align: start;
+    direction: rtl;
+}
+
+html[dir="rtl"] body.user-panel.apple-hig .ud-nav-label,
+body.user-panel.apple-hig.user-panel-rtl .ud-nav-label {
+    flex: 1;
+    min-width: 0;
+}
+
+html[dir="rtl"] body.user-panel.apple-hig .filter-header,
+body.user-panel.apple-hig.user-panel-rtl .filter-header {
+    flex-direction: row;
+    text-align: start;
+    direction: rtl;
+}
+
+@media (min-width: 992px) {
+    html[dir="rtl"] body.user-panel.apple-hig #filterPanel.user-dashboard-sidebar,
+    html[dir="ltr"] body.user-panel.apple-hig #filterPanel.user-dashboard-sidebar,
+    body.user-panel.apple-hig.user-panel-rtl #filterPanel.user-dashboard-sidebar,
+    body.user-panel.apple-hig.user-panel-ltr #filterPanel.user-dashboard-sidebar {
+        position: relative !important;
+        top: auto !important;
+        left: auto !important;
+        right: auto !important;
+        height: auto !important;
+        min-height: calc(100vh - var(--ud-topbar-h)) !important;
+        width: var(--ud-sidebar-w) !important;
+        transform: none !important;
+        box-shadow: none !important;
+    }
+}
+
+@media (max-width: 991px) {
+    html[dir="rtl"] body.user-panel.apple-hig #filterPanel.user-dashboard-sidebar,
+    body.user-panel.apple-hig.user-panel-rtl #filterPanel.user-dashboard-sidebar {
+        left: auto !important;
+        right: 0 !important;
+        border-radius: 20px 0 0 20px !important;
+    }
+
+    html[dir="rtl"] body.user-panel.apple-hig #filterPanel.user-dashboard-sidebar:not(.show),
+    body.user-panel.apple-hig.user-panel-rtl #filterPanel.user-dashboard-sidebar:not(.show) {
+        transform: translateX(100%) !important;
+        visibility: visible !important;
+    }
+
+    html[dir="ltr"] body.user-panel.apple-hig #filterPanel.user-dashboard-sidebar:not(.show),
+    body.user-panel.apple-hig.user-panel-ltr #filterPanel.user-dashboard-sidebar:not(.show) {
+        left: 0 !important;
+        right: auto !important;
+        transform: translateX(-100%) !important;
+    }
+
+    html[dir="rtl"] body.user-panel.apple-hig #filterPanel.user-dashboard-sidebar.show,
+    body.user-panel.apple-hig.user-panel-rtl #filterPanel.user-dashboard-sidebar.show,
+    html[dir="ltr"] body.user-panel.apple-hig #filterPanel.user-dashboard-sidebar.show,
+    body.user-panel.apple-hig.user-panel-ltr #filterPanel.user-dashboard-sidebar.show {
+        transform: translateX(0) !important;
+    }
+
+    body.user-panel.apple-hig .sidebar-overlay.show {
+        display: block !important;
+    }
+}
+
+body.user-panel.apple-hig.user-panel-rtl .ud-search input,
+html[dir="rtl"] body.user-panel.apple-hig .ud-search input {
+    padding: 0 38px 0 14px;
+    text-align: right;
+}
+
+body.user-panel.apple-hig.user-panel-rtl .ud-search svg,
+html[dir="rtl"] body.user-panel.apple-hig .ud-search svg {
+    left: auto;
+    right: 12px;
+}
+
+body.user-panel.apple-hig.user-panel-rtl .ud-page-title,
+body.user-panel.apple-hig.user-panel-rtl .ud-page-sub,
+body.user-panel.apple-hig.user-panel-rtl .ud-card-title,
+html[dir="rtl"] body.user-panel.apple-hig .ud-page-title,
+html[dir="rtl"] body.user-panel.apple-hig .ud-page-sub,
+html[dir="rtl"] body.user-panel.apple-hig .ud-card-title {
+    text-align: start;
+}
+
+html[dir="rtl"] body.user-panel.apple-hig .ud-dashboard,
+body.user-panel.apple-hig.user-panel-rtl .ud-dashboard {
+    direction: rtl;
+    text-align: start;
+}
+
+body.user-panel.apple-hig.user-panel-rtl .ud-table th,
+body.user-panel.apple-hig.user-panel-rtl .ud-table td,
+html[dir="rtl"] body.user-panel.apple-hig .ud-table th,
+html[dir="rtl"] body.user-panel.apple-hig .ud-table td {
+    text-align: start;
+}
+
+body.user-panel.apple-hig.user-panel-rtl .ud-timeline-item,
+html[dir="rtl"] body.user-panel.apple-hig .ud-timeline-item {
+    direction: rtl;
+}
+
+/* Top bar: dir=rtl places menu control on the right, user actions on the left */
+html[dir="rtl"] body.user-panel.apple-hig .navbar.user-navbar,
+body.user-panel.apple-hig.user-panel-rtl .navbar.user-navbar {
+    direction: rtl;
+}
+
+html[dir="rtl"] body.user-panel.apple-hig .navbar .nav-start,
+body.user-panel.apple-hig.user-panel-rtl .navbar .nav-start,
+html[dir="rtl"] body.user-panel.apple-hig .navbar .nav-end,
+body.user-panel.apple-hig.user-panel-rtl .navbar .nav-end {
+    flex-direction: row;
+}
+
+html[dir="rtl"] body.user-panel.apple-hig .nav-start .navbar-brand,
+body.user-panel.apple-hig.user-panel-rtl .nav-start .navbar-brand {
+    margin-inline-start: 0.5rem !important;
+    margin-inline-end: 0 !important;
+}
+
+html[dir="rtl"] body.user-panel.apple-hig .navbar .nav-end,
+body.user-panel.apple-hig.user-panel-rtl .navbar .nav-end {
+    margin-inline-start: 0 !important;
+    margin-inline-end: 0 !important;
+}
+
+html[dir="rtl"] body.user-panel.apple-hig #toggleSidebar,
+body.user-panel.apple-hig.user-panel-rtl #toggleSidebar {
+    margin-inline-end: 0 !important;
+    margin-inline-start: 0 !important;
+}
+
+body.user-panel.apple-hig .ud-kpi-meta,
+body.user-panel.apple-hig .ud-card-title,
+body.user-panel.apple-hig .filter-header h5 {
+    text-align: start;
+}
+
+body.user-panel.apple-hig .ud-alert {
+    text-align: start;
+}
+
+body.user-panel.apple-hig .mt-4.pt-3 form button {
+    text-align: center;
+}
+
+/* Language switcher on light navbar (also in locale-styles; wins if loaded later) */
+body.user-panel.apple-hig .navbar .lang-toggle {
+    border: 1px solid #C7C7CC !important;
+    background: #FFFFFF !important;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+
+body.user-panel.apple-hig .navbar .lang-toggle__btn {
+    color: #3A3A3C !important;
+    font-weight: 700 !important;
+    min-width: 42px;
+    height: 36px;
+}
+
+body.user-panel.apple-hig .navbar .lang-toggle__btn:hover {
+    color: #1D1D1F !important;
+    background: #F2F2F7 !important;
+}
+
+body.user-panel.apple-hig .navbar .lang-toggle__btn--active {
+    background: #007AFF !important;
+    color: #FFFFFF !important;
+}
+
+body.user-panel.apple-hig .navbar .lang-toggle__btn + .lang-toggle__btn {
+    border-inline-start: 1px solid #C7C7CC !important;
+}
+
+body.user-panel.apple-hig .navbar .lang-toggle__btn--ar {
+    font-family: 'Cairo', 'Segoe UI', Tahoma, sans-serif;
+}

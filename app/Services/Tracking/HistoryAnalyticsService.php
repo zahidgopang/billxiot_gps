@@ -23,11 +23,14 @@ class HistoryAnalyticsService
 
     /**
      * @param  Collection<int, DeviceLocation|object>  $points
+     * @param  array{point_statuses?: bool, include_track_points?: bool, skip_timeline?: bool, minimal_stats?: bool}  $options
      * @return array<string, mixed>
      */
-    public function analyze(Collection $points): array
+    public function analyze(Collection $points, array $options = []): array
     {
         $data = $this->sortedPoints($points);
+        $includeTrackPoints = $options['include_track_points'] ?? true;
+        $minimalStats = $options['minimal_stats'] ?? false;
 
         if ($data === []) {
             return $this->emptyStats();
@@ -45,7 +48,13 @@ class HistoryAnalyticsService
         $movingPoints = [];
         $idlePoints = [];
 
-        $flushStop = function () use (&$stopRun, &$stops): void {
+        $flushStop = function () use (&$stopRun, &$stops, $minimalStats): void {
+            if ($minimalStats) {
+                $stopRun = [];
+
+                return;
+            }
+
             if (count($stopRun) < 2) {
                 $stopRun = [];
 
@@ -113,11 +122,13 @@ class HistoryAnalyticsService
 
                 if (in_array($motion, ['stopped', 'idle', 'parked'], true)) {
                     $stopRun[] = $b;
-                    if (in_array($motion, ['stopped', 'idle'], true)) {
+                    if ($includeTrackPoints && in_array($motion, ['stopped', 'idle'], true)) {
                         $idlePoints[] = $this->pointPayload($b);
                     }
                 } else {
-                    $movingPoints[] = $this->pointPayload($b);
+                    if ($includeTrackPoints) {
+                        $movingPoints[] = $this->pointPayload($b);
+                    }
                     $flushStop();
                 }
             }
@@ -153,9 +164,11 @@ class HistoryAnalyticsService
             ? round($dist / ($movingSec / 3600), 1)
             : ($totalSec > 0 ? round($dist / ($totalSec / 3600), 1) : 0);
 
-        $timeline = $this->buildTimeline($points);
+        $timeline = ($options['skip_timeline'] ?? false)
+            ? []
+            : $this->buildTimelineFromSorted($data);
 
-        return [
+        $result = [
             'total_distance_km' => round($dist, 2),
             'moving_time_seconds' => $movingSec,
             'idle_time_seconds' => $idleSec,
@@ -172,9 +185,38 @@ class HistoryAnalyticsService
             'stop_count' => count($stops),
             'moving_points' => $movingPoints,
             'idle_points' => $idlePoints,
-            'point_statuses' => $this->pointStatuses($points),
             'timeline' => $timeline,
         ];
+
+        if ($options['point_statuses'] ?? true) {
+            $result['point_statuses'] = $this->pointStatuses($points);
+        }
+
+        return $result;
+    }
+
+    /**
+     * Haversine distance (km) over ordered GPS points — lightweight helper for trip rows.
+     *
+     * @param  Collection<int, DeviceLocation|object>  $points
+     */
+    public function distanceKmForPoints(Collection $points): float
+    {
+        $data = $this->sortedPoints($points);
+        $dist = 0.0;
+
+        for ($i = 1, $n = count($data); $i < $n; $i++) {
+            $a = $data[$i - 1];
+            $b = $data[$i];
+            $dist += $this->haversineKm(
+                (float) $a->lat,
+                (float) $a->lng,
+                (float) $b->lat,
+                (float) $b->lng
+            );
+        }
+
+        return round($dist, 2);
     }
 
     /**
@@ -183,8 +225,15 @@ class HistoryAnalyticsService
      */
     public function buildTimeline(Collection $points): array
     {
-        $data = $this->sortedPoints($points);
+        return $this->buildTimelineFromSorted($this->sortedPoints($points));
+    }
 
+    /**
+     * @param  list<object>  $data  Pre-sorted GPS points from sortedPoints().
+     * @return list<array<string, mixed>>
+     */
+    public function buildTimelineFromSorted(array $data): array
+    {
         if ($data === []) {
             return [];
         }

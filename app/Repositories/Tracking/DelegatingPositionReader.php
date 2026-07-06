@@ -88,6 +88,45 @@ class DelegatingPositionReader implements PositionReaderInterface
         return $this->legacy->historyForDevice($device, $from, $to, $order);
     }
 
+    /**
+     * @param  list<Device>  $devices
+     * @return array<int, Collection<int, DeviceLocation>>
+     */
+    public function historyForDevices(
+        array $devices,
+        ?Carbon $from = null,
+        ?Carbon $to = null,
+        string $order = 'asc'
+    ): array {
+        if ($devices === []) {
+            return [];
+        }
+
+        if ($this->shouldReadTraccar()) {
+            $history = $this->traccar->historyForDevices($devices, $from, $to, $order);
+            $missing = array_values(array_filter(
+                $devices,
+                fn (Device $device) => ($history[$device->id] ?? collect())->isEmpty()
+            ));
+
+            if ($missing === []) {
+                return $history;
+            }
+
+            $legacyBatch = $this->legacy->historyForDevices($missing, $from, $to, $order);
+
+            foreach ($legacyBatch as $id => $collection) {
+                if ($collection->isNotEmpty()) {
+                    $history[$id] = $collection;
+                }
+            }
+
+            return $history;
+        }
+
+        return $this->legacy->historyForDevices($devices, $from, $to, $order);
+    }
+
     public function previousBefore(Device $device, int $excludeLocationId, ?int $excludeTraccarPositionId = null): ?DeviceLocation
     {
         if ($this->shouldReadTraccar()) {

@@ -2,6 +2,7 @@
 
 namespace App\Services\Tracking\Reports;
 
+use App\Support\Pdf\ArabicPdfText;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Response;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -145,16 +146,19 @@ class ReportExportService
     private function exportCsv(array $report): StreamedResponse
     {
         $type = (string) ($report['type'] ?? 'summary');
-        $filename = "report-{$type}-" . now()->format('Ymd_His') . '.csv';
+        $filename = $this->exportFilename($type, 'csv');
 
         return response()->streamDownload(function () use ($report, $type) {
             $out = fopen('php://output', 'w');
             fwrite($out, "\xEF\xBB\xBF");
             foreach ($this->tableRows($report, $type) as $row) {
-                fputcsv($out, $row);
+                fputcsv($out, array_map(fn ($cell) => (string) $cell, $row));
             }
             fclose($out);
-        }, $filename, ['Content-Type' => 'text/csv; charset=UTF-8']);
+        }, $filename, $this->downloadHeaders(
+            'text/csv; charset=UTF-8',
+            $filename,
+        ));
     }
 
     /**
@@ -163,22 +167,40 @@ class ReportExportService
     private function exportSpreadsheet(array $report): StreamedResponse
     {
         $type = (string) ($report['type'] ?? 'summary');
-        $filename = "report-{$type}-" . now()->format('Ymd_His') . '.xls';
+        $filename = $this->exportFilename($type, 'xls');
         $rows = $this->tableRows($report, $type);
+        $rtl = $this->exportIsRtl();
 
-        return response()->streamDownload(function () use ($rows) {
-            echo '<?xml version="1.0" encoding="UTF-8"?>';
-            echo '<?mso-application progid="Excel.Sheet"?>';
-            echo '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"><Worksheet ss:Name="Report" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"><Table>';
+        return response()->streamDownload(function () use ($rows, $rtl) {
+            echo '<?xml version="1.0" encoding="UTF-8"?>'."\n";
+            echo '<?mso-application progid="Excel.Sheet"?>'."\n";
+            echo '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"';
+            echo ' xmlns:o="urn:schemas-microsoft-com:office:office"';
+            echo ' xmlns:x="urn:schemas-microsoft-com:office:excel"';
+            echo ' xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">'."\n";
+            echo '<Worksheet ss:Name="'.htmlspecialchars($this->worksheetTitle(), ENT_XML1).'">'."\n";
+            if ($rtl) {
+                echo '<WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel">';
+                echo '<DisplayRightToLeft/>';
+                echo '</WorksheetOptions>'."\n";
+            }
+            echo '<Table>'."\n";
             foreach ($rows as $row) {
                 echo '<Row>';
                 foreach ($row as $cell) {
-                    echo '<Cell><Data ss:Type="String">' . htmlspecialchars((string) $cell, ENT_XML1) . '</Data></Cell>';
+                    $value = htmlspecialchars((string) $cell, ENT_XML1 | ENT_QUOTES, 'UTF-8');
+                    $typeAttr = $this->spreadsheetCellType($cell);
+                    echo '<Cell><Data ss:Type="'.$typeAttr.'">'.$value.'</Data></Cell>';
                 }
-                echo '</Row>';
+                echo '</Row>'."\n";
             }
-            echo '</Table></Worksheet></Workbook>';
-        }, $filename, ['Content-Type' => 'application/vnd.ms-excel; charset=UTF-8']);
+            echo '</Table>'."\n";
+            echo '</Worksheet>'."\n";
+            echo '</Workbook>';
+        }, $filename, $this->downloadHeaders(
+            'application/vnd.ms-excel; charset=UTF-8',
+            $filename,
+        ));
     }
 
     /**
@@ -188,16 +210,81 @@ class ReportExportService
     {
         $locale = app()->getLocale();
         $type = (string) ($report['type'] ?? 'summary');
+        $rtl = $locale === 'ar';
+        $rows = $this->tableRows($report, $type);
+
+        if ($rtl) {
+            $rows = ArabicPdfText::shapeTableRows($rows);
+        }
+
         $html = view('tracking.exports.report-pdf', [
             'report' => $report,
-            'rows' => $this->tableRows($report, $type),
-            'dir' => $locale === 'ar' ? 'rtl' : 'ltr',
-            'align' => $locale === 'ar' ? 'right' : 'left',
+            'rows' => $rows,
+            'rtl' => $rtl,
+            'title' => $rtl
+                ? ArabicPdfText::shape((string) __('app.tracking.reports_title').' — '.(string) __('app.tracking.report_'.$type))
+                : (string) __('app.tracking.reports_title').' — '.(string) __('app.tracking.report_'.$type),
+            'noData' => $rtl
+                ? ArabicPdfText::shape((string) __('app.tracking.report_no_data'))
+                : (string) __('app.tracking.report_no_data'),
         ])->render();
 
         return Pdf::loadHTML($html)
             ->setPaper('a4', 'landscape')
-            ->download("report-{$type}-" . now()->format('Ymd_His') . '.pdf');
+            ->setOption('defaultFont', 'DejaVu Sans')
+            ->setOption('isHtml5ParserEnabled', true)
+            ->setOption('isRemoteEnabled', false)
+            ->download($this->exportFilename($type, 'pdf'));
+    }
+
+    private function exportIsRtl(): bool
+    {
+        return app()->getLocale() === 'ar';
+    }
+
+    private function worksheetTitle(): string
+    {
+        return (string) __('app.tracking.reports_title');
+    }
+
+    private function exportFilename(string $type, string $ext): string
+    {
+        $label = (string) __('app.tracking.report_'.$type);
+        $slug = preg_replace('/[^\p{L}\p{N}\-_]+/u', '-', $label) ?: $type;
+        $slug = trim((string) $slug, '-');
+
+        return 'report-'.$slug.'-'.now()->format('Ymd_His').'.'.$ext;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function downloadHeaders(string $contentType, string $filename): array
+    {
+        $ascii = preg_replace('/[^\x20-\x7E]+/', '_', $filename) ?: 'report.dat';
+        $encoded = rawurlencode($filename);
+
+        return [
+            'Content-Type' => $contentType,
+            'Content-Disposition' => "attachment; filename=\"{$ascii}\"; filename*=UTF-8''{$encoded}",
+        ];
+    }
+
+    private function spreadsheetCellType(mixed $cell): string
+    {
+        if ($cell === null || $cell === '') {
+            return 'String';
+        }
+
+        if (is_int($cell) || is_float($cell)) {
+            return 'Number';
+        }
+
+        if (is_string($cell) && preg_match('/^-?\d+(\.\d+)?$/', $cell)) {
+            return 'Number';
+        }
+
+        return 'String';
     }
 
     private function num(mixed $value): string

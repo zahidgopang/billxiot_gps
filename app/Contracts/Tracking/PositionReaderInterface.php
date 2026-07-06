@@ -29,5 +29,18 @@ interface PositionReaderInterface
         string $order = 'asc'
     ): Collection;
 
+    /**
+     * Batch history for fleet reports — one DB round-trip when possible.
+     *
+     * @param  list<Device>  $devices
+     * @return array<int, Collection<int, DeviceLocation>> keyed by Laravel device id
+     */
+    public function historyForDevices(
+        array $devices,
+        ?Carbon $from = null,
+        ?Carbon $to = null,
+        string $order = 'asc'
+    ): array;
+
     public function previousBefore(Device $device, int $excludeLocationId, ?int $excludeTraccarPositionId = null): ?DeviceLocation;
 }

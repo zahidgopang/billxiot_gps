@@ -57,6 +57,7 @@ class ReportController extends Controller
             $ids,
             $range['from'],
             $range['to'],
+            forExport: true,
         );
 
         return $this->export->export($report, $format);

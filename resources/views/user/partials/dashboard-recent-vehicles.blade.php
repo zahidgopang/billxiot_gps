@@ -4,66 +4,54 @@
         $latest = $device->latestLocation;
         $battery = $latest?->battery_level;
         $batteryPercent = is_numeric($battery) ? min(100, max(0, (int) $battery)) : null;
-        $iconClass = $device->deviceTypeIconClass();
         $canTrack = app(\App\Services\DeviceAccessService::class)->canUseMap(auth()->user(), $device);
-        $iconColor = match($status['class']) {
-            'bg-success' => 'text-success',
-            'bg-warning' => 'text-warning',
-            'bg-danger' => 'text-danger',
-            default => 'text-info',
+        $badgeClass = match ($status['key'] ?? '') {
+            'running', 'moving' => 'ud-badge--ok',
+            'offline', 'blocked' => 'ud-badge--muted',
+            'alert' => 'ud-badge--danger',
+            default => 'ud-badge--warn',
         };
     @endphp
     <tr>
         <td>
-            <div class="d-flex align-items-center">
-                <div class="vehicle-icon me-2">
-                    <i class="fas {{ $iconClass }} {{ $iconColor }}"></i>
-                </div>
-                <div class="vehicle-list-identity">
-                    <span class="vehicle-list-name">{{ $device->listPrimaryLabel() }}</span>
-                    @if($plate = $device->listSecondaryLabel())
-                        <span class="vehicle-list-plate"><x-admin.ltr>{{ $plate }}</x-admin.ltr></span>
-                    @endif
-                </div>
+            <div class="vehicle-list-identity">
+                <span class="vehicle-list-name">{{ $device->listPrimaryLabel() }}</span>
+                @if($plate = $device->listSecondaryLabel())
+                    <span class="vehicle-list-plate"><x-admin.ltr>{{ $plate }}</x-admin.ltr></span>
+                @endif
             </div>
         </td>
-        <td>
-            <span class="badge {{ $status['class'] }}">{{ $status['label'] }}</span>
-        </td>
+        <td><span class="ud-badge {{ $badgeClass }}">{{ $status['label'] }}</span></td>
         <td>
             @if($latest)
-                {{ number_format((float) $latest->lat, 5) }}, {{ number_format((float) $latest->lng, 5) }}
+                <span class="admin-ltr" dir="ltr">{{ number_format((float) $latest->lat, 5) }}, {{ number_format((float) $latest->lng, 5) }}</span>
             @else
-                <span class="text-muted">No location</span>
+                <span style="color: var(--apple-muted);">—</span>
             @endif
         </td>
         <td>{{ $latest ? number_format((float) ($latest->speed ?? 0), 0) . ' km/h' : '—' }}</td>
         <td>
             @if($batteryPercent !== null)
-                <div class="progress" style="height: 8px; width: 80px;">
-                    <div class="progress-bar {{ $batteryPercent < 20 ? 'bg-danger' : ($batteryPercent < 50 ? 'bg-warning' : 'bg-success') }}"
-                         style="width: {{ $batteryPercent }}%;"></div>
-                </div>
+                {{ $batteryPercent }}%
             @else
-                <span class="text-muted small">N/A</span>
+                <span style="color: var(--apple-muted);">N/A</span>
             @endif
         </td>
         <td>{{ $latest?->recorded_at?->diffForHumans() ?? '—' }}</td>
         <td>
             @if($canTrack)
-                <a href="{{ $device->launchMapRoute() }}" class="btn btn-outline-premium btn-sm me-1" title="Live map">
-                    <i class="fas fa-map-marked-alt"></i>
+                <a href="{{ $device->launchMapRoute() }}" class="ud-btn ud-btn--secondary" style="padding: 6px 10px; font-size: 12px;" title="{{ __('app.common.map') }}">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke-width="1.75" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z"/></svg>
                 </a>
             @else
-                <span class="badge bg-secondary" title="Map unavailable"><i class="fas fa-lock"></i></span>
+                <span class="ud-badge ud-badge--muted">—</span>
             @endif
         </td>
     </tr>
 @empty
     <tr>
-        <td colspan="7" class="text-center text-muted py-4">
-            <i class="fas fa-car fa-2x mb-2"></i>
-            <p class="mb-0">{{ __('app.user.dashboard.no_devices_yet') }}</p>
+        <td colspan="7" class="text-center" style="color: var(--apple-muted); padding: 32px;">
+            {{ __('app.user.dashboard.no_devices_yet') }}
         </td>
     </tr>
 @endforelse

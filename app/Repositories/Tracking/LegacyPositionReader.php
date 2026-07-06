@@ -77,6 +77,49 @@ class LegacyPositionReader implements PositionReaderInterface
         return $query->orderBy('recorded_at', $direction)->orderBy('id', $direction)->get();
     }
 
+    /**
+     * @param  list<Device>  $devices
+     * @return array<int, Collection<int, DeviceLocation>>
+     */
+    public function historyForDevices(
+        array $devices,
+        ?Carbon $from = null,
+        ?Carbon $to = null,
+        string $order = 'asc'
+    ): array {
+        if (! $this->tableExists() || $devices === []) {
+            return [];
+        }
+
+        $ids = array_values(array_unique(array_map(fn (Device $d) => (int) $d->id, $devices)));
+        $query = DeviceLocation::query()->whereIn('device_id', $ids);
+
+        if ($from) {
+            $query->where('recorded_at', '>=', $from);
+        }
+
+        if ($to) {
+            $query->where('recorded_at', '<=', $to);
+        }
+
+        $direction = strtolower($order) === 'desc' ? 'desc' : 'asc';
+        $rows = $query->orderBy('device_id', $direction)
+            ->orderBy('recorded_at', $direction)
+            ->orderBy('id', $direction)
+            ->get();
+
+        $grouped = [];
+        foreach ($ids as $id) {
+            $grouped[$id] = collect();
+        }
+
+        foreach ($rows as $row) {
+            $grouped[(int) $row->device_id]->push($row);
+        }
+
+        return $grouped;
+    }
+
     public function previousBefore(Device $device, int $excludeLocationId, ?int $excludeTraccarPositionId = null): ?DeviceLocation
     {
         if (! $this->tableExists()) {

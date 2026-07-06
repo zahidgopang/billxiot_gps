@@ -4,512 +4,215 @@
 
 @section('content')
 
-    <div class="container-fluid dashboard-container">
-        <!-- Welcome Section -->
-        <div class="row mb-4" style="margin-top: 30px !important;">
+<div class="ud-dashboard ud-fade-in">
+    <header class="mb-4">
+        <h1 class="ud-page-title">{{ __('app.user.dashboard.title') }}</h1>
+        <p class="ud-page-sub">
+            {{ __('app.user.dashboard.welcome_back') }}
+            {{ $trackerDisplayName ?? auth()->user()?->name }} ·
+            <span id="udLiveClock"></span>
+        </p>
+    </header>
 
-            @if(isset($trackerAccountActive) && ! $trackerAccountActive)
-                <div class="col-12">
-                    <div class="alert alert-warning d-flex align-items-start shadow-sm">
-                        <i class="fas fa-satellite-dish me-3 mt-1"></i>
-                        <div>
-                            <strong>{{ __('app.user.dashboard.tracker_unavailable_title') }}</strong>
-                            <div class="small">
-                                {{ __('app.user.dashboard.tracker_unavailable_msg') }}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            @endif
-
-            @if(session('tracker_unavailable'))
-                <div class="col-12">
-                    <div class="alert alert-warning mb-0">
-                        {{ __('app.user.dashboard.tracker_route_blocked') }}
-                    </div>
-                </div>
-            @endif
-
-            {{-- ✅ ALERT: outside premium-card --}}
-            @if($emailVerified)
-                <div class="col-12">
-                    <div class="alert alert-success d-flex align-items-start shadow-sm">
-                        <i class="fas fa-check-circle me-3 mt-1"></i>
-                        <div>
-                            <strong>{{ __('app.user.dashboard.email_verified') }} 🎉</strong>
-                            <div class="small">
-                                {{ __('app.user.dashboard.email_verified_msg') }}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            @endif
-
-            <div class="col-12">
-                <div class="premium-card">
-                    <div class="row align-items-center">
-                        <div class="col-md-8">
-                            <h2 class="mb-3">
-                                {{ __('app.user.dashboard.welcome_back') }}
-                                <span style="color: var(--primary-blue);">
-                                {{ $trackerDisplayName ?? auth()->user()?->name }}
-                        </span>! 👋
-                            </h2>
-
-                            <p class="text-muted mb-0">
-                                <i class="fas fa-clock me-2"></i>
-                                {{ now()->format('l, F j, Y') }} •
-                                <span id="liveTime" style="color: var(--primary-blue);"></span>
-                            </p>
-
-                            <p class="mt-3 mb-0">
-                                {{ __('app.user.dashboard.tagline') }}
-                            </p>
-                        </div>
-
-                        <div class="col-md-4 text-md-end">
-                            <div class="position-relative d-inline-block">
-                                <i class="fas fa-satellite fa-4x" style="color: var(--primary-blue);"></i>
-                                <span class="badge bg-danger position-absolute top-0 start-100 translate-middle">
-                            {{ __('app.common.live') }}
-                        </span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-        </div>
-
-
-        <!-- Stats Overview -->
-        <div class="row mb-4">
-            <div class="col-xl-3 col-md-6 mb-4">
-                <div class="premium-card stats-card h-100" data-stat="active">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <h6 class="text-uppercase text-muted mb-2">{{ __('app.user.dashboard.active_vehicles') }}</h6>
-                            <h2 class="mb-0" style="color: var(--primary-blue);">{{ $activeDevices }}</h2>
-                            <p class="mb-0"><span class="text-muted">{{ trans_choice('app.user.dashboard.total_devices', $totalDevices, ['count' => $totalDevices]) }}</span></p>
-                        </div>
-                        <div class="icon-box" style="background: linear-gradient(135deg, #10B981, #059669);">
-                            <i class="fas fa-car fa-2x text-white"></i>
-                        </div>
-                    </div>
-                    <div class="progress mt-3" style="height: 6px; background: #E5E7EB;">
-                        <div class="progress-bar bg-success" style="width: {{ $activePercent }}%;"></div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="col-xl-3 col-md-6 mb-4">
-                <div class="premium-card stats-card h-100" data-stat="distance">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <h6 class="text-uppercase text-muted mb-2">{{ __('app.user.dashboard.total_distance') }}</h6>
-                            <h2 class="mb-0" style="color: var(--primary-blue);">{{ number_format($totalDistanceKm) }}<span class="fs-6">km</span></h2>
-                            <p class="mb-0"><span class="text-warning"><i class="fas fa-wave-square me-1"></i>{{ __('app.user.dashboard.last_30_days') }}</span></p>
-                        </div>
-                        <div class="icon-box" style="background: linear-gradient(135deg, #F59E0B, #D97706);">
-                            <i class="fas fa-route fa-2x text-white"></i>
-                        </div>
-                    </div>
-                    <div class="progress mt-3" style="height: 6px; background: #E5E7EB;">
-                        <div class="progress-bar bg-warning" style="width: {{ $distancePercent }}%;"></div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="col-xl-3 col-md-6 mb-4">
-                <div class="premium-card stats-card h-100" data-stat="alerts">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <h6 class="text-uppercase text-muted mb-2">Active Alerts</h6>
-                            <h2 class="mb-0" style="color: var(--primary-blue);">{{ $activeAlerts }}</h2>
-                            <p class="mb-0"><span class="text-danger"><i class="fas fa-exclamation-circle me-1"></i>Geofence exits</span> last 7 days</p>
-                        </div>
-                        <div class="icon-box" style="background: linear-gradient(135deg, #EF4444, #DC2626);">
-                            <i class="fas fa-bell fa-2x text-white"></i>
-                        </div>
-                    </div>
-                    <div class="progress mt-3" style="height: 6px; background: #E5E7EB;">
-                        <div class="progress-bar bg-danger" style="width: {{ $alertsPercent }}%;"></div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="col-xl-3 col-md-6 mb-4">
-                <div class="premium-card stats-card h-100" data-stat="online">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <h6 class="text-uppercase text-muted mb-2">Online Now</h6>
-                            <h2 class="mb-0" style="color: var(--primary-blue);">{{ $onlineNow }}</h2>
-                            <p class="mb-0"><span class="text-info"><i class="fas fa-signal me-1"></i>{{ __('app.user.devices.online_now') }}</span></p>
-                        </div>
-                        <div class="icon-box" style="background: linear-gradient(135deg, var(--primary-blue), var(--secondary-blue));">
-                            <i class="fas fa-satellite-dish fa-2x text-white"></i>
-                        </div>
-                    </div>
-                    <div class="progress mt-3" style="height: 6px; background: #E5E7EB;">
-                        <div class="progress-bar bg-info" style="width: {{ $onlinePercent }}%;"></div>
-                    </div>
-                </div>
+    @if(isset($trackerAccountActive) && ! $trackerAccountActive)
+        <div class="ud-alert ud-alert--warn">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke-width="1.75" stroke="#FF9F0A" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"/></svg>
+            <div>
+                <strong>{{ __('app.user.dashboard.tracker_unavailable_title') }}</strong>
+                <div>{{ __('app.user.dashboard.tracker_unavailable_msg') }}</div>
             </div>
         </div>
+    @endif
 
-        <!-- Vehicles Overview Section -->
-        <div class="row mb-4">
-            <div class="col-12">
-                <div class="premium-card">
-                    <div class="d-flex justify-content-between align-items-center mb-4">
-                        <h5 class="mb-0"><i class="fas fa-car me-2"></i>Vehicles Overview</h5>
-                    </div>
+    @if(session('tracker_unavailable'))
+        <div class="ud-alert ud-alert--warn">{{ __('app.user.dashboard.tracker_route_blocked') }}</div>
+    @endif
 
-                    <div class="row">
-                        <div class="col-md-3 mb-3">
-                            <div class="text-center p-4 premium-card">
-                                <div class="mb-3">
-                                    <i class="fas fa-car fa-3x" style="color: var(--success);"></i>
-                                </div>
-                                <h4 class="mb-2">{{ $vehicleStates['running'] }}</h4>
-                                <p class="text-muted mb-0">Running</p>
-                            </div>
-                        </div>
-
-                        <div class="col-md-3 mb-3">
-                            <div class="text-center p-4 premium-card">
-                                <div class="mb-3">
-                                    <i class="fas fa-parking fa-3x" style="color: var(--warning);"></i>
-                                </div>
-                                <h4 class="mb-2">{{ $vehicleStates['parked'] }}</h4>
-                                <p class="text-muted mb-0">Parked</p>
-                            </div>
-                        </div>
-
-                        <div class="col-md-3 mb-3">
-                            <div class="text-center p-4 premium-card">
-                                <div class="mb-3">
-                                    <i class="fas fa-wrench fa-3x" style="color: var(--info);"></i>
-                                </div>
-                                <h4 class="mb-2">{{ $vehicleStates['maintenance'] }}</h4>
-                                <p class="text-muted mb-0">Inactive / Blocked</p>
-                            </div>
-                        </div>
-
-                        <div class="col-md-3 mb-3">
-                            <div class="text-center p-4 premium-card">
-                                <div class="mb-3">
-                                    <i class="fas fa-exclamation-triangle fa-3x" style="color: var(--danger);"></i>
-                                </div>
-                                <h4 class="mb-2">{{ $vehicleStates['alerts'] }}</h4>
-                                <p class="text-muted mb-0">Alerts</p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+    @if(!empty($emailVerified))
+        <div class="ud-alert ud-alert--ok">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke-width="1.75" stroke="#34C759" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            <div>
+                <strong>{{ __('app.user.dashboard.email_verified') }}</strong>
+                <div>{{ __('app.user.dashboard.email_verified_msg') }}</div>
             </div>
         </div>
+    @endif
 
-        <!-- Main Content Area -->
-        <div class="row">
-            <!-- Live Activity Feed -->
-            <div class="col-xl-8 mb-4">
-                <div class="premium-card h-100">
-                    <div class="d-flex justify-content-between align-items-center mb-3">
-                        <h5 class="mb-0"><i class="fas fa-bolt me-2"></i>Live Activity Feed</h5>
-                        <span class="badge bg-danger">{{ __('app.common.live') }}</span>
-                    </div>
-
-                    <div class="activity-feed" style="max-height: 500px; overflow-y: auto;">
-                        @include('user.partials.dashboard-activity-feed')
-                    </div>
-
-                    <!-- Refresh Button -->
-                    <div class="text-center mt-3">
-                        <button class="btn btn-premium w-100" id="refreshActivity">
-                            <i class="fas fa-sync-alt me-2"></i>Refresh Feed
-                        </button>
-                    </div>
-                </div>
+    {{-- KPI row 1 — matches /user/devices summary stats --}}
+    <div class="ud-kpi-grid">
+        <div class="ud-card">
+            <div class="ud-kpi-head">
+                <p class="ud-kpi-title">{{ __('app.user.devices.total') }}</p>
+                <div class="ud-kpi-icon"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke-width="1.75" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 18.75a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h6m-9 0H3.375a1.125 1.125 0 01-1.125-1.125V14.25m17.25 4.5a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h1.125c.621 0 1.129-.504 1.09-1.124a17.902 17.902 0 00-3.213-9.193 2.056 2.056 0 00-1.58-.86H14.25M16.5 18.75h-2.25m0-11.177v-.958c0-.568-.422-1.048-.987-1.106a48.554 48.554 0 00-10.026 0 1.106 1.106 0 00-.987 1.106v7.635m12-6.677v6.677m0 4.5v-4.5m0 0h-12"/></svg></div>
             </div>
-
-            <!-- Quick Actions -->
-            <div class="col-xl-4 mb-4">
-                <div class="premium-card h-100">
-                    <h5 class="mb-4"><i class="fas fa-bolt me-2"></i>Quick Actions</h5>
-                    <div class="row g-3">
-                        <div class="col-6">
-                            <button class="btn btn-action w-100 h-100 p-3" data-action="report">
-                                <i class="fas fa-chart-bar fa-2x mb-2" style="color: var(--primary-blue);"></i>
-                                <span>Generate Report</span>
-                            </button>
-                        </div>
-                        <div class="col-6">
-                            <button class="btn btn-action w-100 h-100 p-3" data-action="geofence">
-                                <i class="fas fa-draw-polygon fa-2x mb-2" style="color: var(--primary-blue);"></i>
-                                <span>Set Geofence</span>
-                            </button>
-                        </div>
-                        <div class="col-6">
-                            <button class="btn btn-action w-100 h-100 p-3" data-action="alert">
-                                <i class="fas fa-bell fa-2x mb-2" style="color: var(--primary-blue);"></i>
-                                <span>Manage Alerts</span>
-                            </button>
-                        </div>
-                        <div class="col-6">
-                            <button class="btn btn-action w-100 h-100 p-3" data-action="export">
-                                <i class="fas fa-file-export fa-2x mb-2" style="color: var(--primary-blue);"></i>
-                                <span>Export Data</span>
-                            </button>
-                        </div>
-                        <div class="col-6">
-                            <button class="btn btn-action w-100 h-100 p-3" data-action="history">
-                                <i class="fas fa-history fa-2x mb-2" style="color: var(--primary-blue);"></i>
-                                <span>View History</span>
-                            </button>
-                        </div>
-                        <div class="col-6">
-                            <button class="btn btn-action w-100 h-100 p-3" data-action="settings">
-                                <i class="fas fa-cog fa-2x mb-2" style="color: var(--primary-blue);"></i>
-                                <span>Settings</span>
-                            </button>
-                        </div>
-                    </div>
-
-                    <!-- Recent Reports -->
-                    <div class="mt-4">
-                        <h6 class="mb-3"><i class="fas fa-file-alt me-2"></i>Recent Reports</h6>
-                        <div class="list-group">
-                            <a href="#" class="list-group-item list-group-item-action border-0 mb-2 rounded">
-                                <div class="d-flex w-100 justify-content-between">
-                                    <h6 class="mb-1">Daily Summary</h6>
-                                    <small>Today</small>
-                                </div>
-                                <p class="mb-1 text-muted">Vehicle performance and fuel report</p>
-                            </a>
-                            <a href="#" class="list-group-item list-group-item-action border-0 mb-2 rounded">
-                                <div class="d-flex w-100 justify-content-between">
-                                    <h6 class="mb-1">Weekly Analysis</h6>
-                                    <small>2 days ago</small>
-                                </div>
-                                <p class="mb-1 text-muted">Route optimization and efficiency</p>
-                            </a>
-                            <a href="#" class="list-group-item list-group-item-action border-0 rounded">
-                                <div class="d-flex w-100 justify-content-between">
-                                    <h6 class="mb-1">Monthly Report</h6>
-                                    <small>1 week ago</small>
-                                </div>
-                                <p class="mb-1 text-muted">Complete fleet performance</p>
-                            </a>
-                        </div>
-                    </div>
-                </div>
-            </div>
+            <div class="ud-kpi-value" data-count="{{ $totalDevices }}">0</div>
+            <p class="ud-kpi-meta">{{ $activeDevices }} {{ strtolower(__('app.user.dashboard.active_vehicles')) }}</p>
         </div>
-
-        <!-- Recent Vehicles Table -->
-        <div class="row mt-4">
-            <div class="col-12">
-                <div class="premium-card h-100">
-                    <div class="d-flex justify-content-between align-items-center mb-4">
-                        <h5 class="mb-0"><i class="fas fa-car me-2"></i>Recent Vehicles</h5>
-                        <a href="{{ route('user.devices.index') }}" class="btn btn-outline-premium btn-sm">View All</a>
-                    </div>
-
-                    <div class="table-responsive">
-                        <table class="table table-hover">
-                            <thead>
-                            <tr>
-                                <th>Vehicle ID</th>
-                                <th>Status</th>
-                                <th>Location</th>
-                                <th>Speed</th>
-                                <th>Battery</th>
-                                <th>Last Update</th>
-                                <th>Actions</th>
-                            </tr>
-                            </thead>
-                            <tbody>
-                            @include('user.partials.dashboard-recent-vehicles')
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
+        <div class="ud-card">
+            <div class="ud-kpi-head">
+                <p class="ud-kpi-title">{{ __('app.user.devices.online_now') }}</p>
+                <div class="ud-kpi-icon"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke-width="1.75" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M8.288 15.038a5.25 5.25 0 017.424 0M5.106 11.856c3.807-3.808 9.98-3.808 13.788 0M2.34 8.223c5.112-5.112 13.404-5.112 18.516 0"/></svg></div>
             </div>
+            <div class="ud-kpi-value" data-count="{{ $onlineNow }}">0</div>
+            <p class="ud-kpi-meta"><span class="up">{{ $onlinePercent }}%</span> {{ __('app.user.dashboard.of_fleet') }}</p>
+        </div>
+        <div class="ud-card">
+            <div class="ud-kpi-head">
+                <p class="ud-kpi-title">{{ __('app.user.dashboard.offline') }}</p>
+                <div class="ud-kpi-icon"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke-width="1.75" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 3l18 18M9.879 9.88a3 3 0 104.243 4.242"/></svg></div>
+            </div>
+            <div class="ud-kpi-value" data-count="{{ $offlineNow }}">0</div>
+            <p class="ud-kpi-meta">{{ __('app.user.dashboard.not_reporting') }}</p>
+        </div>
+        <div class="ud-card">
+            <div class="ud-kpi-head">
+                <p class="ud-kpi-title">{{ __('app.user.dashboard.distance_today') }}</p>
+                <div class="ud-kpi-icon"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke-width="1.75" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9 6.75V15m6-6v8.25m.503 3.498l4.875-2.437c.381-.19.622-.58.622-1.006V4.82c0-.836-.88-1.38-1.628-1.006l-3.869 1.934c-.317.159-.69.159-1.006 0L9.503 3.252a1.125 1.125 0 00-1.006 0L3.622 5.689C3.24 5.88 3 6.27 3 6.695V19.18c0 .836.88 1.38 1.628 1.006l3.869-1.934c.317-.159.69-.159 1.006 0l4.994 2.497c.317.158.69.158 1.006 0z"/></svg></div>
+            </div>
+            <div class="ud-kpi-value"><span data-count="{{ (int) round($distanceTodayKm ?? 0) }}">0</span><span style="font-size:18px;font-weight:600;"> km</span></div>
+            <p class="ud-kpi-meta">{{ __('app.user.dashboard.today') }}</p>
         </div>
     </div>
 
-    <style>
-        /* Additional Dashboard Styles */
-        .icon-box {
-            width: 60px;
-            height: 60px;
-            border-radius: 15px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 24px;
-        }
+    {{-- KPI row 2 — live fleet motion (same source as /user/devices) --}}
+    <div class="ud-kpi-grid">
+        <div class="ud-card">
+            <div class="ud-kpi-head"><p class="ud-kpi-title">{{ __('app.user.devices.moving') }}</p></div>
+            <div class="ud-kpi-value" data-count="{{ $running }}">0</div>
+            <p class="ud-kpi-meta">{{ __('app.user.devices.moving') }}</p>
+        </div>
+        <div class="ud-card">
+            <div class="ud-kpi-head"><p class="ud-kpi-title">{{ __('app.user.devices.parked_idle') }}</p></div>
+            <div class="ud-kpi-value" data-count="{{ $parked }}">0</div>
+            <p class="ud-kpi-meta">{{ __('app.user.dashboard.idle_stopped', ['idle' => $idle ?? 0, 'stopped' => $fleetCounts['stopped'] ?? 0]) }}</p>
+        </div>
+        <div class="ud-card">
+            <div class="ud-kpi-head"><p class="ud-kpi-title">{{ __('app.user.dashboard.alerts') }}</p></div>
+            <div class="ud-kpi-value" data-count="{{ $activeAlerts }}">0</div>
+            <p class="ud-kpi-meta">{{ __('app.user.dashboard.last_7_days') }}</p>
+        </div>
+        <div class="ud-card">
+            <div class="ud-kpi-head"><p class="ud-kpi-title">{{ __('app.user.dashboard.total_distance') }}</p></div>
+            <div class="ud-kpi-value"><span data-count="{{ $totalDistanceKm }}">0</span><span style="font-size:18px;font-weight:600;"> km</span></div>
+            <p class="ud-kpi-meta">{{ __('app.user.dashboard.last_30_days') }}</p>
+        </div>
+    </div>
 
-        .icon-box-sm {
-            width: 40px;
-            height: 40px;
-            border-radius: 10px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
+    {{-- Charts --}}
+    <div class="ud-grid-2">
+        <div class="ud-card">
+            <h2 class="ud-card-title">{{ __('app.user.dashboard.vehicle_status') }}</h2>
+            <div id="udChartStatus" class="ud-chart"></div>
+        </div>
+        <div class="ud-card">
+            <h2 class="ud-card-title">{{ __('app.user.dashboard.vehicle_activity_24h') }}</h2>
+            <div id="udChartActivity" class="ud-chart"></div>
+        </div>
+    </div>
 
-        .activity-item {
-            transition: all 0.3s ease;
-            border-inline-start: 3px solid transparent;
-        }
+    <div class="ud-grid-2">
+        <div class="ud-card">
+            <h2 class="ud-card-title">{{ __('app.user.dashboard.alerts') }}</h2>
+            <div id="udChartAlerts" class="ud-chart"></div>
+        </div>
+        <div class="ud-card">
+            <h2 class="ud-card-title">{{ __('app.user.dashboard.fleet_activity_30d') }}</h2>
+            <div id="udChartPerformance" class="ud-chart"></div>
+        </div>
+    </div>
 
-        .activity-item:hover {
-            border-inline-start-color: var(--primary-blue);
-        }
+    <div class="ud-card" style="margin-bottom: 24px;">
+        <h2 class="ud-card-title">{{ __('app.user.dashboard.weekly_distance') }}</h2>
+        <div id="udChartWeekly" class="ud-chart"></div>
+    </div>
 
-        html[dir="ltr"] .activity-item:hover {
-            transform: translateX(5px);
-        }
+    {{-- Live map --}}
+    <div class="ud-card" style="margin-bottom: 24px;">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h2 class="ud-card-title mb-0">{{ __('app.user.dashboard.live_map') }}</h2>
+            <a href="{{ route('user.tracking.index') }}" class="ud-btn ud-btn--primary">{{ __('app.user.dashboard.open_tracking') }}</a>
+        </div>
+        @if(!empty($mapMarkers))
+            <div id="udMiniMap" class="ud-map-wrap" role="img" aria-label="{{ __('app.user.dashboard.live_map') }}"></div>
+            <p class="ud-kpi-meta mt-3 mb-0">{{ __('app.user.dashboard.online_moving_map', ['online' => $onlineNow, 'moving' => $running, 'map' => count($mapMarkers)]) }}</p>
+        @else
+            <div class="ud-map-wrap">
+                <div class="ud-map-empty">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z"/></svg>
+                    <span>{{ __('app.user.dashboard.no_online_gps') }}</span>
+                </div>
+            </div>
+            <p class="ud-kpi-meta mt-3 mb-0">{{ __('app.user.dashboard.online_moving_map', ['online' => $onlineNow, 'moving' => $running, 'map' => 0]) }}</p>
+        @endif
+    </div>
 
-        html[dir="rtl"] .activity-item:hover {
-            transform: translateX(-5px);
-        }
+    {{-- Activity --}}
+    <div class="ud-card" style="margin-bottom: 24px;">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h2 class="ud-card-title mb-0">{{ __('app.user.dashboard.recent_activity') }}</h2>
+            <button type="button" class="ud-btn ud-btn--secondary" id="udRefreshActivity">{{ __('app.user.dashboard.refresh') }}</button>
+        </div>
+        <div class="ud-timeline">
+            @include('user.partials.dashboard-activity-feed')
+        </div>
+    </div>
 
-        .btn-action {
-            background: white;
-            border: 2px solid var(--border-color);
-            border-radius: 12px;
-            color: var(--text-primary);
-            transition: all 0.3s ease;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            padding: 1rem;
-        }
-
-        .btn-action:hover {
-            background: var(--primary-blue);
-            color: white;
-            transform: translateY(-3px);
-            border-color: var(--primary-blue);
-        }
-
-        .stats-card {
-            cursor: pointer;
-        }
-
-        .stats-card:hover {
-            transform: translateY(-8px);
-        }
-
-        /* List group customization */
-        .list-group-item {
-            border: 1px solid var(--border-color);
-            transition: all 0.3s ease;
-        }
-
-        .list-group-item:hover {
-            background-color: var(--primary-blue);
-            color: white;
-            border-color: var(--primary-blue);
-        }
-
-        .list-group-item:hover .text-muted {
-            color: rgba(255, 255, 255, 0.8) !important;
-        }
-
-        /* Responsive adjustments */
-        @media (max-width: 768px) {
-            .stats-card h2 {
-                font-size: 1.5rem;
-            }
-
-            .icon-box {
-                width: 50px;
-                height: 50px;
-                font-size: 20px;
-            }
-
-            .btn-action {
-                padding: 0.75rem;
-            }
-
-            .btn-action i {
-                font-size: 1.5rem;
-            }
-        }
-    </style>
-
-    <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            // Live time update
-            function updateLiveTime() {
-                const now = new Date();
-                const timeString = now.toLocaleTimeString('en-US', {
-                    hour12: true,
-                    hour: '2-digit',
-                    minute: '2-digit',
-                    second: '2-digit'
-                });
-                document.getElementById('liveTime').textContent = timeString;
-            }
-
-            setInterval(updateLiveTime, 1000);
-            updateLiveTime();
-
-            // Refresh activity feed
-            document.getElementById('refreshActivity').addEventListener('click', function() {
-                const originalHTML = this.innerHTML;
-                this.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Refreshing...';
-                this.classList.add('disabled');
-
-                setTimeout(() => {
-                    this.innerHTML = originalHTML;
-                    this.classList.remove('disabled');
-                    // Show success message
-                    window.location.reload();
-                }, 1500);
-            });
-
-            // Quick action buttons
-            document.querySelectorAll('.btn-action').forEach(btn => {
-                btn.addEventListener('click', function() {
-                    const action = this.dataset.action;
-                    const actionNames = {
-                        'report': 'Generate Report',
-                        'geofence': 'Set Geofence',
-                        'alert': 'Manage Alerts',
-                        'export': 'Export Data',
-                        'history': 'View History',
-                        'settings': 'Settings'
-                    };
-                    alert(`Action: ${actionNames[action]}`);
-                });
-            });
-
-            // Add hover effect to stats cards
-            document.querySelectorAll('.stats-card').forEach(card => {
-                card.addEventListener('mouseenter', function() {
-                    this.style.transform = 'translateY(-8px)';
-                });
-
-                card.addEventListener('mouseleave', function() {
-                    this.style.transform = 'translateY(0)';
-                });
-            });
-        });
-    </script>
-
-    @if(!empty($emailVerified))
-        <script>
-            setTimeout(() => {
-                const alert = document.querySelector('.bg-green-50');
-                if (alert) alert.classList.add('fade');
-            }, 24000);
-        </script>
-    @endif
-
+    {{-- Fleet table --}}
+    <div class="ud-card">
+        <div class="ud-table-toolbar">
+            <h2 class="ud-card-title mb-0">{{ __('app.user.dashboard.fleet_overview') }}</h2>
+            <div class="d-flex gap-2 flex-wrap">
+                <input type="search" id="udFleetSearch" class="ud-table-search" placeholder="{{ __('app.user.dashboard.search_vehicles') }}" aria-label="{{ __('app.user.dashboard.search_vehicles') }}">
+                <a href="{{ route('user.devices.index') }}" class="ud-btn ud-btn--secondary">{{ __('app.user.dashboard.view_devices') }}</a>
+            </div>
+        </div>
+        <div class="ud-table-wrap">
+            <table class="ud-table" id="udFleetTable">
+                <thead>
+                    <tr>
+                        <th>{{ __('app.user.dashboard.vehicle') }}</th>
+                        <th>{{ __('app.user.dashboard.status') }}</th>
+                        <th>{{ __('app.user.dashboard.location') }}</th>
+                        <th>{{ __('app.user.dashboard.speed') }}</th>
+                        <th>{{ __('app.user.dashboard.battery') }}</th>
+                        <th>{{ __('app.user.dashboard.last_update') }}</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @include('user.partials.dashboard-recent-vehicles')
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
 @endsection
+
+@push('scripts')
+<script>
+    window.USER_DASHBOARD_CONFIG = {
+        charts: @json($chartData ?? []),
+        mapMarkers: @json($mapMarkers ?? []),
+        googleMapsKey: @json(config('services.google.maps_key')),
+    };
+</script>
+<script src="https://cdn.jsdelivr.net/npm/apexcharts@3.49.1/dist/apexcharts.min.js"></script>
+@if(!empty($mapMarkers))
+    @include('partials.google-maps-platform')
+@endif
+<script src="{{ protected_js('user-dashboard.js') }}"></script>
+<script>
+    (function () {
+        function tick() {
+            const el = document.getElementById('udLiveClock');
+            if (!el) return;
+            el.textContent = new Date().toLocaleString(@json(app()->getLocale()), {
+                weekday: 'short', month: 'short', day: 'numeric',
+                hour: '2-digit', minute: '2-digit', second: '2-digit'
+            });
+        }
+        tick();
+        setInterval(tick, 1000);
+    })();
+</script>
+@endpush

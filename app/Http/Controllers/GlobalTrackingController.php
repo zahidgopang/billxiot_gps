@@ -83,7 +83,26 @@ class GlobalTrackingController extends Controller
     public function devicePanel(Request $request): JsonResponse
     {
         $id = (int) ($request->query('device_id') ?? $request->input('device_id') ?? 0);
-        $data = $this->tracking->devicePanelData($request->user(), $id);
+        $sectionsParam = $request->query('sections');
+        $sections = null;
+        if (is_string($sectionsParam) && trim($sectionsParam) !== '') {
+            $sections = array_values(array_filter(array_map(
+                static fn (string $part) => strtolower(trim($part)),
+                explode(',', $sectionsParam),
+            )));
+        }
+
+        try {
+            $freshStats = $request->boolean('fresh');
+            $data = $this->tracking->devicePanelData($request->user(), $id, $sections, $freshStats);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return $this->noStoreJson([
+                'success' => false,
+                'message' => __('app.tracking.panel_load_failed'),
+            ], 503);
+        }
 
         if ($data === null) {
             return $this->noStoreJson(['success' => false], 404);

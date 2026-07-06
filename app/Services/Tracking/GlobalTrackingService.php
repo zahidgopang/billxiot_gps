@@ -58,12 +58,12 @@ class GlobalTrackingService
     ) {}
 
     /**
-     * Traccar-style bottom info panel for one device:
-     * latest telemetry + today's statistics + recent events + recent positions (for the graph).
+     * Traccar-style bottom info panel for one device.
      *
+     * @param  list<string>|null  $sections  core, stats, events, graph, route_trip — default excludes route_trip (load via sections=route_trip).
      * @return array<string, mixed>|null
      */
-    public function devicePanelData(User $actor, int $deviceId): ?array
+    public function devicePanelData(User $actor, int $deviceId, ?array $sections = null, bool $freshStats = false): ?array
     {
         if (! in_array($deviceId, $this->filterAllowedIds($actor, [$deviceId]), true)) {
             return null;
@@ -74,6 +74,54 @@ class GlobalTrackingService
             return null;
         }
 
+        $sections = $sections ?? ['core', 'stats', 'events', 'graph'];
+        $sections = array_values(array_unique(array_map('strtolower', $sections)));
+
+        if ($sections === ['route_trip']) {
+            $this->positionLoader->attachLatestToMany(collect([$device]));
+            $latest = $device->latestLocation;
+
+            return [
+                'id' => $device->id,
+                'route_trip' => $this->routeTripPayloadForActor($actor, $device, $latest),
+            ];
+        }
+
+        $panel = [];
+
+        if (in_array('core', $sections, true)) {
+            $panel = array_merge($panel, $this->devicePanelCore($actor, $device));
+        }
+
+        if (in_array('stats', $sections, true)) {
+            $panel['stats'] = $this->devicePanelTodayStats($device, $freshStats);
+        }
+
+        if (in_array('events', $sections, true)) {
+            $panel['events'] = $this->devicePanelRecentEvents($device);
+        }
+
+        if (in_array('graph', $sections, true)) {
+            $panel['positions'] = $this->devicePanelGraphPositions($device);
+        }
+
+        if (in_array('route_trip', $sections, true)) {
+            $latest = $device->latestLocation;
+            if (! isset($latest)) {
+                $this->positionLoader->attachLatestToMany(collect([$device]));
+                $latest = $device->latestLocation;
+            }
+            $panel['route_trip'] = $this->routeTripPayloadForActor($actor, $device, $latest);
+        }
+
+        return $panel;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function devicePanelCore(User $actor, Device $device): array
+    {
         $this->positionLoader->attachLatestToMany(collect([$device]));
         $latest = $device->latestLocation;
         $map = $this->mapStatus->resolve($latest, $device);
@@ -81,55 +129,6 @@ class GlobalTrackingService
             ? VehicleStatusSpec::motionKey((float) ($latest->speed ?? 0), (bool) $latest->ignition)
             : null;
         $duration = $this->statusDuration->resolve($device, $latest, $map);
-
-        $from = now()->startOfDay();
-        $to = now();
-        try {
-            $collection = $this->historyFetcher->fetch($device, $from, $to, true)['locations'];
-            $stats = $this->analytics->analyze($collection);
-        } catch (\Throwable) {
-            $collection = collect();
-            $stats = $this->analytics->analyze($collection);
-        }
-
-        $events = $this->events
-            ->forDevice($device, now()->subDays(7), $to, null, limit: 12)
-            ->map(fn (VehicleEvent $event) => array_merge($event->toAlertArray(), [
-                'lat' => $event->lat !== null ? (float) $event->lat : null,
-                'lng' => $event->lng !== null ? (float) $event->lng : null,
-            ]))
-            ->values()
-            ->all();
-        usort($events, fn ($a, $b) => strcmp((string) ($b['time'] ?? ''), (string) ($a['time'] ?? '')));
-        $events = array_slice($events, 0, 12);
-
-        $positions = $collection
-            ->map(fn (DeviceLocation $loc) => [
-                'speed' => round((float) ($loc->speed ?? 0)),
-                'lat' => (float) $loc->lat,
-                'lng' => (float) $loc->lng,
-                'time' => $loc->recorded_at ? AppDateTime::format($loc->recorded_at, 'log') : null,
-            ])
-            ->values()
-            ->all();
-
-        // Recent tasks for this object (Traccar "Recent tasks" widget).
-        $tasks = [];
-        if (\Illuminate\Support\Facades\Schema::hasTable('tracking_tasks')) {
-            $tasks = \App\Models\TrackingTask::query()
-                ->where('device_id', $deviceId)
-                ->orderByDesc('id')
-                ->limit(8)
-                ->get()
-                ->map(fn ($t) => [
-                    'name' => (string) $t->name,
-                    'status' => (string) $t->status,
-                    'start' => (string) ($t->start ?? ''),
-                    'destination' => (string) ($t->destination ?? ''),
-                    'time' => optional($t->time_from)->format('Y-m-d H:i'),
-                ])
-                ->all();
-        }
 
         $notes = is_string($device->description ?? null) && $device->description !== ''
             ? $device->description
@@ -161,27 +160,163 @@ class GlobalTrackingService
             'ignition' => $latest !== null ? (bool) $latest->ignition : null,
             'time_position' => $latest?->recorded_at ? app_datetime_format($latest->recorded_at) : null,
             'time_server' => app_datetime_format(now()),
-            'stats' => [
-                'distance_km' => round((float) ($stats['total_distance_km'] ?? 0), 2),
-                'move_seconds' => max(0, (int) ($stats['moving_time_seconds'] ?? 0)),
-                'stop_seconds' => max(0, (int) ($stats['stopped_time_seconds'] ?? 0)),
-                'idle_seconds' => max(0, (int) ($stats['idle_time_seconds'] ?? 0)),
-                'parking_seconds' => max(0, (int) ($stats['parking_time_seconds'] ?? 0)),
-                'top_speed' => round((float) ($stats['max_speed_kmh'] ?? 0)),
-                'avg_speed' => round((float) ($stats['average_speed_kmh'] ?? 0)),
-            ],
-            'events' => $events,
-            'positions' => $positions,
-            'tasks' => $tasks,
-            'mileage' => null, // lazy-loaded via deviceMileage() to keep the panel fast
+            'tasks' => $this->devicePanelTasks($device->id),
+            'mileage' => null,
             'fuel' => $latest?->fuel ?? null,
             'battery' => $latest?->battery_level ?? null,
             'notes' => $notes,
             'photo' => null,
             'driver' => $this->driverPayloadForActor($actor, $device),
             'speed_max' => 160,
-            'route_trip' => $this->routeTripPayloadForActor($actor, $device, $latest),
         ];
+    }
+
+    /**
+     * @return array<string, int|float>
+     */
+    private function devicePanelTodayStats(Device $device, bool $fresh = false): array
+    {
+        $dayKey = now()->format('Y-m-d');
+        $cacheKey = "tracking:panel:stats:{$device->id}:{$dayKey}";
+
+        if ($fresh) {
+            Cache::forget($cacheKey);
+        }
+
+        $stats = Cache::remember(
+            $cacheKey,
+            now()->addSeconds($fresh ? 45 : 90),
+            function () use ($device) {
+                $from = now()->startOfDay();
+                $to = now();
+
+                try {
+                    $result = $this->historyFetcher->fetch($device, $from, $to, true, allowFallback: false);
+                    $analyzed = $this->analytics->analyze($result['locations'], [
+                        'include_track_points' => false,
+                        'point_statuses' => false,
+                        'skip_timeline' => true,
+                        'minimal_stats' => false,
+                    ]);
+                } catch (\Throwable) {
+                    $analyzed = $this->analytics->analyze(collect(), [
+                        'minimal_stats' => true,
+                    ]);
+                }
+
+                return $analyzed;
+            }
+        );
+
+        return [
+            'distance_km' => round((float) ($stats['total_distance_km'] ?? 0), 2),
+            'move_seconds' => max(0, (int) ($stats['moving_time_seconds'] ?? 0)),
+            'stop_seconds' => max(0, (int) ($stats['stopped_time_seconds'] ?? 0)),
+            'idle_seconds' => max(0, (int) ($stats['idle_time_seconds'] ?? 0)),
+            'parking_seconds' => max(0, (int) ($stats['parking_time_seconds'] ?? 0)),
+            'top_speed' => round((float) ($stats['max_speed_kmh'] ?? 0)),
+            'avg_speed' => round((float) ($stats['average_speed_kmh'] ?? 0)),
+        ];
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function devicePanelRecentEvents(Device $device): array
+    {
+        $to = now();
+
+        return $this->events
+            ->forDevice($device, now()->startOfDay(), $to, null, limit: 12)
+            ->map(fn (VehicleEvent $event) => array_merge($event->toAlertArray(), [
+                'lat' => $event->lat !== null ? (float) $event->lat : null,
+                'lng' => $event->lng !== null ? (float) $event->lng : null,
+            ]))
+            ->sortByDesc(fn ($event) => (string) ($event['time'] ?? ''))
+            ->take(12)
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Speed graph points — recent window only, downsampled for a fast response.
+     *
+     * @return list<array{speed: float|int, lat: float, lng: float, time: ?string}>
+     */
+    private function devicePanelGraphPositions(Device $device): array
+    {
+        $from = now()->subHours(2);
+        $to = now();
+
+        try {
+            $result = $this->historyFetcher->fetch($device, $from, $to, true, allowFallback: false);
+            $collection = $result['locations'];
+        } catch (\Throwable) {
+            $collection = collect();
+        }
+
+        return $this->downsampleLocations($collection, 120)
+            ->map(fn (DeviceLocation $loc) => [
+                'speed' => round((float) ($loc->speed ?? 0)),
+                'lat' => (float) $loc->lat,
+                'lng' => (float) $loc->lng,
+                'time' => $loc->recorded_at ? AppDateTime::format($loc->recorded_at, 'log') : null,
+            ])
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function devicePanelTasks(int $deviceId): array
+    {
+        static $tasksTableExists = null;
+
+        if ($tasksTableExists === null) {
+            $tasksTableExists = \Illuminate\Support\Facades\Schema::hasTable('tracking_tasks');
+        }
+
+        if (! $tasksTableExists) {
+            return [];
+        }
+
+        return \App\Models\TrackingTask::query()
+            ->where('device_id', $deviceId)
+            ->orderByDesc('id')
+            ->limit(8)
+            ->get()
+            ->map(fn ($t) => [
+                'name' => (string) $t->name,
+                'status' => (string) $t->status,
+                'start' => (string) ($t->start ?? ''),
+                'destination' => (string) ($t->destination ?? ''),
+                'time' => optional($t->time_from)->format('Y-m-d H:i'),
+            ])
+            ->all();
+    }
+
+    /**
+     * @param  Collection<int, DeviceLocation>  $locations
+     * @return Collection<int, DeviceLocation>
+     */
+    private function downsampleLocations(Collection $locations, int $maxPoints): Collection
+    {
+        $count = $locations->count();
+        if ($count <= $maxPoints || $maxPoints < 1) {
+            return $locations->values();
+        }
+
+        $step = (int) ceil($count / $maxPoints);
+        $out = collect();
+
+        foreach ($locations->values() as $index => $location) {
+            if ($index % $step === 0 || $index === $count - 1) {
+                $out->push($location);
+            }
+        }
+
+        return $out->values();
     }
 
     /**

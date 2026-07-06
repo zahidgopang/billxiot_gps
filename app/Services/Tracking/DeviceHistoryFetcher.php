@@ -18,7 +18,7 @@ class DeviceHistoryFetcher
      *
      * @return array{locations: Collection, used_fallback: bool, fallback_reason: ?string}
      */
-    public function fetch(Device $device, \Carbon\Carbon $from, ?\Carbon\Carbon $to, bool $explicitRange): array
+    public function fetch(Device $device, \Carbon\Carbon $from, ?\Carbon\Carbon $to, bool $explicitRange, bool $allowFallback = true): array
     {
         if ($to !== null) {
             $normalized = HistoryRangeBounds::normalize($from, $to);
@@ -46,6 +46,14 @@ class DeviceHistoryFetcher
                 'locations' => $locations,
                 'used_fallback' => false,
                 'fallback_reason' => null,
+            ];
+        }
+
+        if ($explicitRange && ! $allowFallback) {
+            return [
+                'locations' => $locations,
+                'used_fallback' => false,
+                'fallback_reason' => 'selected_period_empty',
             ];
         }
 
