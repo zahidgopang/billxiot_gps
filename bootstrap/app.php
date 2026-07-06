@@ -97,6 +97,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'mobile.end_user' => \App\Http\Middleware\EnsureMobileEndUser::class,
             'mobile.app_user' => \App\Http\Middleware\EnsureMobileAppUser::class,
             'mobile.entitlement' => \App\Http\Middleware\EnsureMobileEntitlement::class,
+            'mobile.app_version' => \App\Http\Middleware\EnsureMobileAppVersion::class,
         ]);
 
         $middleware->appendToGroup('web', [

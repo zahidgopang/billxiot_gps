@@ -34,9 +34,9 @@ Route::match(['get', 'post'], '/traccar/forward', [\App\Http\Controllers\Api\Tra
 |--------------------------------------------------------------------------
 */
 Route::post('/login', [MobileAuthController::class, 'login'])
-    ->middleware('throttle:mobile-login');
+    ->middleware(['throttle:mobile-login', 'mobile.app_version']);
 
-Route::middleware(['auth:sanctum', 'mobile.app_user'])->group(function () {
+Route::middleware(['auth:sanctum', 'mobile.app_user', 'mobile.app_version'])->group(function () {
     Route::post('/logout', [MobileAuthController::class, 'logout']);
     Route::post('/push-token', [MobilePushTokenController::class, 'store']);
     Route::delete('/push-token', [MobilePushTokenController::class, 'destroy']);
@@ -57,6 +57,7 @@ Route::middleware([
     'auth:sanctum',
     'mobile.app_user',
     'mobile.entitlement',
+    'mobile.app_version',
 ])->group(function () {
     Route::get('/profile', [MobileProfileController::class, 'show']);
     Route::post('/profile/update', [MobileProfileController::class, 'update']);

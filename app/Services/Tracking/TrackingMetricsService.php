@@ -127,6 +127,8 @@ class TrackingMetricsService
             $table = config('traccar.tables.positions', 'tc_positions');
             $off = $this->appOffset();
             $startUtc = $this->utc($start);
+            $gpsQuery = DB::table($table)->where('fixtime', '>=', $startUtc);
+            $devQuery = DB::table($table)->where('fixtime', '>=', $startUtc);
             $traccarIds = $deviceIds->isEmpty()
                 ? null
                 : $deviceIds
