@@ -51,6 +51,7 @@ class GlobalTrackingService
         private TenantScopeService $tenantScope,
         private RbacService $rbac,
         private \App\Services\Mobile\MobileRouteAnalyticsService $analytics,
+        private HistoryEventsCompiler $historyEvents,
         private \App\Services\Routes\TripManagementService $tripManagement,
         private DriverMapInfoService $driverMapInfo,
         private TrackingUiPermissions $trackingUi,
@@ -718,26 +719,33 @@ class GlobalTrackingService
                 continue;
             }
 
-            $result = $this->historyFetcher->fetch($device, $from, $to, true);
-            $stats = $this->analytics->analyze($result['locations']);
-            $statuses = $this->analytics->pointStatuses($result['locations']);
-            $points = $result['locations']
+            $result = $this->historyFetcher->fetch($device, $from, $to, true, allowFallback: false);
+            $locations = $result['locations'];
+
+            $stats = $this->analytics->analyze($locations, [
+                'point_statuses' => false,
+                'include_track_points' => false,
+                'skip_timeline' => false,
+            ]);
+
+            $displayLocations = $this->downsampleHistoryPoints($locations);
+
+            $points = $displayLocations
                 ->values()
-                ->map(fn (DeviceLocation $loc, int $index) => array_merge(
-                    $this->formatHistoryPoint($loc),
-                    $statuses[$index] ?? [],
-                ))
+                ->map(fn (DeviceLocation $loc) => $this->formatHistoryPoint($loc))
                 ->values()
                 ->all();
 
-            $events = $this->events
-                ->forDevice($device, $from, $to, limit: 500)
-                ->map(fn (VehicleEvent $event) => array_merge($event->toAlertArray(), [
-                    'lat' => $event->lat !== null ? (float) $event->lat : null,
-                    'lng' => $event->lng !== null ? (float) $event->lng : null,
-                ]))
-                ->values()
-                ->all();
+            $dbEvents = $this->events
+                ->forDevice($device, $from, $to, limit: 300);
+
+            $historyEvents = $this->historyEvents->compile(
+                $dbEvents,
+                $stats['timeline'] ?? [],
+                $stats['stops'] ?? [],
+            );
+
+            $events = $historyEvents;
 
             $vehicles[] = array_merge([
                 'id' => $device->id,
@@ -765,6 +773,9 @@ class GlobalTrackingService
                 'used_fallback' => $result['used_fallback'],
                 'fallback_reason' => $result['fallback_reason'],
                 'events' => $events,
+                'history_events' => $historyEvents,
+                'point_count' => $locations->count(),
+                'display_point_count' => count($points),
             ], $device->mapAppearancePayload());
         }
 
@@ -781,6 +792,31 @@ class GlobalTrackingService
         }
 
         return $this->driverMapInfo->payloadForDevice($device);
+    }
+
+    /**
+     * Cap map polyline size while analytics run on the full track.
+     *
+     * @param  Collection<int, DeviceLocation>  $locations
+     * @return Collection<int, DeviceLocation>
+     */
+    private function downsampleHistoryPoints(Collection $locations, int $max = 2800): Collection
+    {
+        $count = $locations->count();
+        if ($count <= $max) {
+            return $locations;
+        }
+
+        $step = (int) ceil($count / $max);
+        $sampled = collect();
+
+        foreach ($locations->values() as $index => $location) {
+            if ($index === 0 || $index === $count - 1 || $index % $step === 0) {
+                $sampled->push($location);
+            }
+        }
+
+        return $sampled->values();
     }
 
     /**

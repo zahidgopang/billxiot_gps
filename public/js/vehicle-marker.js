@@ -425,9 +425,12 @@
                 if (pin && sizeScale !== 1) {
                     const pw = Math.round(36 * sizeScale);
                     const ph = Math.round(48 * sizeScale);
-                    pin.scaledSize = new google.maps.Size(pw, ph);
-                    pin.anchor = new google.maps.Point(Math.round(pw / 2), ph);
-                    pin.labelOrigin = new google.maps.Point(Math.round(pw / 2), 2);
+                    return {
+                        url: pin.url,
+                        scaledSize: new google.maps.Size(pw, ph),
+                        anchor: new google.maps.Point(Math.round(pw / 2), ph),
+                        labelOrigin: new google.maps.Point(Math.round(pw / 2), 2),
+                    };
                 }
                 cache[cacheKey] = pin;
                 return pin;
@@ -636,7 +639,10 @@
     function createMarker(options) {
         const platform = global.GoogleMapsPlatform;
         if (platform?.createMarker) {
-            return platform.createMarker(options);
+            return platform.createMarker({
+                ...options,
+                useClassicMarker: options.useClassicMarker === true,
+            });
         }
         const google = options.google || global.google;
         return new google.maps.Marker({

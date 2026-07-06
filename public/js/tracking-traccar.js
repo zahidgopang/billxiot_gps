@@ -141,6 +141,27 @@
         return parts.join(' ');
     }
 
+    function historyEventBadge(type) {
+        const key = String(type || 'event').toLowerCase();
+        if (key.includes('geofence') && key.includes('enter')) return { mark: 'G+', cls: 'tc-ev-geofence' };
+        if (key.includes('geofence')) return { mark: 'G-', cls: 'tc-ev-geofence' };
+        if (key.includes('overspeed') || key.includes('speed')) return { mark: '!', cls: 'tc-ev-overspeed' };
+        if (key.includes('panic') || key.includes('sos')) return { mark: 'S', cls: 'tc-ev-panic' };
+        if (key.includes('ignition')) return { mark: 'I', cls: 'tc-ev-ignition' };
+        if (key.includes('moving') || key.includes('running')) return { mark: '>', cls: 'tc-ev-moving' };
+        if (key.includes('offline')) return { mark: 'X', cls: 'tc-ev-offline' };
+        if (key.includes('idle') || key.includes('stopped')) return { mark: '||', cls: 'tc-ev-idle' };
+        if (key.includes('park')) return { mark: 'P', cls: 'tc-ev-park' };
+        if (key.includes('power')) return { mark: 'Pwr', cls: 'tc-ev-alert' };
+        if (key.includes('battery')) return { mark: 'Bat', cls: 'tc-ev-alert' };
+        return { mark: '•', cls: 'tc-ev-default' };
+    }
+
+    function historyEventTime(ev) {
+        const raw = ev.time || ev.recorded_at || ev.start || ev.start_display || '';
+        return String(raw).replace('T', ' ').slice(0, 19);
+    }
+
     // Parking/stop runs along the route (speed ~0 for >= STOP_MIN_SEC).
     function computeStops(points) {
         const stops = [];
@@ -629,6 +650,8 @@
                 fullscreenControl: false,
                 zoomControl: false,
                 gestureHandling: 'greedy',
+                // Fleet markers are custom icons — avoid Google POI popups stealing clicks.
+                clickableIcons: false,
             }));
             this.mapZoom = this.map.getZoom() || 11;
             this.map.addListener('idle', () => {
@@ -689,19 +712,12 @@
                         this.sendCommandFromPopup(deviceId, type, btn);
                     },
                     onClose: () => {
-                        if (this._footerMode !== 'panel') {
-                            this._focusedVehicleId = null;
-                            this.renderLiveClusters();
-                        }
+                        this._popupVehicleId = null;
                     },
                 });
                 this.map.addListener('click', () => {
                     if (global.GoogleMapsPlatform?.shouldSuppressMapClick?.()) return;
                     this.vehiclePopup?.close();
-                    if (this._footerMode !== 'panel') {
-                        this._focusedVehicleId = null;
-                        this.renderLiveClusters();
-                    }
                 });
             }
 
@@ -1251,27 +1267,29 @@
             return this.shouldShowVehicleMarker(numId, hasPosition, clustered, breakId);
         }
 
+        markerGpsPosition(marker) {
+            if (!marker?.getPosition) return null;
+            const pos = marker.getPosition();
+            if (!pos) return null;
+            const lat = typeof pos.lat === 'function' ? pos.lat() : Number(pos.lat);
+            const lng = typeof pos.lng === 'function' ? pos.lng() : Number(pos.lng);
+            if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+            return { lat, lng };
+        }
+
         openVehiclePopup(id) {
             const numId = Number(id);
             const v = this.vehicles.get(numId);
             const st = this.vehicleState(numId);
             if (!v || !this.vehiclePopup) return;
 
-            const lat = st.renderPos?.lat ?? v.lat;
-            const lng = st.renderPos?.lng ?? v.lng;
+            const anchor = st.marker?.getAnchor?.() || st.marker;
+            const markerPos = this.markerGpsPosition(anchor);
+            const lat = markerPos?.lat ?? st.renderPos?.lat ?? v.lat;
+            const lng = markerPos?.lng ?? st.renderPos?.lng ?? v.lng;
             if (!hasGeo(lat, lng)) return;
 
-            this._focusedVehicleId = numId;
-            this._panelDeviceId = numId;
-            this.renderLiveClusters();
-            this.updateMarkerFocusStyles();
-
-            if (st.marker) {
-                if (typeof st.marker.setZIndex === 'function') {
-                    st.marker.setZIndex(4000 + numId);
-                }
-                st.marker.setMap(this.markerShouldShowOnMap(numId) ? this.map : null);
-            }
+            this._popupVehicleId = numId;
 
             const point = {
                 ...v,
@@ -1283,14 +1301,13 @@
                 status_key: v.status_key || 'offline',
             };
 
-            const anchor = st.marker?.getAnchor?.() || st.marker;
+            global.GoogleMapsPlatform?.runAfterMarkerClick?.();
             this.vehiclePopup.open(point, anchor);
         }
 
-        /** Marker click: map popup with status, telemetry, and commands. List rows use locateVehicle() for the footer panel. */
+        /** Marker click: stable map popup only — no cluster reflow or hiding nearby markers. */
         onMapMarkerClick(id) {
-            this.focusVehicleOnMap(id, { pan: false });
-            this.activateRouteTripForVehicle(id);
+            global.GoogleMapsPlatform?.runAfterMarkerClick?.();
             this.openVehiclePopup(id);
         }
 
@@ -1762,9 +1779,15 @@
                 title: this.labelFor(v),
                 zIndex: 1500 + id,
                 optimized: false,
+                // Classic Marker + icon anchor = exact GPS at all zoom levels + reliable click.
+                useClassicMarker: true,
             });
             this.setVehicleMarkerIcon(st, v, v.heading || 0);
-            st.marker.addListener('click', () => {
+            st.marker.addListener('click', (e) => {
+                if (e?.domEvent) {
+                    e.domEvent.stopPropagation?.();
+                    e.domEvent.preventDefault?.();
+                }
                 global.GoogleMapsPlatform?.runAfterMarkerClick?.(() => {
                     this.onMapMarkerClick(id);
                 });
@@ -1922,17 +1945,17 @@
             line.setMap(showTrail ? this.map : null);
         }
 
-        /** Marker + render cache — trail tail locked to the same lat/lng. */
+        /** Marker + render cache — always the device GPS lat/lng. */
         placeVehicleMarker(st, id, lat, lng, color, heading) {
             const pos = normalizeGps(lat, lng);
-            if (!pos) return;
+            if (!pos || !st.marker) return;
             st.renderPos = pos;
             if (heading != null && Number.isFinite(Number(heading))) {
                 st.renderHeading = Number(heading);
             }
             const show = this.markerShouldShowOnMap(id, true);
-            st.marker?.setMap(show ? this.map : null);
-            st.marker?.setPosition({ lat: pos.lat, lng: pos.lng });
+            st.marker.setMap(show ? this.map : null);
+            st.marker.setPosition({ lat: pos.lat, lng: pos.lng });
             const vehicle = this.vehicles.get(id);
             if (vehicle) {
                 const sig = this._markerIconSignature(
@@ -2010,7 +2033,6 @@
             this.syncCompanyMapCard();
             this.syncDriverMapCard();
 
-            const prev = st.lastPoint;
             const key = merged.status_key || 'offline';
             if (!MOVING_KEYS.has(key)) this.clearTrail(st);
 
@@ -2020,89 +2042,18 @@
 
             const moving = MOVING_KEYS.has(key);
             const spd = Math.max(0, parseFloat(merged.speed) || 0);
-            const isDup = prev && samePosition(prev, merged);
 
-            // Stale GPS while moving — keep gliding along heading until a new fix arrives.
-            if (isDup && moving && spd > 1) {
-                st.lastPoint = merged;
-                if (st.motion) {
-                    st.motion.speedKmh = spd;
-                    st.motion.color = liveColor;
-                    const newH = parseFloat(merged.heading);
-                    if (Number.isFinite(newH) && spd >= 3) {
-                        st.motion.toH = newH;
-                    }
-                } else {
-                    this.startStaleCruise(id, merged, liveColor);
-                }
-                this.renderLiveClusters();
-                return;
-            }
-
-            // First fix, or duplicate while stopped: snap to exact GPS.
-            if (!prev || isDup) {
-                st.dupSince = null;
-                st.motion = null;
-                let h = parseFloat(merged.heading);
-                if (!Number.isFinite(h) || (!moving && spd < 3)) {
-                    h = st.renderHeading != null ? st.renderHeading : 0;
-                }
-                st.lastPoint = merged;
-                st.marker.setTitle(this.labelFor(merged));
-                if (moving) this.commitGpsTrailPoint(st, merged.lat, merged.lng);
-                else this.clearTrail(st);
-                this.placeVehicleMarker(st, id, merged.lat, merged.lng, liveColor, h);
-                this.renderLiveClusters();
-                return;
-            }
-
-            // New GPS fix — glide from current render position to the fix (ends on exact lat/lng).
-            st.dupSince = null;
+            // Single source of truth: marker always on the device GPS fix (no drift / dead-reckon).
+            st.motion = null;
             st.lastPoint = merged;
-            st.marker.setTitle(this.labelFor(merged));
-            if (moving) this.startMotion(id, merged);
-            else {
-                st.motion = null;
-                this.clearTrail(st);
-                let h = parseFloat(merged.heading);
-                if (!Number.isFinite(h) || spd < 3) {
-                    h = st.renderHeading != null ? st.renderHeading : 0;
-                }
-                this.placeVehicleMarker(st, id, merged.lat, merged.lng, liveColor, h);
+            let h = parseFloat(merged.heading);
+            if (!Number.isFinite(h) || (!moving && spd < 3)) {
+                h = st.renderHeading != null ? st.renderHeading : 0;
             }
+            if (moving) this.commitGpsTrailPoint(st, merged.lat, merged.lng);
+            else this.clearTrail(st);
+            this.placeVehicleMarker(st, id, merged.lat, merged.lng, liveColor, h);
             this.renderLiveClusters();
-        }
-
-        /**
-         * Brief dead-reckon glide when the device repeats the same GPS fix but is still moving.
-         * Render position catches up visually; the next distinct fix snaps via startMotion().
-         */
-        startStaleCruise(id, point, color) {
-            const st = this.vehicleState(id);
-            const from = st.renderPos || normalizeGps(point.lat, point.lng);
-            if (!from || !st.marker) return;
-
-            const spd = Math.max(1, parseFloat(point.speed) || 1);
-            let h = st.renderHeading ?? parseFloat(point.heading) ?? 0;
-            if (!Number.isFinite(h)) h = 0;
-
-            const interval = this.cfg.pollIntervalMs || 2000;
-            const meters = (spd / 3.6) * Math.min(interval * 0.9, 2500) / 1000;
-            const to = projectAlongHeading(from.lat, from.lng, h, meters);
-            if (distMeters(from, to) < 0.5) return;
-
-            st.motion = {
-                from,
-                to,
-                fromH: h,
-                toH: h,
-                speedKmh: spd,
-                color: color || colorForPoint(point, this.stateColors),
-                catchupMs: Math.max(200, Math.min(interval * 0.85, 1800)),
-                staleCruise: true,
-                start: performance.now(),
-            };
-            this.startMotionLoop();
         }
 
         /**
@@ -2199,16 +2150,9 @@
                 }
 
                 if (done) {
-                    const last = st.lastPoint;
-                    const stillMoving = MOVING_KEYS.has(last?.status_key || '');
-                    const cruiseColor = m.color;
                     st.motion = null;
-                    if (!m.staleCruise && stillMoving) {
-                        this.syncTrailPolyline(st, m.to.lat, m.to.lng, cruiseColor, id);
-                    }
-                    if (stillMoving && (parseFloat(last?.speed) || 0) > 1) {
-                        this.startStaleCruise(id, last, cruiseColor);
-                        active = true;
+                    if (!m.staleCruise && MOVING_KEYS.has(st.lastPoint?.status_key || '')) {
+                        this.syncTrailPolyline(st, m.to.lat, m.to.lng, m.color, id);
                     }
                 } else {
                     active = true;
@@ -2848,7 +2792,11 @@
             if (to) params.set('to', to);
 
             const btn = document.getElementById('tcHistShow');
+            const res = document.getElementById('tcHistResults');
+            const wrap = document.getElementById('tcHistResultsWrap');
             btn?.setAttribute('disabled', 'disabled');
+            if (wrap) wrap.hidden = false;
+            if (res) res.innerHTML = `<div class="tc-empty">${escHtml(this.cfg.i18n?.loading || 'Loading…')}</div>`;
             try {
                 const url = `${this.cfg.historyJsonUrl}?${params.toString()}&_=${Date.now()}`;
                 const res = await fetch(url, { credentials: 'same-origin', cache: 'no-store' });
@@ -2876,8 +2824,16 @@
             }
 
             for (let i = 1; i < points.length; i++) {
-                const a = points[i - 1], b = points[i];
+                const a = points[i - 1];
+                const b = points[i];
                 const speed = Math.max(parseFloat(a.speed || 0), parseFloat(b.speed || 0));
+                if (points.length > 900) {
+                    if (i === 1) {
+                        this._histFastPath = [{ lat: a.lat, lng: a.lng }];
+                    }
+                    this._histFastPath.push({ lat: b.lat, lng: b.lng });
+                    continue;
+                }
                 const line = new google.maps.Polyline({
                     path: [{ lat: a.lat, lng: a.lng }, { lat: b.lat, lng: b.lng }],
                     strokeColor: speedToColor(speed),
@@ -2887,14 +2843,36 @@
                 });
                 this.historyLayers.push(line);
             }
+            if (this._histFastPath?.length >= 2) {
+                const line = new google.maps.Polyline({
+                    path: this._histFastPath,
+                    strokeColor: '#2563eb',
+                    strokeOpacity: 0.88,
+                    strokeWeight: 6,
+                    map: this.map,
+                    zIndex: 2,
+                    clickable: false,
+                    geodesic: true,
+                });
+                this.historyLayers.push(line);
+                this._histFastPath = null;
+            }
             const startPoint = points[0];
             const endPoint = points[points.length - 1];
             this.addEndpoint(startPoint, 'start');
             this.addEndpoint(endPoint, 'end');
             this.showHistoryPulse(endPoint, vehicle);
 
-            (vehicle.events || []).forEach((ev) => {
-                if (hasGeo(ev.lat, ev.lng)) this.addEventDot({ type: ev.event_type || ev.type || 'event', lat: ev.lat, lng: ev.lng, title: ev.title || ev.message || 'Event' });
+            const historyEvents = vehicle.history_events || vehicle.events || [];
+            historyEvents.forEach((ev) => {
+                if (!hasGeo(ev.lat, ev.lng)) return;
+                const type = ev.event_type || ev.type || 'event';
+                this.addEventDot({
+                    type,
+                    lat: ev.lat,
+                    lng: ev.lng,
+                    title: ev.title || ev.message || type,
+                });
             });
 
             const name = vehicle.name || '';
@@ -2902,7 +2880,7 @@
             const stops = computeStops(points);
             const stats = normalizeHistoryStats(vehicle.stats, points, stops);
             stops.forEach((stop) => this.addStop(stop, name));
-            this.renderStopList(stops, name, stats);
+            this.renderHistoryEventList(historyEvents, name, stats);
             this.renderSpeedLegend(name);
             this.renderHistoryFooter(vehicle, points, stops, stats);
             this.renderGraph(points);
@@ -2936,7 +2914,7 @@
             this.stopInfo.open(this.map, marker || stop._marker);
         }
 
-        renderStopList(stops, name, stats) {
+        renderHistoryEventList(events, name, stats) {
             const res = document.getElementById('tcHistResults');
             const wrap = document.getElementById('tcHistResultsWrap');
             const summary = document.getElementById('tcHistSummary');
@@ -2958,25 +2936,37 @@
 
             if (wrap) wrap.hidden = false;
             if (!res) return;
-            if (!stops.length) {
-                res.innerHTML = `<div class="tc-empty">${escHtml(i.noStops || 'No stops')}</div>`;
+            const list = Array.isArray(events) ? events : [];
+            if (!list.length) {
+                res.innerHTML = `<div class="tc-empty">${escHtml(i.noEvents || 'No events')}</div>`;
                 return;
             }
-            res.innerHTML = stops.map((s, idx) => `<div class="tc-row tc-stop-row" data-stop="${idx}">
-                <span class="tc-pmark">P</span>
+            res.innerHTML = list.map((ev, idx) => {
+                const type = ev.event_type || ev.type || 'event';
+                const badge = historyEventBadge(type);
+                const title = ev.title || ev.message || type;
+                const meta = ev.message && ev.message !== title
+                    ? ev.message
+                    : (ev.duration_seconds ? formatDuration(ev.duration_seconds) : '');
+                return `<div class="tc-row tc-stop-row" data-hist-ev="${idx}">
+                <span class="tc-evmark ${badge.cls}">${escHtml(badge.mark)}</span>
                 <span class="tc-row-info">
-                    <span class="tc-row-title">${escHtml(fmtTime(s.arrived))}</span>
-                    <span class="tc-row-meta">${escHtml(formatDuration(s.durationSec))}</span>
-                </span></div>`).join('');
-            res.querySelectorAll('[data-stop]').forEach((row) => {
+                    <span class="tc-row-title">${escHtml(title)}</span>
+                    <span class="tc-row-meta">${escHtml(historyEventTime(ev))}${meta ? ` · ${escHtml(meta)}` : ''}</span>
+                </span></div>`;
+            }).join('');
+            res.querySelectorAll('[data-hist-ev]').forEach((row) => {
                 row.addEventListener('click', () => {
-                    const s = stops[parseInt(row.dataset.stop, 10)];
-                    if (!s) return;
-                    this.map.panTo({ lat: s.lat, lng: s.lng });
+                    const ev = list[parseInt(row.dataset.histEv, 10)];
+                    if (!ev || !hasGeo(ev.lat, ev.lng)) return;
+                    this.map.panTo({ lat: parseFloat(ev.lat), lng: parseFloat(ev.lng) });
                     if (this.map.getZoom() < 15) this.map.setZoom(16);
-                    this.openStopInfo(s, name, s._marker);
                 });
             });
+        }
+
+        renderStopList(stops, name, stats) {
+            this.renderHistoryEventList([], name, stats);
         }
 
         renderHistoryFooter(vehicle, points, stops, historyStats = null) {
@@ -2987,7 +2977,7 @@
             const i = this.cfg.i18n || {};
             const kmh = i.kmhUnit || 'km/h';
             const stats = historyStats || normalizeHistoryStats(vehicle?.stats, points, stops);
-            const events = vehicle?.events || [];
+            const events = vehicle?.history_events || vehicle?.events || [];
 
             dataEl.classList.add('tc-fbody--hist');
             const statCard = (lbl, val) =>

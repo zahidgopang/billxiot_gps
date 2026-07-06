@@ -606,6 +606,32 @@
             margin-top: 0.15rem;
         }
 
+        .tc-evmark {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 20px;
+            height: 20px;
+            padding: 0 4px;
+            border-radius: 5px;
+            background: var(--tc-primary);
+            color: #fff;
+            font-size: 0.62rem;
+            font-weight: 700;
+            flex-shrink: 0;
+            margin-top: 0.15rem;
+            text-transform: uppercase;
+            letter-spacing: 0.02em;
+        }
+        .tc-evmark--geofence { background: #7c3aed; }
+        .tc-evmark--overspeed { background: #dc2626; }
+        .tc-evmark--ignition { background: #ea580c; }
+        .tc-evmark--moving { background: #16a34a; }
+        .tc-evmark--idle { background: #ca8a04; }
+        .tc-evmark--parked, .tc-evmark--parking { background: var(--tc-primary); }
+        .tc-evmark--offline { background: #64748b; }
+        .tc-evmark--alert { background: #b91c1c; }
+
         .tc-form { padding: 0.6rem; overflow-y: auto; }
         .tc-form label { font-size: 0.74rem; color: var(--tc-text-muted); margin-bottom: 0.1rem; display: block; }
         .tc-form .form-control,
@@ -1167,6 +1193,11 @@
             inset-inline-end: auto;
         }
         #tcMap { position: absolute; inset: 0; background: var(--apple-bg-secondary); }
+
+        /* Vehicle marker click popup — rendered in Google Maps float pane */
+        #tcVehicleMapPopupHost {
+            display: none !important;
+        }
 
         .tc-map-controls {
             position: absolute;
@@ -1898,8 +1929,7 @@
                     <div id="tcHistSummary" class="tc-hist-summary" hidden></div>
                     <div id="tcHistResultsWrap" class="tc-hist-results-wrap" hidden>
                         <div class="tc-list-head">
-                            <span class="tc-pmark" style="width:16px;height:16px;font-size:0.58rem;margin-top:0">P</span>
-                            <span class="tc-head-label">{{ __('app.tracking.parking_stops') }}</span>
+                            <span class="tc-head-label">{{ __('app.tracking.history_events') }}</span>
                         </div>
                         <div class="tc-list" id="tcHistResults"></div>
                     </div>
@@ -1980,6 +2010,7 @@
                         </div>
                     </div>
                     <div id="tcMap" aria-label="{{ __('app.tracking.live_map_aria') }}"></div>
+                    <div id="tcVehicleMapPopupHost" aria-live="polite" aria-label="Vehicle details"></div>
                     <div id="tcLegend" class="tc-legend"></div>
                     <div id="tcMapError" class="tc-map-error" hidden>
                         <div class="alert alert-danger mb-0">

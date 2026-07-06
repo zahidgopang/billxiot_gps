@@ -36,7 +36,7 @@
     let suppressMapClickUntil = 0;
 
     function runAfterMarkerClick(fn) {
-        suppressMapClickUntil = Date.now() + 600;
+        suppressMapClickUntil = Date.now() + 1200;
         if (typeof fn === 'function') {
             fn();
         }
@@ -318,7 +318,8 @@
             inner.style.display = 'flex';
             inner.style.flexDirection = 'column';
             inner.style.alignItems = 'center';
-            inner.style.pointerEvents = 'none';
+            inner.style.pointerEvents = 'auto';
+            inner.style.cursor = 'pointer';
             if (focused) {
                 outer.classList.add('gmap-adv-marker-wrap--focused');
             }
@@ -511,7 +512,7 @@
         const g = options.google || global.google;
         const mapId = options.mapId || readConfig({}).mapId;
 
-        if (canUseAdvancedMarkers(mapId)) {
+        if (!options.useClassicMarker && canUseAdvancedMarkers(mapId)) {
             return createAdvancedMarker(options);
         }
 

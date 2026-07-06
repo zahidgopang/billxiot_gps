@@ -26,9 +26,9 @@ class MobileRouteAnalyticsService
      * @param  Collection<int, object>  $points
      * @return array<string, mixed>
      */
-    public function analyze(Collection $points): array
+    public function analyze(Collection $points, array $options = []): array
     {
-        return $this->historyAnalytics->analyze($points);
+        return $this->historyAnalytics->analyze($points, $options);
     }
 
     /**

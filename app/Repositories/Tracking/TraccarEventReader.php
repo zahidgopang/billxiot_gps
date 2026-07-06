@@ -55,16 +55,31 @@ class TraccarEventReader implements EventReaderInterface
             return collect();
         }
 
-        $query = DB::table(config('traccar.tables.events', 'tc_events'))
-            ->where('deviceid', $traccarDeviceId);
+        $eventsTable = config('traccar.tables.events', 'tc_events');
+        $positionsTable = config('traccar.tables.positions', 'tc_positions');
+
+        $query = DB::table($eventsTable.' as e')
+            ->leftJoin($positionsTable.' as p', 'e.positionid', '=', 'p.id')
+            ->select([
+                'e.id',
+                'e.deviceid',
+                'e.type',
+                'e.eventtime',
+                'e.positionid',
+                'e.geofenceid',
+                'e.attributes',
+                DB::raw('p.latitude as position_latitude'),
+                DB::raw('p.longitude as position_longitude'),
+            ])
+            ->where('e.deviceid', $traccarDeviceId);
 
         // tc_events.eventtime is stored in UTC — convert app-tz bounds to UTC.
         if ($from) {
-            $query->where('eventtime', '>=', $from->copy()->utc());
+            $query->where('e.eventtime', '>=', $from->copy()->utc());
         }
 
         if ($to) {
-            $query->where('eventtime', '<=', $to->copy()->utc());
+            $query->where('e.eventtime', '<=', $to->copy()->utc());
         }
 
         if ($types) {
@@ -72,12 +87,12 @@ class TraccarEventReader implements EventReaderInterface
                 fn (string $type) => $this->mapper->mapType($type),
                 $types
             )));
-            $query->whereIn('type', $traccarTypes);
+            $query->whereIn('e.type', $traccarTypes);
         }
 
         $rows = $query
-            ->orderByDesc('eventtime')
-            ->orderByDesc('id')
+            ->orderByDesc('e.eventtime')
+            ->orderByDesc('e.id')
             ->limit($limit)
             ->get();
 

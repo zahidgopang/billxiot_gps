@@ -54,8 +54,8 @@ class TraccarEventMapper
             'title' => $title,
             'message' => $message,
             'speed' => isset($attrs['speed']) ? (float) $attrs['speed'] : null,
-            'lat' => (float) ($attrs['latitude'] ?? 0),
-            'lng' => (float) ($attrs['longitude'] ?? 0),
+            'lat' => (float) ($attrs['latitude'] ?? $data['position_latitude'] ?? $data['latitude'] ?? 0),
+            'lng' => (float) ($attrs['longitude'] ?? $data['position_longitude'] ?? $data['longitude'] ?? 0),
             'meta' => $attrs['meta'] ?? null,
             // tc_events.eventtime is stored in UTC — parse as UTC then convert to
             // the app timezone so alert times display correctly (not offset).

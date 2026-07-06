@@ -153,6 +153,82 @@
             || null;
     }
 
+    function markerLatLng(anchor) {
+        const resolved = resolveAnchor(anchor);
+        if (!resolved || typeof resolved.getPosition !== 'function') {
+            return null;
+        }
+        const pos = resolved.getPosition();
+        if (!pos) return null;
+        const lat = typeof pos.lat === 'function' ? pos.lat() : Number(pos.lat);
+        const lng = typeof pos.lng === 'function' ? pos.lng() : Number(pos.lng);
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+            return null;
+        }
+        return { lat, lng };
+    }
+
+    function resolvePopupPosition(point, anchor) {
+        const fromMarker = markerLatLng(anchor);
+        if (fromMarker) {
+            return fromMarker;
+        }
+        const lat = parseFloat(point?.lat);
+        const lng = parseFloat(point?.lng);
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+            return null;
+        }
+        return { lat, lng };
+    }
+
+    function isClassicMarkerAnchor(anchor) {
+        if (!anchor || anchor._advanced) {
+            return false;
+        }
+        const resolved = resolveAnchor(anchor);
+        return !!(resolved && typeof resolved.getPosition === 'function');
+    }
+
+    function latLngToPixel(projection, lat, lng, g) {
+        const latLng = new g.maps.LatLng(lat, lng);
+        if (typeof projection.fromLatLngToContainerPixel === 'function') {
+            return projection.fromLatLngToContainerPixel(latLng);
+        }
+        return projection.fromLatLngToDivPixel(latLng);
+    }
+
+    function layoutPopupElement(el, pt, mapDiv) {
+        if (!el || !pt) return;
+        const mapW = mapDiv?.offsetWidth || 0;
+        const mapH = mapDiv?.offsetHeight || 0;
+        const popupW = el.offsetWidth || Math.min(340, mapW > 0 ? mapW - 24 : 340);
+        const popupH = el.offsetHeight || 260;
+        const margin = 12;
+        const markerGap = 18;
+
+        let x = pt.x;
+        let y = pt.y;
+        let transform = `translate(-50%, calc(-100% - ${markerGap}px))`;
+
+        if (mapH > 0 && pt.y < popupH + margin + markerGap) {
+            transform = `translate(-50%, ${markerGap}px)`;
+        }
+
+        if (mapW > 0) {
+            const half = popupW / 2 + margin;
+            x = Math.max(half, Math.min(mapW - half, x));
+        }
+
+        el.style.position = 'absolute';
+        el.style.display = 'block';
+        el.style.left = `${x}px`;
+        el.style.top = `${y}px`;
+        el.style.transform = transform;
+        el.style.margin = '0';
+        el.style.right = 'auto';
+        el.style.bottom = 'auto';
+    }
+
     function openInfoWindow(iw, map, point, anchor) {
         const lat = parseFloat(point.lat);
         const lng = parseFloat(point.lng);
@@ -196,6 +272,96 @@
         }
     }
 
+    function createHostAnchor(map, selector, googleMaps) {
+        const g = googleMaps || global.google;
+        const el = typeof selector === 'string' ? document.querySelector(selector) : selector;
+        if (!map || !el || !g?.maps?.OverlayView) {
+            return null;
+        }
+
+        const state = {
+            position: null,
+            visible: false,
+        };
+
+        class HostAnchor extends g.maps.OverlayView {
+            onAdd() {
+                this.draw();
+            }
+
+            draw() {
+                if (!state.visible || !state.position) {
+                    el.classList.remove('is-open');
+                    el.style.display = 'none';
+                    return;
+                }
+                const projection = this.getProjection();
+                if (!projection) {
+                    global.requestAnimationFrame(() => this.draw());
+                    return;
+                }
+                const pt = latLngToPixel(
+                    projection,
+                    state.position.lat,
+                    state.position.lng,
+                    g,
+                );
+                if (!pt) return;
+                layoutPopupElement(el, pt, map.getDiv?.());
+                el.classList.add('is-open');
+            }
+
+            onRemove() {
+                el.classList.remove('is-open');
+                el.style.display = 'none';
+            }
+        }
+
+        const overlay = new HostAnchor();
+        overlay.setMap(map);
+
+        return {
+            map,
+            setContent(html) {
+                el.innerHTML = html;
+            },
+            setPosition(pos) {
+                if (!pos) {
+                    state.position = null;
+                } else {
+                    state.position = {
+                        lat: parseFloat(pos.lat),
+                        lng: parseFloat(pos.lng),
+                    };
+                }
+                overlay.draw();
+            },
+            show() {
+                state.visible = true;
+                overlay.draw();
+                global.requestAnimationFrame(() => overlay.draw());
+            },
+            hide() {
+                state.visible = false;
+                el.classList.remove('is-open');
+                el.style.display = 'none';
+            },
+            isOpen() {
+                return state.visible && el.classList.contains('is-open');
+            },
+            getElement() {
+                return el;
+            },
+            destroy() {
+                overlay.setMap(null);
+                el.innerHTML = '';
+                el.classList.remove('is-open');
+                el.style.display = 'none';
+            },
+            _overlay: overlay,
+        };
+    }
+
     function createMapOverlayHost(map, googleMaps) {
         const g = googleMaps || global.google;
         if (!g?.maps?.OverlayView || !map) {
@@ -206,6 +372,7 @@
             map,
             position: null,
             visible: false,
+            _pendingHtml: '',
             _overlay: null,
             _el: null,
             _listeners: [],
@@ -218,8 +385,15 @@
                 div.setAttribute('role', 'dialog');
                 div.addEventListener('click', (e) => e.stopPropagation());
                 host._el = div;
-                const pane = this.getPanes()?.floatPane || this.getPanes()?.overlayMouseTarget;
+                if (host._pendingHtml) {
+                    host._el.innerHTML = host._pendingHtml;
+                }
+                const panes = this.getPanes();
+                const pane = panes?.overlayMouseTarget || panes?.overlayLayer || panes?.floatPane;
                 pane?.appendChild(div);
+                if (host.visible) {
+                    this.draw();
+                }
             }
 
             draw() {
@@ -228,14 +402,18 @@
                     return;
                 }
                 const projection = this.getProjection();
-                if (!projection) return;
-                const latLng = new g.maps.LatLng(host.position.lat, host.position.lng);
-                const pt = projection.fromLatLngToDivPixel(latLng);
+                if (!projection) {
+                    global.requestAnimationFrame(() => this.draw());
+                    return;
+                }
+                const pt = latLngToPixel(
+                    projection,
+                    host.position.lat,
+                    host.position.lng,
+                    g,
+                );
                 if (!pt) return;
-                host._el.style.display = 'block';
-                host._el.style.left = `${pt.x}px`;
-                host._el.style.top = `${pt.y}px`;
-                host._el.style.transform = 'translate(-50%, calc(-100% - 12px))';
+                layoutPopupElement(host._el, pt, host.map?.getDiv?.());
             }
 
             onRemove() {
@@ -263,6 +441,7 @@
         host._attachMapListeners();
 
         host.setContent = (html) => {
+            host._pendingHtml = html;
             if (host._el) host._el.innerHTML = html;
         };
 
@@ -280,7 +459,10 @@
 
         host.show = () => {
             host.visible = true;
-            host._overlay?.draw();
+            const redraw = () => host._overlay?.draw();
+            redraw();
+            global.requestAnimationFrame(redraw);
+            global.setTimeout(redraw, 0);
         };
 
         host.hide = () => {
@@ -305,11 +487,24 @@
             this.opts = options;
             this.infoWindow = null;
             this.overlayHost = null;
+            this.hostAnchor = null;
             this.openId = null;
             this.currentPoint = null;
+            this._anchor = null;
             this._tickTimer = null;
-            this._useOverlay = options.mapOverlay !== false
+            this._useHost = !!options.hostElement;
+            this._useOverlay = !this._useHost
+                && options.mapOverlay !== false
                 && (options.mapOverlay === true || !!global.GoogleMapsPlatform?.canUseAdvancedMarkers?.());
+        }
+
+        ensureHost(map) {
+            if (!this._useHost || !map) return null;
+            if (!this.hostAnchor || this.hostAnchor.map !== map) {
+                this.hostAnchor?.destroy();
+                this.hostAnchor = createHostAnchor(map, this.opts.hostElement, this.opts.googleMaps || global.google);
+            }
+            return this.hostAnchor;
         }
 
         ensureWindow() {
@@ -317,7 +512,8 @@
             if (!this.infoWindow && g?.maps) {
                 this.infoWindow = new g.maps.InfoWindow({
                     maxWidth: 340,
-                    pixelOffset: new g.maps.Size(0, -8),
+                    pixelOffset: new g.maps.Size(0, 0),
+                    disableAutoPan: false,
                 });
                 this.infoWindow.addListener('closeclick', () => this.close());
                 g.maps.event.addListener(this.infoWindow, 'domready', () => this._wireDom());
@@ -340,22 +536,52 @@
 
             global.GoogleMapsPlatform?.runAfterMarkerClick?.();
 
-            this.currentPoint = point;
-            this.openId = point.id ?? null;
-            const html = buildHtml(point, this.opts);
+            this._anchor = anchor || null;
+            const position = resolvePopupPosition(point, anchor);
+            if (!position) return;
 
-            const lat = parseFloat(point.lat);
-            const lng = parseFloat(point.lng);
-            if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+            this.currentPoint = { ...point, lat: position.lat, lng: position.lng };
+            this.openId = point.id ?? null;
+            const html = buildHtml(this.currentPoint, this.opts);
+
+            const host = this.ensureHost(map);
+            if (host) {
+                this.infoWindow?.close();
+                this.overlayHost?.hide();
+                host.setContent(html);
+                host.setPosition(position);
+                host.show();
+                this._wireDom(host.getElement());
+                this.opts.onOpen?.(this.currentPoint);
+                this._startDurationTick();
+                return;
+            }
+
+            if (isClassicMarkerAnchor(anchor)) {
+                const iw = this.ensureWindow();
+                this.overlayHost?.hide();
+                iw.setContent(html);
+                const tryOpen = () => {
+                    if (!openInfoWindow(iw, map, this.currentPoint, anchor)) return false;
+                    this._wireDom();
+                    this.opts.onOpen?.(this.currentPoint);
+                    this._startDurationTick();
+                    return true;
+                };
+                if (!tryOpen()) {
+                    global.requestAnimationFrame(() => tryOpen());
+                }
+                return;
+            }
 
             const overlay = this.ensureOverlay(map);
             if (overlay) {
                 this.infoWindow?.close();
                 overlay.setContent(html);
-                overlay.setPosition({ lat, lng });
+                overlay.setPosition(position);
                 overlay.show();
-                this._wireDom();
-                this.opts.onOpen?.(point);
+                this._wireDom(overlay._el);
+                this.opts.onOpen?.(this.currentPoint);
                 this._startDurationTick();
                 return;
             }
@@ -363,8 +589,9 @@
             const iw = this.ensureWindow();
             iw.setContent(html);
             const tryOpen = () => {
-                if (!openInfoWindow(iw, map, point, anchor)) return false;
-                this.opts.onOpen?.(point);
+                if (!openInfoWindow(iw, map, this.currentPoint, anchor)) return false;
+                this._wireDom();
+                this.opts.onOpen?.(this.currentPoint);
                 this._startDurationTick();
                 return true;
             };
@@ -379,22 +606,37 @@
             }
             if (!this.isOpen()) return;
 
-            this.currentPoint = point;
-            const html = buildHtml(point, this.opts);
+            const position = resolvePopupPosition(point, this._anchor) || {
+                lat: parseFloat(point.lat),
+                lng: parseFloat(point.lng),
+            };
+            this.currentPoint = { ...point, lat: position.lat, lng: position.lng };
+            const html = buildHtml(this.currentPoint, this.opts);
+
+            if (this.hostAnchor?.isOpen()) {
+                this.hostAnchor.setContent(html);
+                if (Number.isFinite(position.lat) && Number.isFinite(position.lng)) {
+                    this.hostAnchor.setPosition(position);
+                }
+                this._wireDom(this.hostAnchor.getElement());
+                return;
+            }
 
             if (this.overlayHost?.isOpen()) {
-                const lat = parseFloat(point.lat);
-                const lng = parseFloat(point.lng);
                 this.overlayHost.setContent(html);
-                if (Number.isFinite(lat) && Number.isFinite(lng)) {
-                    this.overlayHost.setPosition({ lat, lng });
+                if (Number.isFinite(position.lat) && Number.isFinite(position.lng)) {
+                    this.overlayHost.setPosition(position);
                 }
-                this._wireDom();
+                this._wireDom(this.overlayHost._el);
                 return;
             }
 
             if (!this.infoWindow?.getMap()) return;
             this.infoWindow.setContent(html);
+            if (isClassicMarkerAnchor(this._anchor)) {
+                const map = typeof this.opts.getMap === 'function' ? this.opts.getMap() : this.opts.map;
+                openInfoWindow(this.infoWindow, map, this.currentPoint, this._anchor);
+            }
             this._wireDom();
         }
 
@@ -402,6 +644,8 @@
             this._stopDurationTick();
             this.openId = null;
             this.currentPoint = null;
+            this._anchor = null;
+            this.hostAnchor?.hide();
             this.overlayHost?.hide();
             this.infoWindow?.close();
             this.opts.onClose?.();
@@ -423,7 +667,9 @@
                     return;
                 }
                 const html = buildHtml(this.currentPoint, this.opts);
-                if (this.overlayHost?.isOpen()) {
+                if (this.hostAnchor?.isOpen()) {
+                    this.hostAnchor.setContent(html);
+                } else if (this.overlayHost?.isOpen()) {
                     this.overlayHost.setContent(html);
                 } else if (this.infoWindow?.getMap()) {
                     this.infoWindow.setContent(html);
@@ -443,36 +689,43 @@
             if (this.openId == null || Number(this.openId) !== Number(id)) {
                 return false;
             }
+            if (this.hostAnchor?.isOpen()) return true;
             if (this.overlayHost?.isOpen()) return true;
             return !!this.infoWindow?.getMap();
         }
 
-        _wireDom() {
-            const root = this.overlayHost?.isOpen()
-                ? this.overlayHost._el
-                : null;
+        _wireDom(rootEl) {
+            const root = rootEl
+                || (this.hostAnchor?.isOpen() ? this.hostAnchor.getElement() : null)
+                || (this.overlayHost?.isOpen() ? this.overlayHost._el : null);
             const closeBtn = root
                 ? root.querySelector('#vehicleMapPopupClose')
                 : document.getElementById('vehicleMapPopupClose');
-            closeBtn?.addEventListener('click', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                this.close();
-            });
+            if (closeBtn) {
+                closeBtn.onclick = (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    this.close();
+                };
+            }
             const sendBtn = root
                 ? root.querySelector('#vehicleMapPopupCmdSend')
                 : document.getElementById('vehicleMapPopupCmdSend');
-            sendBtn?.addEventListener('click', (e) => {
-                e.stopPropagation();
-                this._sendCommand();
-            });
+            if (sendBtn) {
+                sendBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    this._sendCommand();
+                };
+            }
         }
 
         async _sendCommand() {
             const url = this.opts.commandsSendUrl;
             const point = this.currentPoint;
             const deviceId = point?.id;
-            const root = this.overlayHost?.isOpen() ? this.overlayHost._el : document;
+            const root = this.hostAnchor?.isOpen()
+                ? this.hostAnchor.getElement()
+                : (this.overlayHost?.isOpen() ? this.overlayHost._el : document);
             const type = root.querySelector?.('#vehicleMapPopupCmdType')?.value
                 || document.getElementById('vehicleMapPopupCmdType')?.value;
             const btn = root.querySelector?.('#vehicleMapPopupCmdSend')
