@@ -14,10 +14,8 @@
     <!-- CSS -->
     @include('partials.head-core')
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css">
     <link rel="stylesheet" href="{{ asset('css/form-enhancements.css') }}">
+    @stack('vendor-styles')
 
     <style>
         :root {
@@ -631,11 +629,11 @@
 
     <div class="ud-search d-none d-md-block">
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.75" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"/></svg>
-        <input type="search" id="udGlobalSearch" placeholder="{{ __('app.user.devices.search_placeholder') }}" aria-label="{{ __('app.user.devices.search_placeholder') }}">
+        <input type="search" id="udGlobalSearch" data-devices-url="{{ route('user.devices.index') }}" placeholder="{{ __('app.user.devices.search_placeholder') }}" aria-label="{{ __('app.user.devices.search_placeholder') }}">
     </div>
 
     <div class="nav-end navbar-nav ms-auto d-flex align-items-center gap-2 flex-shrink-0">
-        <a href="{{ route('user.tracking.events.index') }}" class="ud-btn ud-btn--secondary d-none d-sm-inline-flex" style="padding:8px 10px;" title="{{ __('app.tracking.events_nav') }}" aria-label="{{ __('app.tracking.events_nav') }}">
+        <a href="{{ route('tracking.events.index') }}" class="ud-btn ud-btn--secondary d-none d-sm-inline-flex" style="padding:8px 10px;" title="{{ __('app.tracking.events_nav') }}" aria-label="{{ __('app.tracking.events_nav') }}">
             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" viewBox="0 0 24 24" stroke-width="1.75" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0"/></svg>
         </a>
         @include('partials.language-toggle')
@@ -660,35 +658,14 @@
 <!-- JS Libraries -->
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
-<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 <script>window.APP_TIMEZONE = @json(config('app.timezone'));</script>
 <script src="{{ protected_js('app-datetime.js') }}"></script>
-<script src="{{ protected_js('form-enhancements.js') }}"></script>
+@stack('vendor-scripts')
 <script src="{{ protected_js('map-session-guard.js') }}"></script>
 @include('partials.session-expired-handler')
-@include('partials.reverb-echo')
+@stack('realtime-scripts')
 
 <script src="{{ protected_js('user-panel-apple.js') }}"></script>
-<script>
-    document.addEventListener('DOMContentLoaded', function () {
-        const globalSearch = document.getElementById('udGlobalSearch');
-        const fleetSearch = document.getElementById('udFleetSearch');
-        if (globalSearch && fleetSearch) {
-            globalSearch.addEventListener('input', function () {
-                fleetSearch.value = globalSearch.value;
-                fleetSearch.dispatchEvent(new Event('input', { bubbles: true }));
-            });
-        } else if (globalSearch) {
-            globalSearch.addEventListener('keydown', function (e) {
-                if (e.key === 'Enter') {
-                    window.location.href = @json(route('user.devices.index'));
-                }
-            });
-        }
-    });
-</script>
 
 @if(($htmlDir ?? 'ltr') === 'rtl')
     <script src="{{ asset('js/admin-rtl.js') }}"></script>

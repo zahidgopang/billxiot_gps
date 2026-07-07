@@ -13,7 +13,7 @@ use App\Http\Controllers\Tracking\TasksController;
 use Illuminate\Support\Facades\Route;
 
 /**
- * Shared tracking module routes — register inside panel groups with name prefix admin.tracking.* etc.
+ * Shared tracking module routes — register with prefix `tracking` and name `tracking.*`.
  */
 return function (): void {
     Route::middleware('permission:web.map.open,web.map.live_only')->group(function (): void {

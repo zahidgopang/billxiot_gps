@@ -24,9 +24,9 @@ class CommandsController extends Controller
         $panel = $this->resolvePanel($request);
 
         return view('tracking.commands', $this->viewData($request, $panel, [
-            'jsonUrl' => route("{$panel}.tracking.commands.json"),
-            'sendUrl' => route("{$panel}.tracking.commands.send"),
-            'cancelUrl' => route("{$panel}.tracking.commands.cancel", ['command' => 0]),
+            'jsonUrl' => route('tracking.commands.json'),
+            'sendUrl' => route('tracking.commands.send'),
+            'cancelUrl' => route('tracking.commands.cancel', ['command' => 0]),
             'commandTypes' => CommandService::typeLabels(),
         ]));
     }

@@ -23,15 +23,28 @@ class UserController extends Controller
             return redirect()->route($rbac->panelRouteFor($user));
         }
 
-        $stats = $dashboard->getStats($user);
+        $stats = $dashboard->getDashboardShell($user);
 
         return view('user.dashboard', array_merge($stats, [
             'emailVerified' => session()->has('email_verified'),
-            'trackerAccountActive' => app(\App\Services\Traccar\TraccarUserAccessService::class)->hasTrackerAccount($user),
             'dashboardService' => $dashboard,
             'subscriptionService' => app(DeviceSubscriptionService::class),
-            'alertDeviceIds' => $dashboard->alertDeviceIds($stats['devices']),
+            'deviceAccessMap' => app(\App\Services\DeviceAccessService::class)
+                ->evaluateMany($user, $stats['devices']),
         ]));
+    }
+
+    public function dashboardMetricsJson(UserDashboardService $dashboard, RbacService $rbac)
+    {
+        $user = auth()->user();
+
+        if ($rbac->canAccessPanel($user)) {
+            return response()->json(['success' => false], 403);
+        }
+
+        return response()
+            ->json($dashboard->getDashboardMetrics($user))
+            ->header('Cache-Control', 'private, max-age=30');
     }
 
     public function devices()

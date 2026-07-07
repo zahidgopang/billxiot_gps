@@ -174,7 +174,7 @@
 
 <style>
     .filter-panel {
-        width: 340px;
+        width: var(--map-sidebar-width, 300px);
         position: fixed;
         top: var(--app-nav-height, 4.5rem);
         left: 0;

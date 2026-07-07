@@ -24,27 +24,37 @@ class UserDevicesController extends Controller
     {
         try {
             $user = Auth::user();
+            $rbac = app(\App\Services\Authorization\RbacService::class);
+            $trackingGate = app(TraccarTrackingGate::class);
             $allDevices = $user
                 ->trackerDevicesQuery()
                 ->with(['subscription'])
                 ->orderByDesc('id')
                 ->get();
 
-            $trackingGate = app(TraccarTrackingGate::class);
-            $isEndUser = app(\App\Services\Authorization\RbacService::class)->isEndUser($user);
-            $fleetMapEligibleCount = $trackingGate
-                ->filterTrackable($user, $allDevices, requireSubscription: true)
-                ->count();
-        $devices = $trackingGate->filterTrackable(
+            $isEndUser = $rbac->isEndUser($user);
+            $requireSubscriptionForList = $isEndUser && ! $rbac->bypassesSubscriptionRestrictions($user);
+
+            $trackableForFleet = $trackingGate->filterTrackable(
                 $user,
                 $allDevices,
-                requireSubscription: $isEndUser
-                    && ! app(\App\Services\Authorization\RbacService::class)->bypassesSubscriptionRestrictions($user),
+                requireSubscription: true,
             );
+            $fleetMapEligibleCount = $trackableForFleet->count();
+
+            $devices = $requireSubscriptionForList
+                ? $trackableForFleet
+                : $trackingGate->filterTrackable(
+                    $user,
+                    $allDevices,
+                    requireSubscription: false,
+                );
 
             app(DevicePositionLoader::class)->attachLatestToMany($devices);
 
             $alertDeviceIds = $dashboard->alertDeviceIds($devices);
+            $deviceAccessMap = app(\App\Services\DeviceAccessService::class)
+                ->evaluateMany($user, $devices);
 
             return view('user.devices', array_merge(
                 $dashboard->getDevicePageStats($devices),
@@ -54,6 +64,7 @@ class UserDevicesController extends Controller
                     'dashboardService' => $dashboard,
                     'subscriptionService' => app(DeviceSubscriptionService::class),
                     'fleetMapEligibleCount' => $fleetMapEligibleCount,
+                    'deviceAccessMap' => $deviceAccessMap,
                 ]
             ));
         } catch (\Exception $e) {
@@ -72,6 +83,7 @@ class UserDevicesController extends Controller
                 'alertDeviceIds' => collect(),
                 'dashboardService' => $dashboard,
                 'fleetMapEligibleCount' => 0,
+                'deviceAccessMap' => [],
             ]);
         }
     }

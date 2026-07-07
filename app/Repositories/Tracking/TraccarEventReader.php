@@ -128,11 +128,16 @@ class TraccarEventReader implements EventReaderInterface
             return $query->count();
         }
 
-        return $query->get()->filter(function ($row) use ($types) {
-            $event = $this->mapper->toVehicleEvent($row, 0);
+        $traccarTypes = array_values(array_unique(array_map(
+            fn (string $type) => $this->mapper->mapType($type),
+            $types,
+        )));
 
-            return in_array($event->type, $types, true);
-        })->count();
+        if ($traccarTypes !== []) {
+            $query->whereIn('type', $traccarTypes);
+        }
+
+        return $query->count();
     }
 
     public function countSince(Carbon $from): int

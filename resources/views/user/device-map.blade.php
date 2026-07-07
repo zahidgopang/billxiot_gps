@@ -1,4 +1,4 @@
-@extends('user.layout')
+@extends('user.layout_map')
 
 @push('styles')
     <link rel="stylesheet" href="{{ asset('css/fleet-map.css') }}?v={{ filemtime(public_path('css/fleet-map.css')) }}">
@@ -26,9 +26,29 @@
         }
         #map { width: 100%; height: 100%; }
 
+        #vehicleMapPopupHost {
+            position: absolute;
+            z-index: 1000;
+            pointer-events: none;
+            overflow: visible;
+        }
+        #vehicleMapPopupHost.is-open,
+        #vehicleMapPopupHost .vehicle-map-popup {
+            pointer-events: auto;
+        }
+        #vehicleMapPopupHost .vehicle-map-popup {
+            background: #ffffff;
+            border: 1px solid #e5e5ea;
+            border-radius: 14px;
+            box-shadow: 0 14px 44px rgba(0, 0, 0, 0.16), 0 2px 8px rgba(0, 0, 0, 0.06);
+        }
+        #vehicleMapPopupHost .vehicle-map-popup__body {
+            background: #ffffff;
+        }
+
         .route-trip-bar {
             position: absolute;
-            top: max(72px, calc(env(safe-area-inset-top) + 56px));
+            top: max(calc(var(--app-nav-height, 52px) + 10px), calc(env(safe-area-inset-top) + 10px));
             left: 50%;
             transform: translateX(-50%);
             z-index: 1100;
@@ -506,6 +526,15 @@
         .map-hud.is-collapsed {
             padding: 10px 12px;
         }
+        .map-hud__chrome {
+            display: flex;
+            align-items: flex-start;
+            gap: 4px;
+        }
+        .map-hud__chrome .map-hud__toggle {
+            flex: 1;
+            min-width: 0;
+        }
         .map-hud__toggle {
             display: flex;
             align-items: center;
@@ -738,13 +767,10 @@
         body.map-night-mode .map-status-chip--offline { background: #f87171; color: #450a0a; border-color: #dc2626; }
         body.map-night-mode .map-status-chip--stale { background: #fbbf24; color: #451a03; border-color: #f59e0b; }
 
-        /* Vehicle marker popup */
+        /* Vehicle marker popup — card chrome lives in vehicle-map-popup.css */
         .vehicle-map-popup {
-            padding: 0;
             min-width: 240px;
             max-width: 300px;
-            font-family: system-ui, -apple-system, sans-serif;
-            overflow: hidden;
         }
         .vehicle-map-popup__head {
             display: flex;
@@ -1543,15 +1569,63 @@
             .playback-speed-group { justify-content: center; }
             .smart-controls {
                 top: auto;
-                bottom: max(82px, calc(66px + env(safe-area-inset-bottom)));
-                right: max(10px, env(safe-area-inset-right));
+                left: max(12px, env(safe-area-inset-left));
+                right: max(12px, env(safe-area-inset-right));
+                inset-inline-start: max(12px, env(safe-area-inset-left));
+                inset-inline-end: max(12px, env(safe-area-inset-right));
+                bottom: max(72px, calc(56px + env(safe-area-inset-bottom)));
                 flex-direction: row;
+                align-items: center;
+                justify-content: center;
+                gap: 6px;
+                width: auto;
+                max-width: none;
+                overflow-x: auto;
+                overflow-y: hidden;
+                -webkit-overflow-scrolling: touch;
+                scrollbar-width: none;
+                padding-bottom: 2px;
             }
-            .control-group { display: flex; border-radius: 999px; }
+            .smart-controls::-webkit-scrollbar { display: none; }
+            .control-group {
+                display: flex;
+                flex-direction: row;
+                flex-shrink: 0;
+                border-radius: 999px;
+            }
             .smart-btn + .smart-btn { border-top: none; border-left: 1px solid var(--map-ui-border); }
-            .smart-btn { width: 44px; height: 44px; }
+            html[dir="rtl"] .smart-btn + .smart-btn {
+                border-left: none;
+                border-right: 1px solid var(--map-ui-border);
+            }
+            .smart-btn {
+                width: 38px;
+                height: 38px;
+                min-width: 38px;
+                flex-shrink: 0;
+            }
+            .smart-btn i { font-size: 15px; }
+            .smart-btn.active {
+                min-width: 38px;
+                max-width: 38px;
+            }
             #mapArea.playback-open .smart-controls {
                 bottom: calc(220px + env(safe-area-inset-bottom));
+            }
+            .map-tools-left {
+                left: max(12px, env(safe-area-inset-left));
+                right: auto;
+                inset-inline-end: auto;
+                max-width: calc(100% - 24px);
+                overflow-x: auto;
+                overflow-y: hidden;
+                -webkit-overflow-scrolling: touch;
+                scrollbar-width: none;
+            }
+            .map-tools-left::-webkit-scrollbar { display: none; }
+            .map-tools-left .control-group {
+                flex-direction: row;
+                flex-wrap: nowrap;
             }
             .map-live-panel__playback-label {
                 display: none;
@@ -1613,6 +1687,22 @@
             }
         }
 
+        @media (max-width: 768px) {
+            .map-footer-playback {
+                min-width: 40px;
+                width: 40px;
+                height: 40px;
+                min-height: 40px;
+                padding: 0;
+                border-radius: 50%;
+            }
+            .map-footer-playback span { display: none; }
+            .map-footer-left-btn {
+                width: 40px;
+                height: 40px;
+            }
+        }
+
         @media (max-width: 576px) {
             .map-live-panel__header {
                 grid-template-columns: minmax(0, 1fr) auto auto;
@@ -1628,12 +1718,43 @@
             .playback-btn { width: 38px; height: 38px; }
             .speed-btn { min-width: 36px; padding: 5px 8px; font-size: 0.7rem; }
             .navbar-brand span { display: none; }
-            .map-footer-playback {
-                min-width: 148px;
-                min-height: 44px;
-                font-size: 0.8rem;
-                padding: 0 14px;
+            .smart-controls {
+                left: max(8px, env(safe-area-inset-left));
+                right: max(8px, env(safe-area-inset-right));
+                inset-inline-start: max(8px, env(safe-area-inset-left));
+                inset-inline-end: max(8px, env(safe-area-inset-right));
+                bottom: max(64px, calc(52px + env(safe-area-inset-bottom)));
+                gap: 5px;
             }
+            .smart-btn {
+                width: 34px;
+                height: 34px;
+                min-width: 34px;
+            }
+            .smart-btn.active {
+                min-width: 34px;
+                max-width: 34px;
+            }
+            .smart-btn i { font-size: 13px; }
+            .map-tools-left {
+                max-width: calc(100% - 16px);
+            }
+            .map-footer-left-btn {
+                width: 38px;
+                height: 38px;
+                border-radius: 12px;
+            }
+            .map-footer-left-btn i { font-size: 15px; }
+            .map-footer-playback {
+                min-width: 38px;
+                width: 38px;
+                height: 38px;
+                min-height: 38px;
+                padding: 0;
+                border-radius: 50%;
+            }
+            .map-footer-playback span { display: none; }
+            .map-footer-playback i { font-size: 0.85rem; margin: 0; }
         }
         @keyframes slideInRight {
             from { transform: translateX(100%); opacity: 0; }
@@ -1663,6 +1784,122 @@
             text-align: center;
             line-height: 1.45;
             white-space: pre-line;
+        }
+        .map-history-load-banner {
+            position: absolute;
+            top: max(10px, env(safe-area-inset-top));
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1008;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 6px;
+            max-width: min(96vw, 520px);
+            padding: 6px 8px;
+            border-radius: 12px;
+            background: rgba(255, 255, 255, 0.94);
+            border: 1px solid rgba(15, 23, 42, 0.08);
+            box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            pointer-events: none;
+        }
+        .map-history-load-banner[hidden] { display: none !important; }
+        .map-history-load-banner__item {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 4px 8px;
+            border-radius: 999px;
+            background: #f1f5f9;
+            font-size: 0.68rem;
+            font-weight: 600;
+            color: #475569;
+        }
+        .map-history-load-banner__item[data-state="done"] {
+            background: rgba(22, 163, 74, 0.1);
+            color: #15803d;
+        }
+        .map-history-load-banner__icon {
+            width: 12px;
+            text-align: center;
+            font-size: 0.62rem;
+            color: #64748b;
+        }
+        .map-history-load-banner__icon.is-spinning {
+            animation: spin 0.9s linear infinite;
+        }
+        .map-history-load-banner__icon.is-done::before {
+            content: '\f00c';
+            font-family: 'Font Awesome 6 Free';
+            font-weight: 900;
+        }
+        .map-history-load-banner__icon.is-done i {
+            display: none;
+        }
+        .map-panel-drag-grip {
+            flex-shrink: 0;
+            width: 24px;
+            height: 28px;
+            margin: 0;
+            padding: 0;
+            border: none;
+            border-radius: 8px;
+            background: transparent;
+            color: #94a3b8;
+            cursor: grab;
+            touch-action: none;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .map-panel-drag-grip:hover {
+            color: #64748b;
+            background: rgba(148, 163, 184, 0.16);
+        }
+        .map-panel-drag-grip:active {
+            cursor: grabbing;
+        }
+        .map-panel-drag-grip--route {
+            width: 20px;
+            height: 22px;
+            margin-inline-end: 4px;
+        }
+        .map-live-panel.is-user-positioned,
+        .map-hud.is-user-positioned,
+        .route-trip-bar.is-user-positioned {
+            margin: 0;
+        }
+        .map-live-panel.is-dragging,
+        .map-hud.is-dragging,
+        .route-trip-bar.is-dragging {
+            z-index: 1205;
+            box-shadow: 0 18px 48px rgba(15, 23, 42, 0.22);
+            opacity: 0.97;
+        }
+        .route-trip-bar__head .map-panel-drag-grip {
+            align-self: flex-start;
+        }
+        .timeline-virtual-host {
+            position: relative;
+            overflow-y: auto;
+            max-height: min(42vh, 320px);
+            -webkit-overflow-scrolling: touch;
+        }
+        .timeline-virtual__spacer {
+            position: relative;
+            width: 100%;
+        }
+        .timeline-virtual__viewport {
+            position: absolute;
+            left: 0;
+            right: 0;
+            top: 0;
+        }
+        .timeline-virtual__viewport .trip-event-item {
+            min-height: 48px;
+            box-sizing: border-box;
         }
         .loading-spinner {
             width: 60px;
@@ -2047,31 +2284,181 @@
         }
         .map-tour-btn--primary:hover { transform: translateY(-1px); }
 
-        /* Polyline info window */
-        .gm-polyline-info {
-            background: white;
-            border-radius: 12px;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.2);
-            min-width: 280px;
+        /* Route segment info window (Google Maps InfoWindow content) */
+        .gm-polyline-info,
+        .route-segment-popup {
+            background: #fff;
+            border-radius: 14px;
+            border: 1px solid #e5e5ea;
+            box-shadow: 0 14px 44px rgba(0, 0, 0, 0.14);
+            min-width: min(300px, calc(100vw - 32px));
+            max-width: 320px;
             overflow: hidden;
+            font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            color: #1d1d1f;
         }
-        .polyline-header {
-            padding: 16px;
-            background: linear-gradient(135deg, #4285f4, #34a853);
-            color: white;
+        .route-segment-popup__head {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 10px;
+            padding: 12px 12px 10px;
+            background: linear-gradient(180deg, #fafafa 0%, #fff 100%);
+            border-bottom: 1px solid #ececec;
+        }
+        .route-segment-popup__head-main {
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: 8px;
+            min-width: 0;
         }
-        .polyline-body { padding: 16px; }
-        .polyline-stats {
+        .route-segment-popup__icon {
+            width: 30px;
+            height: 30px;
+            border-radius: 9px;
+            background: rgba(0, 122, 255, 0.1);
+            color: #007aff;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            font-size: 0.8rem;
+        }
+        .route-segment-popup__title {
+            margin: 0;
+            font-size: 0.82rem;
+            font-weight: 700;
+            line-height: 1.25;
+            color: #1d1d1f;
+        }
+        .route-segment-popup__close {
+            width: 28px;
+            height: 28px;
+            border: none;
+            border-radius: 8px;
+            background: #f2f2f7;
+            color: #6e6e73;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            flex-shrink: 0;
+            font-size: 0.78rem;
+            transition: background 0.15s ease, color 0.15s ease;
+        }
+        .route-segment-popup__close:hover {
+            background: #e5e5ea;
+            color: #1d1d1f;
+        }
+        .route-segment-popup__body {
+            padding: 10px 12px 12px;
+        }
+        .route-segment-popup__stats {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 12px;
-            margin-bottom: 16px;
+            gap: 8px;
+            margin-bottom: 10px;
         }
-        .stat-item { text-align: center; padding: 12px; background: #f8f9fa; border-radius: 8px; }
-        .stat-value { font-size: 20px; font-weight: 700; color: #4285f4; }
+        .route-segment-popup__stat {
+            background: #f5f5f7;
+            border: 1px solid #ececec;
+            border-radius: 10px;
+            padding: 8px 10px;
+            text-align: center;
+        }
+        .route-segment-popup__stat-value {
+            display: block;
+            font-size: 1.05rem;
+            font-weight: 800;
+            color: #007aff;
+            line-height: 1.1;
+            font-variant-numeric: tabular-nums;
+        }
+        .route-segment-popup__stat-label {
+            display: block;
+            margin-top: 3px;
+            font-size: 0.62rem;
+            font-weight: 600;
+            letter-spacing: 0.03em;
+            text-transform: uppercase;
+            color: #6e6e73;
+        }
+        .route-segment-popup__details {
+            display: grid;
+            gap: 0;
+            border: 1px solid #ececec;
+            border-radius: 10px;
+            overflow: hidden;
+            background: #fff;
+        }
+        .route-segment-popup__row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            padding: 8px 10px;
+            font-size: 0.74rem;
+            border-bottom: 1px solid #f0f0f5;
+        }
+        .route-segment-popup__row:last-child {
+            border-bottom: none;
+        }
+        .route-segment-popup__label {
+            color: #6e6e73;
+            font-weight: 600;
+            flex-shrink: 0;
+        }
+        .route-segment-popup__value {
+            color: #1d1d1f;
+            font-weight: 700;
+            text-align: end;
+            font-variant-numeric: tabular-nums;
+            word-break: break-word;
+        }
+        .route-segment-popup__value-group {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+        }
+        .route-segment-popup__status {
+            font-weight: 700;
+        }
+        .route-segment-popup__status--stopped { color: #64748b; }
+        .route-segment-popup__status--normal { color: #16a34a; }
+        .route-segment-popup__status--medium { color: #ca8a04; }
+        .route-segment-popup__status--overspeed { color: #dc2626; }
+        .route-segment-popup__speed-pill {
+            display: inline-flex;
+            align-items: center;
+            padding: 2px 7px;
+            border-radius: 999px;
+            font-size: 0.62rem;
+            font-weight: 700;
+            line-height: 1.2;
+            border: 1px solid transparent;
+        }
+        .route-segment-popup__speed-pill--stopped {
+            background: #f1f5f9;
+            color: #64748b;
+            border-color: #e2e8f0;
+        }
+        .route-segment-popup__speed-pill--normal {
+            background: rgba(22, 163, 74, 0.1);
+            color: #15803d;
+            border-color: rgba(22, 163, 74, 0.2);
+        }
+        .route-segment-popup__speed-pill--medium {
+            background: rgba(234, 179, 8, 0.12);
+            color: #a16207;
+            border-color: rgba(234, 179, 8, 0.25);
+        }
+        .route-segment-popup__speed-pill--overspeed {
+            background: rgba(220, 38, 38, 0.1);
+            color: #b91c1c;
+            border-color: rgba(220, 38, 38, 0.2);
+        }
     </style>
 @endpush
 
@@ -2080,7 +2467,9 @@
 @section('content')
     <div class="tracking-container">
         @include('user.side_bar_map')
+        <link rel="stylesheet" href="{{ asset('css/user-device-map-shell.css') }}?v={{ filemtime(public_path('css/user-device-map-shell.css')) }}">
         <div class="map-area" id="mapArea">
+            <div id="vehicleMapPopupHost" aria-hidden="true"></div>
             <div id="map"></div>
 
             <div id="routeTripProgressBar" class="route-trip-bar" hidden aria-live="polite"></div>
@@ -2088,6 +2477,28 @@
             <div class="loading-overlay" id="loadingOverlay">
                 <div class="loading-spinner"></div>
                 <div class="loading-text" id="loadingText">{{ __('app.map.loading_map') }}</div>
+            </div>
+            <div class="map-history-load-banner" id="mapHistoryLoadBanner" hidden aria-live="polite">
+                <div class="map-history-load-banner__item" data-load="route" data-state="idle">
+                    <span class="map-history-load-banner__icon"><i class="fas fa-route" aria-hidden="true"></i></span>
+                    <span class="map-history-load-banner__label">{{ __('app.map.loading_route') }}</span>
+                </div>
+                <div class="map-history-load-banner__item" data-load="stats" data-state="idle">
+                    <span class="map-history-load-banner__icon"><i class="fas fa-chart-line" aria-hidden="true"></i></span>
+                    <span class="map-history-load-banner__label">{{ __('app.map.loading_statistics') }}</span>
+                </div>
+                <div class="map-history-load-banner__item" data-load="stops" data-state="idle">
+                    <span class="map-history-load-banner__icon"><i class="fas fa-parking" aria-hidden="true"></i></span>
+                    <span class="map-history-load-banner__label">{{ __('app.map.loading_stops') }}</span>
+                </div>
+                <div class="map-history-load-banner__item" data-load="events" data-state="idle">
+                    <span class="map-history-load-banner__icon"><i class="fas fa-bolt" aria-hidden="true"></i></span>
+                    <span class="map-history-load-banner__label">{{ __('app.map.loading_events') }}</span>
+                </div>
+                <div class="map-history-load-banner__item" data-load="timeline" data-state="idle">
+                    <span class="map-history-load-banner__icon"><i class="fas fa-stream" aria-hidden="true"></i></span>
+                    <span class="map-history-load-banner__label">{{ __('app.map.loading_timeline') }}</span>
+                </div>
             </div>
             <div class="notification-container" id="notificationContainer"></div>
 
@@ -2128,6 +2539,13 @@
                         <span class="map-status-chip map-status-chip--{{ $liveChipClass }}" id="liveStatusChip">{{ $initialStatus['label'] ?? __('app.map.status_offline') }}</span>
                     </div>
                     <div class="map-live-panel__right">
+                        <button type="button"
+                                class="map-panel-drag-grip"
+                                data-map-drag-grip
+                                aria-label="{{ __('app.map.drag_panel_position') }}"
+                                title="{{ __('app.map.drag_panel_position') }} · {{ __('app.map.reset_panel_position') }}">
+                            <i class="fas fa-grip-vertical" aria-hidden="true"></i>
+                        </button>
                         <button type="button"
                                 class="map-live-panel__toggle"
                                 id="mapLivePanelToggle"
@@ -2324,21 +2742,30 @@
 
             <!-- Compact top HUD (address + quick actions) -->
             <div class="map-hud is-collapsed" id="mapHud">
-                <button type="button" class="map-hud__toggle" id="mapHudToggle" aria-expanded="true" aria-controls="mapHudBody" title="{{ __('app.map.hud_toggle_title') }}">
-                    <span class="map-hud__status-dot" id="hudStatusDot"></span>
-                        <span class="map-hud__toggle-text">
-                            <span class="map-hud__label">{{ __('app.map.live_vehicle') }}</span>
-                            <span class="map-hud__name">{{ $device->mapMarkerTitle() }}</span>
-                            @if($device->mapMarkerPlateLine())
-                                <span class="map-hud__plate">{{ $device->mapMarkerPlateLine() }}</span>
-                            @endif
+                <div class="map-hud__chrome">
+                    <button type="button"
+                            class="map-panel-drag-grip map-panel-drag-grip--hud"
+                            data-map-drag-grip
+                            aria-label="{{ __('app.map.drag_panel_position') }}"
+                            title="{{ __('app.map.drag_panel_position') }} · {{ __('app.map.reset_panel_position') }}">
+                        <i class="fas fa-grip-vertical" aria-hidden="true"></i>
+                    </button>
+                    <button type="button" class="map-hud__toggle" id="mapHudToggle" aria-expanded="true" aria-controls="mapHudBody" title="{{ __('app.map.hud_toggle_title') }}">
+                        <span class="map-hud__status-dot" id="hudStatusDot"></span>
+                            <span class="map-hud__toggle-text">
+                                <span class="map-hud__label">{{ __('app.map.live_vehicle') }}</span>
+                                <span class="map-hud__name">{{ $device->mapMarkerTitle() }}</span>
+                                @if($device->mapMarkerPlateLine())
+                                    <span class="map-hud__plate">{{ $device->mapMarkerPlateLine() }}</span>
+                                @endif
+                            </span>
+                        <span class="map-hud__mini-group">
+                            <span class="map-hud__mini-status" id="hudMiniStatus"></span>
+                            <span class="map-hud__mini" id="hudMiniSpeed">—</span>
                         </span>
-                    <span class="map-hud__mini-group">
-                        <span class="map-hud__mini-status" id="hudMiniStatus"></span>
-                        <span class="map-hud__mini" id="hudMiniSpeed">—</span>
-                    </span>
-                    <i class="fas fa-chevron-up map-hud__chevron" aria-hidden="true"></i>
-                </button>
+                        <i class="fas fa-chevron-up map-hud__chevron" aria-hidden="true"></i>
+                    </button>
+                </div>
                 <div class="map-hud__body" id="mapHudBody">
                 <div class="map-hud__last-known" id="hudDelayedInfo" hidden>
                     <div class="map-hud__route-row"><span>{{ __('app.map.last_seen') }}</span><strong id="hudDelayedLastSeen">—</strong></div>
@@ -2531,18 +2958,47 @@
     </div>
 
     <div id="polylineInfoTemplate" style="display:none;">
-        <div class="gm-polyline-info">
-            <div class="polyline-header"><i class="fas fa-route"></i><div class="polyline-title"><h3>{{ __('app.map.route_segment_details') }}</h3></div></div>
-            <div class="polyline-body">
-                <div class="polyline-stats">
-                    <div class="stat-item"><div class="stat-value" id="statSpeed">0</div><div class="stat-label">{{ __('app.map.speed_kmh') }}</div></div>
-                    <div class="stat-item"><div class="stat-value" id="statDistance">0</div><div class="stat-label">{{ __('app.map.distance_label') }}</div></div>
+        <div class="gm-polyline-info route-segment-popup">
+            <div class="route-segment-popup__head">
+                <div class="route-segment-popup__head-main">
+                    <span class="route-segment-popup__icon" aria-hidden="true"><i class="fas fa-route"></i></span>
+                    <h3 class="route-segment-popup__title">{{ __('app.map.route_segment_details') }}</h3>
                 </div>
-                <div class="polyline-details">
-                    <div class="detail-row"><span class="detail-label">{{ __('app.map.start_time') }}</span><span id="detailStartTime">--:--</span></div>
-                    <div class="detail-row"><span class="detail-label">{{ __('app.map.end_time') }}</span><span id="detailEndTime">--:--</span></div>
-                    <div class="detail-row"><span class="detail-label">{{ __('app.map.speed_status') }}</span><span id="detailSpeedStatus">{{ __('app.map.normal') }}</span><span id="speedIndicator" class="speed-indicator">0-40</span></div>
-                    <div class="detail-row"><span class="detail-label">{{ __('app.map.coordinates') }}</span><span id="detailCoords">0,0</span></div>
+                <button type="button" class="route-segment-popup__close js-polyline-info-close" aria-label="{{ __('app.common.close') }}">
+                    <i class="fas fa-times" aria-hidden="true"></i>
+                </button>
+            </div>
+            <div class="route-segment-popup__body">
+                <div class="route-segment-popup__stats">
+                    <div class="route-segment-popup__stat">
+                        <span class="route-segment-popup__stat-value" id="statSpeed">0</span>
+                        <span class="route-segment-popup__stat-label">{{ __('app.map.speed_kmh') }}</span>
+                    </div>
+                    <div class="route-segment-popup__stat">
+                        <span class="route-segment-popup__stat-value" id="statDistance">0</span>
+                        <span class="route-segment-popup__stat-label">{{ __('app.map.distance_label') }}</span>
+                    </div>
+                </div>
+                <div class="route-segment-popup__details">
+                    <div class="route-segment-popup__row">
+                        <span class="route-segment-popup__label">{{ __('app.map.start_time') }}</span>
+                        <span class="route-segment-popup__value" id="detailStartTime">--:--</span>
+                    </div>
+                    <div class="route-segment-popup__row">
+                        <span class="route-segment-popup__label">{{ __('app.map.end_time') }}</span>
+                        <span class="route-segment-popup__value" id="detailEndTime">--:--</span>
+                    </div>
+                    <div class="route-segment-popup__row">
+                        <span class="route-segment-popup__label">{{ __('app.map.speed_status') }}</span>
+                        <span class="route-segment-popup__value-group">
+                            <span class="route-segment-popup__status route-segment-popup__status--normal" id="detailSpeedStatus">{{ __('app.map.normal') }}</span>
+                            <span class="route-segment-popup__speed-pill route-segment-popup__speed-pill--normal" id="speedIndicator">0-40</span>
+                        </span>
+                    </div>
+                    <div class="route-segment-popup__row">
+                        <span class="route-segment-popup__label">{{ __('app.map.coordinates') }}</span>
+                        <span class="route-segment-popup__value" id="detailCoords">0,0</span>
+                    </div>
                 </div>
             </div>
         </div>
@@ -2594,13 +3050,19 @@
             isAdminMap: @json($isAdminMap ?? false),
             canManageGeofences: @json(! empty($canManageGeofences)),
             apiRoutes: @json($mapApiRoutes ?? []),
+            historyWorkerUrl: @json(asset('js/history-map-worker.js')),
             completeTripUrl: @json($mapApiRoutes['completeTrip'] ?? ''),
             startNewTripUrl: @json($mapApiRoutes['startNewTrip'] ?? ''),
+            restartTripUrl: @json($mapApiRoutes['restartTrip'] ?? ''),
             routeTripI18n: {
                 remaining: @json(__('app.routes.remaining')),
                 eta: @json(__('app.routes.eta')),
                 complete: @json(__('app.routes.complete_trip')),
                 startNew: @json(__('app.routes.start_new_trip')),
+                startTrip: @json(__('app.routes.start_trip')),
+                restartTrip: @json(__('app.routes.restart_trip')),
+                restartTripConfirm: @json(__('app.routes.restart_trip_confirm')),
+                restartTripConfirmText: @json(__('app.routes.restart_trip_confirm_text')),
                 elapsed: @json(__('app.routes.elapsed')),
                 planned: @json(__('app.routes.planned')),
                 checkpointTotal: @json(__('app.routes.checkpoint_total')),
@@ -2624,6 +3086,8 @@
                 nextCheckpoint: @json(__('app.routes.next_checkpoint')),
                 offRouteBadge: @json(__('app.routes.off_route_badge')),
                 kmhUnit: @json(__('app.map.kmh_unit')),
+                dragPanel: @json(__('app.map.drag_panel_position')),
+                resetPanelPosition: @json(__('app.map.reset_panel_position')),
             },
             baseUrl: @json(url('/')),
             csrfToken: @json(csrf_token()),
@@ -2674,7 +3138,16 @@
             alertsUrl: @json($mapApiRoutes['alerts'] ?? ''),
             i18n: {
                 dash: @json(__('app.map.dash')),
-                loadingMap: @json(__('app.map.loading_map')),
+                loadingRoute: @json(__('app.map.loading_route')),
+                loadingTimeline: @json(__('app.map.loading_timeline')),
+                loadingEvents: @json(__('app.map.loading_events')),
+                loadingStops: @json(__('app.map.loading_stops')),
+                loadingStatistics: @json(__('app.map.loading_statistics')),
+                routeLoaded: @json(__('app.map.route_loaded')),
+                statisticsLoaded: @json(__('app.map.statistics_loaded')),
+                timelineLoaded: @json(__('app.map.timeline_loaded')),
+                eventsLoaded: @json(__('app.map.events_loaded')),
+                stopsLoaded: @json(__('app.map.stops_loaded')),
                 loadingMapRetry: @json(__('app.map.loading_map_retry')),
                 loadingMapFailed: @json(__('app.map.loading_map_failed')),
                 mapApiKeyMissing: @json(__('app.map.map_api_key_missing')),
@@ -2699,6 +3172,7 @@
                 statusSos: @json(__('app.map.status_sos')),
                 statusOverspeed: @json(__('app.map.status_overspeed')),
                 statusStopped: @json(__('app.map.status_stopped')),
+                speedNormal: @json(__('app.map.speed_normal')),
                 statusMoving: @json(__('app.map.status_moving')),
                 statusRunning: @json(__('app.map.status_running')),
                 statusParked: @json(__('app.map.status_parked')),
@@ -2816,7 +3290,10 @@
     @include('partials.google-maps-platform')
     <script src="{{ protected_js('vehicle-marker.js') }}"></script>
     <script src="{{ protected_js('map-marker-appearance.js') }}"></script>
+    <script src="{{ protected_js('polyline-simplify.js') }}"></script>
     <script src="{{ protected_js('fleet-map-renderer.js') }}"></script>
+    <script src="{{ protected_js('map-panel-position.js') }}"></script>
+    <script src="{{ protected_js('history-map-processor.js') }}"></script>
     <script src="{{ protected_js('history-analytics.js') }}"></script>
     <script src="{{ protected_js('route-trip-progress.js') }}"></script>
     <script src="{{ protected_js('vehicle-map-popup.js') }}"></script>

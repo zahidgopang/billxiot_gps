@@ -1,6 +1,8 @@
 (function (global) {
     'use strict';
 
+    const APEX_URL = 'https://cdn.jsdelivr.net/npm/apexcharts@3.49.1/dist/apexcharts.min.js';
+
     function animateCounter(el, target, suffix) {
         if (!el) return;
         const end = Number(target) || 0;
@@ -21,7 +23,36 @@
 
     function initCounters(root) {
         root.querySelectorAll('[data-count]').forEach((el) => {
+            if (el.closest('[data-deferred]') && el.textContent.trim() === '—') {
+                return;
+            }
             animateCounter(el, el.dataset.count, el.dataset.suffix || '');
+        });
+    }
+
+    function applyDeferredMetrics(metrics) {
+        if (!metrics) return;
+
+        const map = {
+            distanceTodayKm: metrics.distanceTodayKm,
+            totalDistanceKm: metrics.totalDistanceKm,
+            activeAlerts: metrics.activeAlerts,
+        };
+
+        Object.keys(map).forEach((key) => {
+            const val = map[key];
+            document.querySelectorAll(`[data-deferred="${key}"]`).forEach((el) => {
+                const target = Math.round(Number(val) || 0);
+                if (el.hasAttribute('data-count')) {
+                    el.dataset.count = String(target);
+                    el.textContent = '0';
+                    animateCounter(el, target, el.dataset.suffix || '');
+                } else {
+                    el.dataset.count = String(target);
+                    el.textContent = '0';
+                    animateCounter(el, target, '');
+                }
+            });
         });
     }
 
@@ -35,6 +66,13 @@
             grid: { borderColor: '#E5E5EA', strokeDashArray: 4 },
             dataLabels: { enabled: false },
         };
+    }
+
+    function clearChartLoading() {
+        document.querySelectorAll('.ud-chart--loading').forEach((el) => {
+            el.classList.remove('ud-chart--loading');
+            el.removeAttribute('aria-busy');
+        });
     }
 
     function renderCharts(data) {
@@ -108,36 +146,41 @@
                 yaxis: { labels: { formatter: (v) => `${Math.round(v)} km` } },
             }).render();
         }
+
+        clearChartLoading();
     }
 
-    function initMiniMap(markers, apiKey) {
-        const el = document.getElementById('udMiniMap');
-        if (!el || !global.google?.maps || !markers?.length) return;
-
-        const bounds = new google.maps.LatLngBounds();
-        markers.forEach((m) => bounds.extend({ lat: m.lat, lng: m.lng }));
-
-        const map = new google.maps.Map(el, {
-            center: bounds.getCenter(),
-            zoom: 11,
-            disableDefaultUI: true,
-            zoomControl: true,
-            mapTypeControl: false,
-            streetViewControl: false,
-            fullscreenControl: false,
+    function loadApexCharts() {
+        return new Promise((resolve, reject) => {
+            if (global.ApexCharts) {
+                resolve();
+                return;
+            }
+            const existing = document.querySelector('script[data-ud-apex]');
+            if (existing) {
+                existing.addEventListener('load', () => resolve(), { once: true });
+                existing.addEventListener('error', () => reject(new Error('ApexCharts failed')), { once: true });
+                return;
+            }
+            const script = document.createElement('script');
+            script.src = APEX_URL;
+            script.async = true;
+            script.dataset.udApex = '1';
+            script.onload = () => resolve();
+            script.onerror = () => reject(new Error('ApexCharts failed'));
+            document.head.appendChild(script);
         });
+    }
 
-        if (markers.length > 1) {
-            map.fitBounds(bounds, 48);
+    async function loadMetrics(url) {
+        const res = await fetch(url, {
+            credentials: 'same-origin',
+            headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+        });
+        if (!res.ok) {
+            throw new Error('metrics failed');
         }
-
-        markers.forEach((m) => {
-            new google.maps.Marker({
-                map,
-                position: { lat: m.lat, lng: m.lng },
-                title: m.name,
-            });
-        });
+        return res.json();
     }
 
     function initTableFilter() {
@@ -151,33 +194,48 @@
                 row.hidden = q !== '' && !row.textContent.toLowerCase().includes(q);
             });
         });
+
+        const globalSearch = document.getElementById('udGlobalSearch');
+        if (globalSearch && globalSearch.value.trim()) {
+            input.value = globalSearch.value;
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+        }
     }
 
-    function boot() {
+    async function boot() {
         const cfg = global.USER_DASHBOARD_CONFIG;
         if (!cfg) return;
 
         initCounters(document);
-        renderCharts(cfg.charts);
-
-        if (cfg.mapMarkers?.length && cfg.googleMapsKey) {
-            const runMap = () => initMiniMap(cfg.mapMarkers, cfg.googleMapsKey);
-            if (global.GoogleMapsPlatform?.loadMapsApi) {
-                global.GoogleMapsPlatform.loadMapsApi({ googleMapsKey: cfg.googleMapsKey, libraries: [] })
-                    .then(runMap)
-                    .catch(() => {});
-            } else if (global.google?.maps) {
-                runMap();
-            } else {
-                global.initUdMiniMap = runMap;
-            }
-        }
-
         initTableFilter();
 
         document.getElementById('udRefreshActivity')?.addEventListener('click', () => {
             global.location.reload();
         });
+
+        if (!cfg.metricsUrl) {
+            if (cfg.charts) {
+                await loadApexCharts().catch(() => {});
+                renderCharts(cfg.charts);
+            }
+            return;
+        }
+
+        try {
+            const [metrics] = await Promise.all([
+                loadMetrics(cfg.metricsUrl),
+                loadApexCharts().catch(() => null),
+            ]);
+            applyDeferredMetrics(metrics);
+            if (metrics.chartData && global.ApexCharts) {
+                renderCharts(metrics.chartData);
+            } else {
+                clearChartLoading();
+            }
+        } catch (err) {
+            console.warn('[user-dashboard] metrics load failed', err);
+            clearChartLoading();
+        }
     }
 
     if (document.readyState === 'loading') {

@@ -32,10 +32,10 @@ class TrackingGeofencesController extends Controller
         $panel = $this->resolvePanel($request);
 
         return view('tracking.geofences', $this->viewData($request, $panel, [
-            'jsonUrl' => route("{$panel}.tracking.geofences.json"),
-            'storeUrl' => route("{$panel}.tracking.geofences.store"),
-            'deleteUrl' => route("{$panel}.tracking.geofences.destroy", ['geofence' => 0]),
-            'liveJsonUrl' => route("{$panel}.tracking.live-json"),
+            'jsonUrl' => route('tracking.geofences.json'),
+            'storeUrl' => route('tracking.geofences.store'),
+            'deleteUrl' => route('tracking.geofences.destroy', ['geofence' => 0]),
+            'liveJsonUrl' => route('tracking.live-json'),
             'stateColors' => VehicleStatusSpec::STATE_COLORS,
         ]));
     }

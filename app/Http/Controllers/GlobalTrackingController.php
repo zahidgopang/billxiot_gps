@@ -415,20 +415,22 @@ class GlobalTrackingController extends Controller
      */
     private function liveRouteNames(string $panel): array
     {
+        unset($panel);
+
         return [
-            'live' => "{$panel}.tracking.index",
-            'liveJson' => "{$panel}.tracking.live-json",
-            'history' => "{$panel}.tracking.history",
-            'historyJson' => "{$panel}.tracking.history-json",
-            'eventsJson' => "{$panel}.tracking.events.json",
-            'geofencesJson' => "{$panel}.tracking.geofences.json",
-            'devicePanel' => "{$panel}.tracking.device-panel",
-            'deviceMileage' => "{$panel}.tracking.device-mileage",
-            'commandsSend' => "{$panel}.tracking.commands.send",
-            'completeTrip' => "{$panel}.tracking.complete-trip",
-            'startNewTrip' => "{$panel}.tracking.start-new-trip",
-            'restartTrip' => "{$panel}.tracking.restart-trip",
-            'routeGuidance' => "{$panel}.tracking.route-guidance",
+            'live' => 'tracking.index',
+            'liveJson' => 'tracking.live-json',
+            'history' => 'tracking.history',
+            'historyJson' => 'tracking.history-json',
+            'eventsJson' => 'tracking.events.json',
+            'geofencesJson' => 'tracking.geofences.json',
+            'devicePanel' => 'tracking.device-panel',
+            'deviceMileage' => 'tracking.device-mileage',
+            'commandsSend' => 'tracking.commands.send',
+            'completeTrip' => 'tracking.complete-trip',
+            'startNewTrip' => 'tracking.start-new-trip',
+            'restartTrip' => 'tracking.restart-trip',
+            'routeGuidance' => 'tracking.route-guidance',
         ];
     }
 

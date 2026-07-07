@@ -24,9 +24,9 @@ class MaintenanceController extends Controller
         $panel = $this->resolvePanel($request);
 
         return view('tracking.maintenance', $this->viewData($request, $panel, [
-            'jsonUrl' => route("{$panel}.tracking.maintenance.json"),
-            'storeUrl' => route("{$panel}.tracking.maintenance.store"),
-            'baseUrl' => route("{$panel}.tracking.maintenance.index"),
+            'jsonUrl' => route('tracking.maintenance.json'),
+            'storeUrl' => route('tracking.maintenance.store'),
+            'baseUrl' => route('tracking.maintenance.index'),
         ]));
     }
 

@@ -254,6 +254,11 @@ class TenantScopeService
             return true;
         }
 
+        // End users reach fleet maps via device assignment; not the client maps.view toggle.
+        if ($this->rbac->isEndUser($actor)) {
+            return true;
+        }
+
         if ($this->rbac->roleOf($actor) === AppRole::Admin) {
             return $this->rbac->hasPermission($actor, 'maps.view')
                 || $this->rbac->hasPermission($actor, 'web.map.live_only');

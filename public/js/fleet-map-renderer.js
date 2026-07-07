@@ -53,6 +53,7 @@
             this.startMarker = null;
             this.endMarker = null;
             this._extraMarkers = [];
+            this._progressiveDrawToken = 0;
         }
 
         attachMap(map) {
@@ -369,6 +370,7 @@
 
         /**
          * Draw full history route with speed-colored segments.
+         * Merges consecutive same-color segments for large routes.
          * @returns {google.maps.LatLngBounds|null}
          */
         drawRoute(points, options = {}) {
@@ -380,37 +382,30 @@
             const g = this.opts.googleMaps || global.google;
             const bounds = new g.maps.LatLngBounds();
             const night = this.opts.getNightMode?.() ?? false;
-            const glowOn = this.opts.routeGlowEnabled !== false;
+            const largeRoute = points.length > 250;
+            const glowOn = options.glowOn !== false
+                && this.opts.routeGlowEnabled !== false
+                && points.length <= 1500;
 
-            for (let i = 1; i < points.length; i++) {
-                const a = points[i - 1];
-                const b = points[i];
-                bounds.extend({ lat: a.lat, lng: a.lng });
-                bounds.extend({ lat: b.lat, lng: b.lng });
+            points.forEach((p) => bounds.extend({ lat: p.lat, lng: p.lng }));
 
-                const segs = this._createSegment(a, b, b.speed, {
-                    clickable: options.clickable !== false,
+            const chunks = this._buildColorChunks(points, options.haversineDistance);
+            const clickable = options.clickable !== false && points.length <= 3500;
+
+            chunks.forEach((chunk) => {
+                const segs = this._createPathPolyline(chunk.path, chunk.color, {
+                    clickable,
                     night,
                     glowOn,
                     onClick: options.onSegmentClick,
+                    segmentData: chunk.segmentData,
                 });
-                const line = segs[segs.length - 1];
-                if (line && options.haversineDistance) {
-                    line._segmentData = {
-                        start: a,
-                        end: b,
-                        speed: b.speed,
-                        distance: options.haversineDistance(a.lat, a.lng, b.lat, b.lng),
-                        startTime: a.recorded_at,
-                        endTime: b.recorded_at,
-                    };
-                }
-                if (line) {
-                    this.polylines.push(line);
-                }
-            }
+                segs.forEach((line) => {
+                    if (line) this.polylines.push(line);
+                });
+            });
 
-            if (options.showHistoryDots !== false) {
+            if (options.showHistoryDots !== false && !largeRoute) {
                 this._drawHistoryDots(points);
             }
 
@@ -424,10 +419,133 @@
             return bounds;
         }
 
-        _createSegment(from, to, speed, segOpts) {
+        cancelProgressiveDraw() {
+            this._progressiveDrawToken += 1;
+        }
+
+        /**
+         * Draw pre-built color chunks progressively (non-blocking).
+         * @param {Array} colorChunks
+         * @param {{ start: object, end: object }} endpoints
+         * @param {object} options
+         * @returns {google.maps.LatLngBounds|null}
+         */
+        drawRouteChunksProgressive(colorChunks, endpoints, options = {}) {
+            this.cancelProgressiveDraw();
+            const token = this._progressiveDrawToken;
+
+            if (!this.map || !colorChunks?.length) {
+                return null;
+            }
+
             const g = this.opts.googleMaps || global.google;
-            const path = [{ lat: from.lat, lng: from.lng }, { lat: to.lat, lng: to.lng }];
-            const color = this.opts.speedToColor(speed);
+            const bounds = new g.maps.LatLngBounds();
+            const night = this.opts.getNightMode?.() ?? false;
+            const mapPointCount = options.mapPointCount ?? colorChunks.length;
+            const glowOn = options.glowOn !== false
+                && this.opts.routeGlowEnabled !== false
+                && mapPointCount <= 1500;
+            const clickable = options.clickable !== false && mapPointCount <= 3500;
+            const batchSize = options.batchSize ?? 10;
+            let index = 0;
+            let endpointsPlaced = false;
+
+            colorChunks.forEach((chunk) => {
+                chunk.path.forEach((p) => bounds.extend(p));
+            });
+
+            const step = () => {
+                if (token !== this._progressiveDrawToken) {
+                    return;
+                }
+
+                const end = Math.min(index + batchSize, colorChunks.length);
+                for (; index < end; index++) {
+                    const chunk = colorChunks[index];
+                    const segs = this._createPathPolyline(chunk.path, chunk.color, {
+                        clickable,
+                        night,
+                        glowOn,
+                        onClick: options.onSegmentClick,
+                        segmentData: chunk.segmentData,
+                    });
+                    segs.forEach((line) => {
+                        if (line) this.polylines.push(line);
+                    });
+                }
+
+                if (!endpointsPlaced && endpoints?.start && endpoints?.end && index > 0) {
+                    this.setRouteEndpoints(endpoints.start, endpoints.end, {
+                        startTitle: options.startTitle,
+                        endTitle: options.endTitle,
+                        updateCurrent: false,
+                        focusZoom: null,
+                    });
+                    endpointsPlaced = true;
+                    if (typeof options.onEndpointsPlaced === 'function') {
+                        options.onEndpointsPlaced();
+                    }
+                }
+
+                if (index < colorChunks.length) {
+                    requestAnimationFrame(step);
+                } else if (typeof options.onComplete === 'function') {
+                    options.onComplete(bounds);
+                }
+            };
+
+            requestAnimationFrame(step);
+            return bounds;
+        }
+
+        /**
+         * @returns {Array<{color: string, path: Array<{lat:number,lng:number}>, segmentData: object|null}>}
+         */
+        _buildColorChunks(points, haversineDistance) {
+            const speedToColor = this.opts.speedToColor;
+            const haversine = haversineDistance || this.opts.haversineDistance || null;
+            const chunks = [];
+
+            for (let i = 1; i < points.length; i++) {
+                const a = points[i - 1];
+                const b = points[i];
+                const color = speedToColor(b.speed);
+                const last = chunks[chunks.length - 1];
+
+                if (last && last.color === color) {
+                    last.path.push({ lat: b.lat, lng: b.lng });
+                    last.segmentData = {
+                        start: last.segmentData?.start || a,
+                        end: b,
+                        speed: b.speed,
+                        distance: haversine
+                            ? (last.segmentData?.distance || 0) + haversine(a.lat, a.lng, b.lat, b.lng)
+                            : 0,
+                        startTime: last.segmentData?.startTime || a.recorded_at,
+                        endTime: b.recorded_at,
+                    };
+                } else {
+                    chunks.push({
+                        color,
+                        path: [{ lat: a.lat, lng: a.lng }, { lat: b.lat, lng: b.lng }],
+                        segmentData: {
+                            start: a,
+                            end: b,
+                            speed: b.speed,
+                            distance: haversine ? haversine(a.lat, a.lng, b.lat, b.lng) : 0,
+                            startTime: a.recorded_at,
+                            endTime: b.recorded_at,
+                        },
+                    });
+                }
+            }
+
+            return chunks;
+        }
+
+        _createPathPolyline(path, color, segOpts) {
+            const g = this.opts.googleMaps || global.google;
+            const speed = segOpts.segmentData?.speed ?? 0;
             const medium = this.opts.mediumSpeedKmh ?? 60;
             const over = this.opts.overSpeedLimit ?? 80;
             const weight = speed <= 0 ? 7 : speed <= medium ? 9 : speed <= over ? 10 : 11;
@@ -456,12 +574,37 @@
                 zIndex: 2,
             });
 
-            if (segOpts.onClick) {
+            if (segOpts.segmentData) {
+                line._segmentData = segOpts.segmentData;
+            }
+
+            if (segOpts.onClick && segOpts.clickable) {
                 g.maps.event.addListener(line, 'click', (e) => segOpts.onClick(line, e.latLng));
             }
 
             segments.push(line);
             return segments;
+        }
+
+        _createSegment(from, to, speed, segOpts) {
+            const color = this.opts.speedToColor(speed);
+            return this._createPathPolyline(
+                [{ lat: from.lat, lng: from.lng }, { lat: to.lat, lng: to.lng }],
+                color,
+                {
+                    ...segOpts,
+                    segmentData: {
+                        start: from,
+                        end: to,
+                        speed,
+                        distance: this.opts.haversineDistance
+                            ? this.opts.haversineDistance(from.lat, from.lng, to.lat, to.lng)
+                            : 0,
+                        startTime: from.recorded_at,
+                        endTime: to.recorded_at,
+                    },
+                },
+            );
         }
 
         _drawHistoryDots(points) {

@@ -25,11 +25,11 @@ class TasksController extends Controller
         $panel = $this->resolvePanel($request);
 
         return view('tracking.tasks', $this->viewData($request, $panel, [
-            'jsonUrl' => route("{$panel}.tracking.tasks.json"),
-            'storeUrl' => route("{$panel}.tracking.tasks.store"),
-            'destroyAllUrl' => route("{$panel}.tracking.tasks.destroy-all"),
-            'exportUrl' => route("{$panel}.tracking.tasks.export"),
-            'baseUrl' => route("{$panel}.tracking.tasks.index"),
+            'jsonUrl' => route('tracking.tasks.json'),
+            'storeUrl' => route('tracking.tasks.store'),
+            'destroyAllUrl' => route('tracking.tasks.destroy-all'),
+            'exportUrl' => route('tracking.tasks.export'),
+            'baseUrl' => route('tracking.tasks.index'),
             'priorities' => TaskService::PRIORITIES,
             'statuses' => TaskService::STATUSES,
         ]));

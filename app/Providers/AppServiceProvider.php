@@ -9,7 +9,6 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -53,13 +52,6 @@ class AppServiceProvider extends ServiceProvider
                 $app['hash'],
                 $config['model'],
             );
-        });
-
-        View::composer('*', function ($view): void {
-            $locale = app()->getLocale();
-            $view->with('htmlLang', $locale);
-            $view->with('htmlDir', $locale === 'ar' ? 'rtl' : 'ltr');
-            $view->with('isRtl', $locale === 'ar');
         });
     }
 }

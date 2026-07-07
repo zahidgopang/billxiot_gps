@@ -14,6 +14,12 @@ use Illuminate\Support\Facades\Schema;
  */
 class TraccarUserAccessService
 {
+    /** @var array<int, bool> */
+    private array $trackerAccountCache = [];
+
+    /** @var array<int, ?object> */
+    private array $trackerUserRowCache = [];
+
     public function __construct(
         private TraccarSyncService $sync,
         private TraccarIdMap $idMap,
@@ -29,12 +35,18 @@ class TraccarUserAccessService
      */
     public function hasTrackerAccount(User $user): bool
     {
-        if (! $this->usesTraccarUserGate()) {
-            return true;
+        $userId = (int) $user->id;
+
+        if (array_key_exists($userId, $this->trackerAccountCache)) {
+            return $this->trackerAccountCache[$userId];
         }
 
-        return DB::table(config('traccar.tables.users', 'tc_users'))
-            ->where('id', $user->id)
+        if (! $this->usesTraccarUserGate()) {
+            return $this->trackerAccountCache[$userId] = true;
+        }
+
+        return $this->trackerAccountCache[$userId] = DB::table(config('traccar.tables.users', 'tc_users'))
+            ->where('id', $userId)
             ->exists();
     }
 
@@ -67,15 +79,19 @@ class TraccarUserAccessService
 
     public function trackerUserRow(User $user): ?object
     {
-        $traccarId = $this->resolveTraccarUserId($user);
+        $userId = (int) $user->id;
 
-        if (! $traccarId) {
-            return null;
+        if (array_key_exists($userId, $this->trackerUserRowCache)) {
+            return $this->trackerUserRowCache[$userId];
+        }
+
+        if (! $this->hasTrackerAccount($user)) {
+            return $this->trackerUserRowCache[$userId] = null;
         }
 
         $table = config('traccar.tables.users', 'tc_users');
 
-        return DB::table($table)->where('id', $traccarId)->first();
+        return $this->trackerUserRowCache[$userId] = DB::table($table)->where('id', $userId)->first();
     }
 
     public function pruneStaleMapForUser(User $user): void

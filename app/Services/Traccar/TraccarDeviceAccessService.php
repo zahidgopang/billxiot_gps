@@ -71,9 +71,20 @@ class TraccarDeviceAccessService
             ->pluck($deviceCol)
             ->map(fn ($id) => (int) $id)
             ->unique()
-            ->filter(fn (int $id) => DB::table($devicesTable)->where('id', $id)->exists())
             ->values()
             ->all();
+
+        if ($ids === []) {
+            return [];
+        }
+
+        $existing = DB::table($devicesTable)
+            ->whereIn('id', $ids)
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+
+        $ids = array_values(array_intersect($ids, $existing));
 
         if ($this->rbac()->canAccessPanel($user)) {
             $scoped = $this->tenantScope()->visibleDeviceIdsForPanel($user);

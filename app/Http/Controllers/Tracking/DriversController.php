@@ -24,8 +24,8 @@ class DriversController extends Controller
         $panel = $this->resolvePanel($request);
 
         return view('tracking.drivers', $this->viewData($request, $panel, [
-            'jsonUrl' => route("{$panel}.tracking.drivers.json"),
-            'storeUrl' => route("{$panel}.tracking.drivers.store"),
+            'jsonUrl' => route('tracking.drivers.json'),
+            'storeUrl' => route('tracking.drivers.store'),
         ]));
     }
 

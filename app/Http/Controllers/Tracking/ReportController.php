@@ -33,8 +33,8 @@ class ReportController extends Controller
         $panel = $this->resolvePanel($request);
 
         return view('tracking.reports', $this->viewData($request, $panel, [
-            'generateUrl' => route("{$panel}.tracking.reports.generate"),
-            'exportUrl' => route("{$panel}.tracking.reports.export"),
+            'generateUrl' => route('tracking.reports.generate'),
+            'exportUrl' => route('tracking.reports.export'),
         ]));
     }
 

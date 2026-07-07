@@ -27,7 +27,11 @@ class EnsureTrackerAccess
         $active = $this->trackerUsers->hasTrackerAccount($user);
 
         view()->share('trackerAccountActive', $active);
-        view()->share('trackerDisplayName', $this->trackerUsers->displayName($user));
+        if ($active) {
+            view()->share('trackerDisplayName', $this->trackerUsers->displayName($user));
+        } else {
+            view()->share('trackerDisplayName', $user->name);
+        }
 
         if (! $active && $this->isTrackerRoute($request)) {
             if ($request->expectsJson() || $request->ajax()) {

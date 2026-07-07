@@ -30,6 +30,12 @@
             return !!this.opts.compactFooter;
         }
 
+        dragGripHtml(i18n) {
+            const label = escapeHtml(i18n.dragPanel || 'Drag to reposition');
+            const reset = escapeHtml(i18n.resetPanelPosition || 'Double-click to reset position');
+            return `<button type="button" class="map-panel-drag-grip map-panel-drag-grip--route" data-map-drag-grip aria-label="${label}" title="${label} · ${reset}"><i class="fas fa-grip-vertical" aria-hidden="true"></i></button>`;
+        }
+
         buildCompactStatsHtml(i18n, traveledKm, remainingKm, progress, arrivalTime) {
             return `<div class="route-trip-bar__stats route-trip-bar__stats--compact">
                 <div class="route-trip-bar__stat">
@@ -234,6 +240,7 @@
                     <div class="route-trip-bar__card route-trip-bar__card--idle">
                         <div class="route-trip-bar__compact">
                             <div class="route-trip-bar__head">
+                                ${this.dragGripHtml(i18n)}
                                 <span class="route-trip-bar__head-title">${escapeHtml(i18n.assignedRoute || 'Assigned route')}</span>
                             </div>
                             <div class="route-trip-bar__hint">${escapeHtml(route.start_city || '')} → ${escapeHtml(route.destination_city || '')}</div>
@@ -397,6 +404,7 @@
                     <div class="route-trip-bar__compact" role="button" tabindex="0" aria-expanded="${this.expanded ? 'true' : 'false'}">
                         <div class="route-trip-bar__compact-main">
                             <div class="route-trip-bar__head">
+                                ${this.dragGripHtml(i18n)}
                                 <span class="route-trip-bar__head-title">${escapeHtml(i18n.progressTitle || 'Route progress')}</span>
                                 <div class="d-flex align-items-center gap-2 flex-wrap justify-content-end">
                                     <span class="${navBadge.className}">${escapeHtml(navBadge.text)}</span>
@@ -435,7 +443,11 @@
             const chevron = this.el.querySelector('.route-trip-bar__chevron');
             const toggle = (e) => {
                 if (e?.target?.closest?.('.route-trip-bar__actions') || e?.target?.closest?.('a')) return;
-                if (e?.target?.closest?.('.route-trip-complete-btn') || e?.target?.closest?.('.route-trip-start-btn')) return;
+                if (e?.target?.closest?.('.route-trip-complete-btn')
+                    || e?.target?.closest?.('.route-trip-start-btn')
+                    || e?.target?.closest?.('.route-trip-restart-btn')
+                    || e?.target?.closest?.('.map-panel-drag-grip')
+                    || e?.target?.closest?.('[data-map-drag-grip]')) return;
                 this.toggleExpanded();
                 compactEl?.setAttribute('aria-expanded', this.expanded ? 'true' : 'false');
             };

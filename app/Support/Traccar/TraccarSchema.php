@@ -6,6 +6,9 @@ use Illuminate\Support\Facades\Schema;
 
 final class TraccarSchema
 {
+    /** @var array<string, bool> */
+    private static array $tableExistsCache = [];
+
     public static function isReady(): bool
     {
         if (! TraccarMode::isActive()) {
@@ -43,12 +46,16 @@ final class TraccarSchema
     public static function hasUsers(): bool
     {
         return TraccarMode::isActive()
-            && Schema::hasTable(config('traccar.tables.users', 'tc_users'));
+            && self::hasTable(config('traccar.tables.users', 'tc_users'));
     }
 
     public static function hasTable(string $table): bool
     {
-        return Schema::hasTable($table);
+        if (! array_key_exists($table, self::$tableExistsCache)) {
+            self::$tableExistsCache[$table] = Schema::hasTable($table);
+        }
+
+        return self::$tableExistsCache[$table];
     }
 
     public static function hasPositions(): bool

@@ -4,7 +4,7 @@
         $latest = $device->latestLocation;
         $battery = $latest?->battery_level;
         $batteryPercent = is_numeric($battery) ? min(100, max(0, (int) $battery)) : null;
-        $canTrack = app(\App\Services\DeviceAccessService::class)->canUseMap(auth()->user(), $device);
+        $canTrack = (bool) (($deviceAccessMap[$device->id]['allowed'] ?? false));
         $badgeClass = match ($status['key'] ?? '') {
             'running', 'moving' => 'ud-badge--ok',
             'offline', 'blocked' => 'ud-badge--muted',

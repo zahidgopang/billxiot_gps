@@ -5,6 +5,8 @@
         const body = document.body;
         if (!body.classList.contains('apple-hig')) return;
 
+        wireGlobalSearch();
+
         const toggleBtn = document.getElementById('toggleSidebar');
         const sidebar = document.getElementById('filterPanel');
         const overlay = document.getElementById('sidebarOverlay');
@@ -40,6 +42,7 @@
         function setDesktopOpen(open) {
             sidebar.classList.remove('collapsed', 'sidebar-closed');
             app.classList.toggle('sidebar-nav-closed', !open);
+            sidebar.classList.toggle('is-collapsed', !open);
             toggleBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
             try {
                 localStorage.setItem(STORAGE_KEY, open ? '1' : '0');
@@ -77,6 +80,7 @@
             }
             if (desktop() && localStorage.getItem(STORAGE_KEY) === '0') {
                 app.classList.add('sidebar-nav-closed');
+                sidebar.classList.add('is-collapsed');
             }
         } catch (_) { /* ignore */ }
 
@@ -150,4 +154,53 @@
 
         syncSidebarLayout();
     });
+
+    function wireGlobalSearch() {
+        const globalSearch = document.getElementById('udGlobalSearch');
+        if (!globalSearch) return;
+
+        const fleetSearch = document.getElementById('udFleetSearch');
+        const deviceSearch = document.getElementById('deviceSearch');
+        const devicesUrl = globalSearch.dataset.devicesUrl || '';
+
+        function applyQuery(q) {
+            if (fleetSearch) {
+                fleetSearch.value = q;
+                fleetSearch.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+            if (deviceSearch) {
+                deviceSearch.value = q;
+                deviceSearch.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+        }
+
+        const params = new URLSearchParams(window.location.search);
+        const initial = params.get('q') || '';
+        if (initial) {
+            globalSearch.value = initial;
+            applyQuery(initial);
+        }
+
+        globalSearch.addEventListener('input', function () {
+            applyQuery(globalSearch.value);
+        });
+
+        globalSearch.addEventListener('keydown', function (e) {
+            if (e.key !== 'Enter') return;
+            e.preventDefault();
+            const q = globalSearch.value.trim();
+            if (fleetSearch) {
+                document.getElementById('udFleetTable')?.closest('.ud-card')
+                    ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                return;
+            }
+            if (deviceSearch) {
+                return;
+            }
+            if (!devicesUrl) return;
+            const url = new URL(devicesUrl, window.location.origin);
+            if (q) url.searchParams.set('q', q);
+            window.location.href = url.toString();
+        });
+    }
 })();

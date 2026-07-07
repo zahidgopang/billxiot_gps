@@ -16,6 +16,7 @@ use App\Services\Tracking\TrackingMetricsService;
 use App\Services\Traccar\TraccarTrackingGate;
 use App\Services\Traccar\TraccarUserAccessService;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Schema;
 use Spatie\Activitylog\Models\Activity;
 
@@ -40,6 +41,19 @@ class UserDashboardService
 
     public function getStats(User $user): array
     {
+        return array_merge(
+            $this->getDashboardShell($user),
+            $this->getDashboardMetrics($user),
+        );
+    }
+
+    /**
+     * Fast dashboard shell — live fleet KPIs without distance scans or charts.
+     *
+     * @return array<string, mixed>
+     */
+    public function getDashboardShell(User $user): array
+    {
         $devices = $this->resolveDashboardDevices($user);
 
         if ($devices->isEmpty() && ! $this->rbac->canAccessPanel($user)) {
@@ -51,30 +65,13 @@ class UserDashboardService
 
         $totalDevices = $devices->count();
         $activeDevices = $devices->where('status', 'active')->count();
-        try {
-            $totalDistanceKm = $this->metrics->calculateTotalDistanceKm($deviceIds);
-        } catch (\Throwable $e) {
-            report($e);
-            $totalDistanceKm = 0;
-        }
-        try {
-            $activeAlerts = $deviceIds->isEmpty()
-                ? 0
-                : $this->events->countForDevices(
-                    $deviceIds,
-                    now()->subDays(7),
-                    VehicleEvent::dashboardAlertTypes(),
-                );
-        } catch (\Throwable $e) {
-            report($e);
-            $activeAlerts = 0;
-        }
         $onlineNow = $this->countOnlineDevices($devices);
         $alertDeviceIds = $this->alertDeviceIds($devices);
         $vehicleStates = $this->getVehicleStateCounts($devices, $alertDeviceIds);
         $fleetCounts = $this->mapStatus->fleetCounts($devices);
         $fleetDevices = $devices->sortByDesc(fn (Device $d) => $d->latestLocation?->recorded_at)->values();
         $pageStats = $this->getDevicePageStats($devices);
+
         try {
             $activities = $this->getRecentActivities($deviceIds);
         } catch (\Throwable $e) {
@@ -82,18 +79,11 @@ class UserDashboardService
             $activities = collect();
         }
 
-        try {
-            $distanceTodayKm = round($this->metrics->calculateTotalDistanceKm($deviceIds, 1), 1);
-        } catch (\Throwable $e) {
-            report($e);
-            $distanceTodayKm = 0;
-        }
-
         return array_merge($pageStats, [
             'devices' => $devices,
-            'totalDistanceKm' => round($totalDistanceKm),
-            'distanceTodayKm' => $distanceTodayKm,
-            'activeAlerts' => $activeAlerts,
+            'totalDistanceKm' => 0,
+            'distanceTodayKm' => 0,
+            'activeAlerts' => 0,
             'vehicleStates' => $vehicleStates,
             'fleetCounts' => $fleetCounts,
             'recentDevices' => $fleetDevices,
@@ -101,11 +91,99 @@ class UserDashboardService
             'alertDeviceIds' => $alertDeviceIds,
             'activePercent' => $totalDevices > 0 ? round(($activeDevices / $totalDevices) * 100) : 0,
             'onlinePercent' => $totalDevices > 0 ? round(($onlineNow / $totalDevices) * 100) : 0,
-            'alertsPercent' => min(100, $activeAlerts * 20),
-            'distancePercent' => min(100, (int) round($totalDistanceKm / 50)),
-            'chartData' => $this->buildChartPayload($devices, $deviceIds, $fleetCounts),
+            'alertsPercent' => 0,
+            'distancePercent' => 0,
+            'chartData' => null,
             'mapMarkers' => $this->buildMapMarkers($devices),
         ]);
+    }
+
+    /**
+     * Heavy dashboard metrics (cached) — charts, distance totals, alert counts.
+     *
+     * @return array<string, mixed>
+     */
+    public function getDashboardMetrics(User $user): array
+    {
+        $devices = $this->resolveDashboardDevices($user);
+
+        if ($devices->isEmpty() && ! $this->rbac->canAccessPanel($user)) {
+            $empty = $this->emptyTrackerStats();
+
+            return [
+                'totalDistanceKm' => 0,
+                'distanceTodayKm' => 0,
+                'activeAlerts' => 0,
+                'alertsPercent' => 0,
+                'distancePercent' => 0,
+                'chartData' => $empty['chartData'],
+            ];
+        }
+
+        $this->positionLoader->attachLatestToMany($devices);
+        $deviceIds = $devices->pluck('id');
+        $fleetCounts = $this->mapStatus->fleetCounts($devices);
+        $heavy = $this->cachedHeavyMetrics($user, $devices, $deviceIds, $fleetCounts);
+
+        return [
+            'totalDistanceKm' => $heavy['totalDistanceKm'],
+            'distanceTodayKm' => $heavy['distanceTodayKm'],
+            'activeAlerts' => $heavy['activeAlerts'],
+            'alertsPercent' => min(100, $heavy['activeAlerts'] * 20),
+            'distancePercent' => min(100, (int) round($heavy['totalDistanceKm'] / 50)),
+            'chartData' => $heavy['chartData'],
+        ];
+    }
+
+    /**
+     * @return array{totalDistanceKm: float|int, distanceTodayKm: float|int, activeAlerts: int, chartData: array<string, mixed>}
+     */
+    private function cachedHeavyMetrics(User $user, Collection $devices, Collection $deviceIds, array $fleetCounts): array
+    {
+        $cacheKey = 'user_dashboard_heavy_'.$user->id.'_'.md5($deviceIds->sort()->values()->implode(','));
+
+        return Cache::remember($cacheKey, 90, function () use ($devices, $deviceIds, $fleetCounts) {
+            try {
+                $totalDistanceKm = round($this->metrics->calculateTotalDistanceKm($deviceIds));
+            } catch (\Throwable $e) {
+                report($e);
+                $totalDistanceKm = 0;
+            }
+
+            try {
+                $distanceTodayKm = round($this->metrics->calculateTotalDistanceKm($deviceIds, 1), 1);
+            } catch (\Throwable $e) {
+                report($e);
+                $distanceTodayKm = 0;
+            }
+
+            try {
+                $activeAlerts = $deviceIds->isEmpty()
+                    ? 0
+                    : $this->events->countForDevices(
+                        $deviceIds,
+                        now()->subDays(7),
+                        VehicleEvent::dashboardAlertTypes(),
+                    );
+            } catch (\Throwable $e) {
+                report($e);
+                $activeAlerts = 0;
+            }
+
+            try {
+                $chartData = $this->buildChartPayload($devices, $deviceIds, $fleetCounts);
+            } catch (\Throwable $e) {
+                report($e);
+                $chartData = $this->emptyTrackerStats()['chartData'];
+            }
+
+            return [
+                'totalDistanceKm' => $totalDistanceKm,
+                'distanceTodayKm' => $distanceTodayKm,
+                'activeAlerts' => $activeAlerts,
+                'chartData' => $chartData,
+            ];
+        });
     }
 
     /**
@@ -492,23 +570,37 @@ class UserDashboardService
 
     public function getProfileStats(User $user): array
     {
-        $stats = $this->getStats($user);
-        $devices = $stats['devices'];
+        $devices = $this->resolveDashboardDevices($user);
+        $this->positionLoader->attachLatestToMany($devices);
         $deviceIds = $devices->pluck('id');
+        $fleetCounts = $this->mapStatus->fleetCounts($devices);
         $pageStats = $this->getDevicePageStats($devices);
+        $heavy = $this->cachedHeavyMetrics($user, $devices, $deviceIds, $fleetCounts);
 
-        $trackingDaysActive = $this->metrics->activeTrackingDays($deviceIds);
-
-        $geofenceCount = 0;
-        foreach ($devices as $device) {
-            $geofenceCount += $this->geofences->forDevice($device)->count();
-        }
-
-        return array_merge($stats, $pageStats, [
-            'trackingDaysActive' => $trackingDaysActive,
-            'geofenceCount' => $geofenceCount,
+        return array_merge($pageStats, [
+            'totalDistanceKm' => $heavy['totalDistanceKm'],
+            'activeAlerts' => $heavy['activeAlerts'],
+            'trackingDaysActive' => $deviceIds->isEmpty()
+                ? 0
+                : $this->metrics->activeTrackingDays($deviceIds),
+            'geofenceCount' => $this->countGeofencesForDevices($devices),
             'memberDays' => max(1, $user->created_at?->diffInDays(now()) ?? 1),
         ]);
+    }
+
+    private function countGeofencesForDevices(Collection $devices): int
+    {
+        if ($devices->isEmpty()) {
+            return 0;
+        }
+
+        $total = 0;
+
+        foreach ($devices as $device) {
+            $total += $this->geofences->forDevice($device)->count();
+        }
+
+        return $total;
     }
 
     public function getDevicePageStats(Collection $devices): array

@@ -13,6 +13,10 @@ html[dir="rtl"] body {
     font-family: 'Cairo', 'Segoe UI', Tahoma, Arial, sans-serif;
 }
 
+html[dir="rtl"] body.user-panel.apple-hig {
+    text-align: start;
+}
+
 html[dir="rtl"] .form-control,
 html[dir="rtl"] .form-select,
 html[dir="rtl"] textarea {
@@ -37,14 +41,14 @@ html[dir="rtl"] .lang-toggle {
     direction: ltr;
 }
 
-/* Bootstrap spacing flip */
-html[dir="rtl"] .me-1 { margin-left: 0.25rem !important; margin-right: 0 !important; }
-html[dir="rtl"] .me-2 { margin-left: 0.5rem !important; margin-right: 0 !important; }
-html[dir="rtl"] .me-3 { margin-left: 1rem !important; margin-right: 0 !important; }
-html[dir="rtl"] .ms-1 { margin-right: 0.25rem !important; margin-left: 0 !important; }
-html[dir="rtl"] .ms-2 { margin-right: 0.5rem !important; margin-left: 0 !important; }
-html[dir="rtl"] .ms-3 { margin-right: 1rem !important; margin-left: 0 !important; }
-html[dir="rtl"] .ms-auto { margin-right: auto !important; margin-left: 0 !important; }
+/* Bootstrap spacing flip — skip Apple HIG shell (uses bootstrap.rtl + logical layout) */
+html[dir="rtl"] body:not(.apple-hig) .me-1 { margin-left: 0.25rem !important; margin-right: 0 !important; }
+html[dir="rtl"] body:not(.apple-hig) .me-2 { margin-left: 0.5rem !important; margin-right: 0 !important; }
+html[dir="rtl"] body:not(.apple-hig) .me-3 { margin-left: 1rem !important; margin-right: 0 !important; }
+html[dir="rtl"] body:not(.apple-hig) .ms-1 { margin-right: 0.25rem !important; margin-left: 0 !important; }
+html[dir="rtl"] body:not(.apple-hig) .ms-2 { margin-right: 0.5rem !important; margin-left: 0 !important; }
+html[dir="rtl"] body:not(.apple-hig) .ms-3 { margin-right: 1rem !important; margin-left: 0 !important; }
+html[dir="rtl"] body:not(.apple-hig) .ms-auto { margin-right: auto !important; margin-left: 0 !important; }
 html[dir="rtl"] .me-auto { margin-left: auto !important; margin-right: 0 !important; }
 
 html[dir="rtl"] .text-start { text-align: right !important; }
@@ -176,9 +180,14 @@ html[dir="rtl"] .map-page-nav #toggleSidebar {
     margin-left: 15px !important;
 }
 
-html[dir="rtl"] .user-avatar {
+html[dir="rtl"] body:not(.apple-hig) .user-avatar {
     margin-right: 0 !important;
     margin-left: 12px !important;
+}
+
+html[dir="rtl"] body.user-panel.apple-hig .user-avatar {
+    margin-inline-end: 0;
+    margin-inline-start: 0;
 }
 
 html[dir="rtl"] .nav-alerts-dropdown {
@@ -451,13 +460,12 @@ html[dir="rtl"] .dashboard-container .table tbody td {
     text-align: right;
 }
 
-html[dir="rtl"] .dashboard-container .device-row .d-flex {
-    flex-direction: row-reverse;
+html[dir="rtl"] .dashboard-container .device-row .d-flex.align-items-center {
+    flex-direction: row;
 }
 
 html[dir="rtl"] .dashboard-container .table td .d-flex.justify-content-end {
     justify-content: flex-start !important;
-    flex-direction: row-reverse;
 }
 
 html[dir="rtl"] .dashboard-container .alert {

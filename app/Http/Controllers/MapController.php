@@ -13,6 +13,7 @@ use App\Support\DateTime\AppDateTime;
 use App\Services\Mobile\MobileMapStatusResolver;
 use App\Services\Mobile\MobileRouteAnalyticsService;
 use App\Services\Tracking\DeviceHistoryFetcher;
+use App\Services\Tracking\DeviceMapHistoryService;
 use App\Services\Tracking\NotificationPreferenceService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -29,6 +30,7 @@ class MapController extends Controller
         private GeofenceStoreInterface $geofences,
         private MobileMapStatusResolver $mapStatus,
         private DeviceHistoryFetcher $historyFetcher,
+        private DeviceMapHistoryService $mapHistory,
         private MobileRouteAnalyticsService $routeAnalytics,
         private NotificationPreferenceService $notificationPrefs,
     ) {}
@@ -36,15 +38,6 @@ class MapController extends Controller
     public function map(Request $request, string $token)
     {
         $device = $this->findMapDevice($token);
-
-        $range = $this->resolveHistoryRange($request);
-
-        $locations = $this->positions->historyForDevice(
-            $device,
-            $range['from'],
-            $range['to'],
-            'asc'
-        );
 
         $latestLocation = $this->positions->latestForDevice($device);
         $initialPoint = array_merge(
@@ -79,7 +72,6 @@ class MapController extends Controller
 
         return view('user.device-map', compact(
             'device',
-            'locations',
             'latestLocation',
             'initialPoint',
             'initialStatus',
@@ -153,26 +145,104 @@ class MapController extends Controller
     public function historyJson(Request $request, string $token)
     {
         $device = $this->findMapDevice($token);
+        $context = $this->resolveMapHistoryContext($request);
+        $fetch = $this->mapHistory->fetchLocations(
+            $device,
+            $context['range']['from'],
+            $context['range']['to'],
+            $context['explicit_range'],
+        );
 
-        $range = $this->resolveHistoryRange($request);
-        $explicitRange = trim((string) ($request->query('from', $request->input('from', '')))) !== '';
-        $fetch = $this->historyFetcher->fetch($device, $range['from'], $range['to'], $explicitRange);
-        $stats = $this->routeAnalytics->analyze($fetch['locations']);
+        $bundle = $this->mapHistory->buildFullPayload($fetch['locations']);
+
+        $payload = array_merge($bundle, [
+            'used_fallback' => $fetch['used_fallback'],
+            'history_fallback' => $fetch['used_fallback'] ? $fetch['fallback_reason'] : null,
+        ]);
+
+        return $this->historyJsonResponse($request, $payload, $fetch, count($payload['points']));
+    }
+
+    /**
+     * Fast map polyline payload — downsampled points only (parallel with analytics).
+     */
+    public function historyPointsJson(Request $request, string $token)
+    {
+        $device = $this->findMapDevice($token);
+        $context = $this->resolveMapHistoryContext($request);
+        $fetch = $this->mapHistory->fetchLocations(
+            $device,
+            $context['range']['from'],
+            $context['range']['to'],
+            $context['explicit_range'],
+        );
+
+        $total = $fetch['locations']->count();
+        $mapLocations = $this->mapHistory->downsampleForMap($fetch['locations']);
 
         $payload = [
-            'points' => $this->formatLocationsCollection($fetch['locations']),
-            'stats' => $this->publicStatsPayload($stats),
-            'timeline' => $stats['timeline'] ?? [],
+            'points' => $this->mapHistory->formatMapPoints($mapLocations),
+            'point_count' => $total,
+            'map_point_count' => $mapLocations->count(),
             'used_fallback' => $fetch['used_fallback'],
             'history_fallback' => $fetch['used_fallback'] ? $fetch['fallback_reason'] : null,
         ];
 
+        return $this->historyJsonResponse($request, $payload, $fetch, $total);
+    }
+
+    /**
+     * Trip summary, timeline, stops, statistics (parallel with points).
+     */
+    public function historyAnalyticsJson(Request $request, string $token)
+    {
+        $device = $this->findMapDevice($token);
+        $context = $this->resolveMapHistoryContext($request);
+        $fetch = $this->mapHistory->fetchLocations(
+            $device,
+            $context['range']['from'],
+            $context['range']['to'],
+            $context['explicit_range'],
+        );
+
+        $analytics = $this->mapHistory->analyzeForMap($fetch['locations']);
+
+        $payload = array_merge($analytics, [
+            'point_count' => $fetch['locations']->count(),
+            'used_fallback' => $fetch['used_fallback'],
+            'history_fallback' => $fetch['used_fallback'] ? $fetch['fallback_reason'] : null,
+        ]);
+
+        return $this->historyJsonResponse($request, $payload, $fetch, $fetch['locations']->count());
+    }
+
+    /**
+     * @return array{range: array{from: \Carbon\Carbon, to: ?\Carbon\Carbon}, explicit_range: bool}
+     */
+    private function resolveMapHistoryContext(Request $request): array
+    {
+        $range = $this->resolveHistoryRange($request);
+        $explicitRange = trim((string) ($request->query('from', $request->input('from', '')))) !== '';
+
+        return [
+            'range' => $range,
+            'explicit_range' => $explicitRange,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @param  array{used_fallback: bool, fallback_reason: ?string}  $fetch
+     */
+    private function historyJsonResponse(Request $request, array $payload, array $fetch, int $pointCount)
+    {
         $response = response()->json($payload);
 
         if ($request->boolean('debug_gps') || $request->query('debug_gps') === '1') {
-            $response->header('X-History-Count', (string) count($payload['points']));
+            $response->header('X-History-Count', (string) $pointCount);
             $response->header('X-History-From', (string) $request->query('from', ''));
             $response->header('X-History-To', (string) $request->query('to', ''));
+            $range = $this->resolveHistoryRange($request);
             if ($range['to'] !== null) {
                 $response->header('X-History-From-Bound', $range['from']->toIso8601String());
                 $response->header('X-History-To-Bound', $range['to']->toIso8601String());
@@ -184,48 +254,6 @@ class MapController extends Controller
         }
 
         return $response;
-    }
-
-    /**
-     * Default (no dates) → last 24 hours from now. If empty, load last known activity.
-     *
-     * @return array{points: array<int, array>, used_fallback: bool, fallback_reason: ?string}
-     */
-    private function fetchDeviceHistoryPoints(Device $device, Request $request, ?array $range = null): array
-    {
-        $range ??= $this->resolveHistoryRange($request);
-        $explicitRange = trim((string) ($request->query('from', $request->input('from', '')))) !== '';
-
-        $result = $this->historyFetcher->fetch(
-            $device,
-            $range['from'],
-            $range['to'],
-            $explicitRange
-        );
-
-        return [
-            'points' => $this->formatLocationsCollection($result['locations']),
-            'used_fallback' => $result['used_fallback'],
-            'fallback_reason' => $result['fallback_reason'],
-        ];
-    }
-
-    /**
-     * @return array<int, array>
-     */
-    private function formatLocationsCollection(Collection $locations): array
-    {
-        $statuses = $this->routeAnalytics->pointStatuses($locations);
-
-        return $locations
-            ->values()
-            ->map(fn ($loc, int $index) => array_merge(
-                $this->formatLocation($loc) ?? [],
-                $statuses[$index] ?? [],
-            ))
-            ->filter()
-            ->values()
-            ->all();
     }
 
     public function liveJson(string $token)
@@ -283,6 +311,38 @@ class MapController extends Controller
 
         $message = $trip->started_at
             ? __('app.routes.trip_started')
+            : __('app.routes.trip_armed_waiting_start');
+
+        return response()->json([
+            'success' => true,
+            'trip' => [
+                'id' => $trip->id,
+                'status' => $trip->status,
+            ],
+            'message' => $message,
+            'route_trip' => $this->routeTripPayload($device, $latest)['route_trip'] ?? null,
+        ]);
+    }
+
+    public function restartTrip(Request $request, string $token)
+    {
+        $device = $this->findMapDevice($token);
+        $latest = $this->positions->latestForDevice($device);
+
+        try {
+            $trip = app(\App\Services\Routes\TripManagementService::class)->restartTrip(
+                $device,
+                $latest ? (float) $latest->lat : null,
+                $latest ? (float) $latest->lng : null,
+                $latest ? (float) ($latest->speed ?? 0) : null,
+                $request->user(),
+            );
+        } catch (\Throwable $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
+        }
+
+        $message = $trip->started_at
+            ? __('app.routes.trip_restarted')
             : __('app.routes.trip_armed_waiting_start');
 
         return response()->json([
@@ -486,26 +546,4 @@ class MapController extends Controller
         return response()->json($formatted);
     }
 
-    /**
-     * @param  array<string, mixed>  $stats
-     * @return array<string, mixed>
-     */
-    private function publicStatsPayload(array $stats): array
-    {
-        return [
-            'total_distance_km' => $stats['total_distance_km'] ?? 0,
-            'moving_time_seconds' => max(0, (int) ($stats['moving_time_seconds'] ?? 0)),
-            'idle_time_seconds' => max(0, (int) ($stats['idle_time_seconds'] ?? 0)),
-            'parking_time_seconds' => max(0, (int) ($stats['parking_time_seconds'] ?? 0)),
-            'stopped_time_seconds' => max(0, (int) ($stats['stopped_time_seconds'] ?? 0)),
-            'offline_time_seconds' => max(0, (int) ($stats['offline_time_seconds'] ?? 0)),
-            'max_speed_kmh' => $stats['max_speed_kmh'] ?? 0,
-            'average_speed_kmh' => $stats['average_speed_kmh'] ?? 0,
-            'overspeed_events' => (int) ($stats['overspeed_events'] ?? 0),
-            'total_duration_seconds' => max(0, (int) ($stats['total_duration_seconds'] ?? 0)),
-            'start_time' => $stats['start_time'] ?? null,
-            'end_time' => $stats['end_time'] ?? null,
-            'stop_count' => (int) ($stats['stop_count'] ?? 0),
-        ];
-    }
 }

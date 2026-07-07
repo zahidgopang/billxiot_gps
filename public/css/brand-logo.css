@@ -71,6 +71,33 @@ body.user-panel-rtl .navbar {
     padding-bottom: 0.75rem;
 }
 
+/* Compact device map top bar — no extra vertical padding or oversized logo */
+body.user-panel.apple-hig.map-device-page .navbar.map-page-nav,
+body.user-panel-rtl.apple-hig.map-device-page .navbar.map-page-nav {
+    min-height: 0 !important;
+    height: var(--ud-map-topbar-h, 44px) !important;
+    max-height: var(--ud-map-topbar-h, 44px) !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+    padding-left: 10px !important;
+    padding-right: 10px !important;
+}
+
+body.user-panel.apple-hig.map-device-page .map-nav-logo .brand-logo,
+body.user-panel-rtl.apple-hig.map-device-page .map-nav-logo .brand-logo {
+    height: 20px !important;
+    max-height: 20px !important;
+    max-width: 108px !important;
+}
+
+@media (min-width: 1280px) {
+    body.user-panel.apple-hig.map-device-page .map-nav-logo .brand-logo,
+    body.user-panel-rtl.apple-hig.map-device-page .map-nav-logo .brand-logo {
+        height: 20px !important;
+        max-height: 20px !important;
+    }
+}
+
 body.user-panel .navbar .nav-start,
 body.user-panel-rtl .navbar .nav-start {
     display: flex;

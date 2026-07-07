@@ -8,7 +8,7 @@ use Illuminate\Http\Request;
 class LocaleController extends Controller
 {
     /**
-     * Switch UI language for the current browser session only.
+     * Switch UI language — cookie-based (no heavy session write on each toggle).
      */
     public function switch(Request $request, string $locale)
     {
@@ -16,8 +16,22 @@ class LocaleController extends Controller
             abort(404);
         }
 
-        session(['locale' => $locale]);
+        if ($request->session()->get('locale') !== $locale) {
+            $request->session()->put('locale', $locale);
+        }
 
-        return redirect()->back();
+        return redirect()
+            ->back()
+            ->withCookie(cookie(
+                SetLocale::LOCALE_COOKIE,
+                $locale,
+                60 * 24 * 365,
+                '/',
+                null,
+                $request->secure(),
+                false,
+                false,
+                'lax',
+            ));
     }
 }

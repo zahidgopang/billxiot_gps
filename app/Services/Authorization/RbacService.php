@@ -61,6 +61,15 @@ class RbacService
         };
     }
 
+    public function panelFor(User $user): string
+    {
+        return match ($this->roleOf($user)) {
+            AppRole::SuperAdmin, AppRole::Admin => 'admin',
+            AppRole::Client => 'client',
+            AppRole::EndUser => 'user',
+        };
+    }
+
     public function hasPermission(User $user, string $permission): bool
     {
         if ($this->isSuperAdmin($user)) {

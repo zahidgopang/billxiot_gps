@@ -115,6 +115,10 @@ class GlobalTrackingService
             $panel['route_trip'] = $this->routeTripPayloadForActor($actor, $device, $latest);
         }
 
+        if ($panel !== []) {
+            $panel['id'] = $device->id;
+        }
+
         return $panel;
     }
 
@@ -604,7 +608,7 @@ class GlobalTrackingService
             return array_merge([
                 'id' => $device->id,
                 'title' => $device->mapMarkerTitle(),
-                'plate' => $device->mapMarkerPlateLine(),
+                'plate' => $device->mapMarkerPlateLine() ?? $device->vehiclePlateNumber(),
                 'imei' => $device->imei,
                 'status_key' => $map['key'],
                 'status_label' => $map['label'],
@@ -676,7 +680,7 @@ class GlobalTrackingService
             $payload = array_merge($payload, $device->mapAppearancePayload());
             $payload['id'] = $device->id;
             $payload['title'] = $device->mapMarkerTitle();
-            $payload['plate'] = $device->mapMarkerPlateLine();
+            $payload['plate'] = $device->mapMarkerPlateLine() ?? $device->vehiclePlateNumber();
             $payload['icon'] = $device->deviceTypeIconClass();
             $payload['color'] = VehicleStatusSpec::colorForKey((string) ($payload['status_key'] ?? 'offline'));
             $payload['recorded_at_human'] = $latest
@@ -751,7 +755,7 @@ class GlobalTrackingService
                 'id' => $device->id,
                 'name' => $device->mapMarkerTitle(),
                 'title' => $device->mapMarkerTitle(),
-                'plate' => $device->mapMarkerPlateLine(),
+                'plate' => $device->mapMarkerPlateLine() ?? $device->vehiclePlateNumber(),
                 'color' => $multi
                     ? self::MULTI_VEHICLE_COLORS[$colorIndex++ % count(self::MULTI_VEHICLE_COLORS)]
                     : null,

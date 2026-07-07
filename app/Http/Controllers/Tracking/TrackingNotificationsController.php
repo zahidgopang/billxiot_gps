@@ -24,8 +24,8 @@ class TrackingNotificationsController extends Controller
         $panel = $this->resolvePanel($request);
 
         return view('tracking.notifications', $this->viewData($request, $panel, [
-            'jsonUrl' => route("{$panel}.tracking.notifications.json"),
-            'updateUrl' => route("{$panel}.tracking.notifications.update"),
+            'jsonUrl' => route('tracking.notifications.json'),
+            'updateUrl' => route('tracking.notifications.update'),
         ]));
     }
 

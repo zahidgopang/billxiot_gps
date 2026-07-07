@@ -30,7 +30,7 @@ class TrackingEventsController extends Controller
         $panel = $this->resolvePanel($request);
 
         return view('tracking.events', $this->viewData($request, $panel, [
-            'jsonUrl' => route("{$panel}.tracking.events.json"),
+            'jsonUrl' => route('tracking.events.json'),
         ]));
     }
 

@@ -2,6 +2,8 @@
 
 namespace App\Http\Concerns;
 
+use App\Models\User;
+use App\Services\Authorization\RbacService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -9,6 +11,14 @@ trait ResolvesTrackingPanel
 {
     protected function resolvePanel(Request $request): string
     {
+        if ($request->routeIs('tracking.*')) {
+            $user = $request->user();
+
+            return $user instanceof User
+                ? app(RbacService::class)->panelFor($user)
+                : 'user';
+        }
+
         if ($request->routeIs('client.*')) {
             return 'client';
         }
@@ -30,18 +40,20 @@ trait ResolvesTrackingPanel
      */
     protected function trackingHubRoutes(string $panel): array
     {
+        unset($panel);
+
         return [
-            'live' => "{$panel}.tracking.index",
-            'history' => "{$panel}.tracking.history",
-            'reports' => "{$panel}.tracking.reports.index",
-            'events' => "{$panel}.tracking.events.index",
-            'geofences' => "{$panel}.tracking.geofences.index",
-            'notifications' => "{$panel}.tracking.notifications.index",
-            'maintenance' => "{$panel}.tracking.maintenance.index",
-            'drivers' => "{$panel}.tracking.drivers.index",
-            'commands' => "{$panel}.tracking.commands.index",
-            'tasks' => "{$panel}.tracking.tasks.index",
-            'settings' => "{$panel}.tracking.settings.index",
+            'live' => 'tracking.index',
+            'history' => 'tracking.history',
+            'reports' => 'tracking.reports.index',
+            'events' => 'tracking.events.index',
+            'geofences' => 'tracking.geofences.index',
+            'notifications' => 'tracking.notifications.index',
+            'maintenance' => 'tracking.maintenance.index',
+            'drivers' => 'tracking.drivers.index',
+            'commands' => 'tracking.commands.index',
+            'tasks' => 'tracking.tasks.index',
+            'settings' => 'tracking.settings.index',
         ];
     }
 

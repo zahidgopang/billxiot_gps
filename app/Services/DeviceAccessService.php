@@ -98,6 +98,24 @@ class DeviceAccessService
         return $this->evaluate($user, $device)['allowed'];
     }
 
+    /**
+     * Precompute map access for a device collection (avoids per-row service calls in Blade).
+     *
+     * @return array<int, array{allowed: bool, reason: string, title: string, message: string, action: string}>
+     */
+    public function evaluateMany(?User $user, iterable $devices, bool $requireSubscription = true): array
+    {
+        $map = [];
+
+        foreach ($devices as $device) {
+            if ($device instanceof Device) {
+                $map[(int) $device->id] = $this->evaluate($user, $device, requireSubscription: $requireSubscription);
+            }
+        }
+
+        return $map;
+    }
+
     public function isUserActive(User $user): bool
     {
         return $this->trackingGate->userIsTrackable($user);

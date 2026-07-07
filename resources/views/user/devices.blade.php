@@ -163,7 +163,7 @@
                             $liveStatus = $dashboardService->resolveDeviceStatus($d, $alertDeviceIds);
                             $latest = $d->latestLocation;
                             $subStatus = $subscriptionService->statusLabel($d);
-                            $accessCheck = app(\App\Services\DeviceAccessService::class)->evaluate(auth()->user(), $d);
+                            $accessCheck = $deviceAccessMap[$d->id] ?? ['allowed' => false, 'title' => '', 'message' => ''];
                             $canTrack = $accessCheck['allowed'];
                             $lockTitle = $canTrack ? '' : ($accessCheck['title'] . ' — ' . $accessCheck['message']);
                         @endphp
@@ -252,7 +252,7 @@
     <script>
         window.USER_DEVICES_LIVE = {
             pollUrl: @json(route('user.devices.live-json')),
-            pollMs: 5000,
+            pollMs: 10000,
             dash: @json(__('app.map.dash')),
             noData: @json(__('app.user.devices.no_data_yet')),
             kmh: @json(__('app.map.kmh_unit')),
@@ -265,13 +265,25 @@
             if (!deviceSearch) {
                 return;
             }
-            deviceSearch.addEventListener('input', function () {
-                const query = this.value.trim().toLowerCase();
+            const runFilter = function () {
+                const query = deviceSearch.value.trim().toLowerCase();
                 document.querySelectorAll('.device-row').forEach((row) => {
                     const haystack = row.getAttribute('data-search') || '';
                     row.style.display = !query || haystack.includes(query) ? '' : 'none';
                 });
-            });
+            };
+            deviceSearch.addEventListener('input', runFilter);
+            const params = new URLSearchParams(window.location.search);
+            const q = params.get('q');
+            if (q) {
+                deviceSearch.value = q;
+                runFilter();
+            }
+            const globalSearch = document.getElementById('udGlobalSearch');
+            if (globalSearch && globalSearch.value.trim()) {
+                deviceSearch.value = globalSearch.value;
+                runFilter();
+            }
         });
     </script>
 @endpush

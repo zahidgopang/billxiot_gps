@@ -66,6 +66,8 @@ Route::middleware(['auth', 'user.active', 'tracker.access'])->group(function () 
     */
     Route::get('/user/dashboard', [UserController::class, 'dashboard'])
         ->name('user.dashboard');
+    Route::get('/user/dashboard/metrics-json', [UserController::class, 'dashboardMetricsJson'])
+        ->name('user.dashboard.metrics-json');
 
     Route::get('/user/alerts', [VehicleAlertController::class, 'index'])
         ->name('user.alerts.index');
@@ -75,6 +77,28 @@ Route::middleware(['auth', 'user.active', 'tracker.access'])->group(function () 
 
     Route::post('/map-session/end', [\App\Http\Controllers\MapSessionController::class, 'end'])
         ->name('map.session.end');
+
+    /*
+    |--------------------------------------------------------------------------
+    | Unified tracking hub (admin + user + client)
+    |--------------------------------------------------------------------------
+    */
+    Route::middleware('maps.tracking')
+        ->prefix('tracking')
+        ->name('tracking.')
+        ->group(require base_path('routes/tracking-modules.php'));
+
+    Route::get('/user/tracking/{path?}', function (?string $path = null) {
+        return redirect('/tracking'.($path ? '/'.$path : ''), 301);
+    })->where('path', '.*');
+
+    Route::get('/admin/tracking/{path?}', function (?string $path = null) {
+        return redirect('/tracking'.($path ? '/'.$path : ''), 301);
+    })->where('path', '.*');
+
+    Route::get('/client/tracking/{path?}', function (?string $path = null) {
+        return redirect('/tracking'.($path ? '/'.$path : ''), 301);
+    })->where('path', '.*');
 
     Route::get('/user/devices/{device}/launch-map', [MapAccessController::class, 'launchUserMap'])
         ->name('user.devices.launch-map');
@@ -86,6 +110,12 @@ Route::middleware(['auth', 'user.active', 'tracker.access'])->group(function () 
         Route::get('/user/device/{token}/history-json', [MapController::class, 'historyJson'])
             ->where('token', '[A-Za-z0-9_-]+')
             ->name('user.device.history.json');
+        Route::get('/user/device/{token}/history-points-json', [MapController::class, 'historyPointsJson'])
+            ->where('token', '[A-Za-z0-9_-]+')
+            ->name('user.device.history.points.json');
+        Route::get('/user/device/{token}/history-analytics-json', [MapController::class, 'historyAnalyticsJson'])
+            ->where('token', '[A-Za-z0-9_-]+')
+            ->name('user.device.history.analytics.json');
         Route::get('/user/device/{token}/live-json', [MapController::class, 'liveJson'])
             ->where('token', '[A-Za-z0-9_-]+')
             ->name('user.device.live.json');
@@ -95,6 +125,9 @@ Route::middleware(['auth', 'user.active', 'tracker.access'])->group(function () 
         Route::post('/user/device/{token}/start-new-trip', [MapController::class, 'startNewTrip'])
             ->where('token', '[A-Za-z0-9_-]+')
             ->name('user.device.start.new.trip');
+        Route::post('/user/device/{token}/restart-trip', [MapController::class, 'restartTrip'])
+            ->where('token', '[A-Za-z0-9_-]+')
+            ->name('user.device.restart.trip');
         Route::get('/user/device/{token}/summary-json', [MapController::class, 'summaryJson'])
             ->where('token', '[A-Za-z0-9_-]+')
             ->name('user.device.summary.json');
@@ -136,8 +169,6 @@ Route::middleware(['auth', 'user.active', 'tracker.access'])->group(function () 
         Route::delete('/{device}/map-custom-icon', [UserDevicesController::class, 'deleteMapCustomIcon'])->name('map-custom-icon.delete');
         Route::get('/live-json', [UserDevicesController::class, 'liveJson'])->name('live-json');
     });
-
-    Route::prefix('user/tracking')->name('user.tracking.')->group(require base_path('routes/tracking-modules.php'));
 
     /*
     |--------------------------------------------------------------------------
@@ -258,8 +289,6 @@ Route::middleware(['auth', 'panel:admin', 'can:admin'])
             ->name('contact-messages.update');
 
         Route::middleware('maps.tracking')->group(function () {
-            Route::prefix('tracking')->name('tracking.')->group(require base_path('routes/tracking-modules.php'));
-
             Route::get('locations', [\App\Http\Controllers\Admin\LocationHistoryController::class, 'index'])
                 ->name('locations.index');
 
@@ -282,6 +311,12 @@ Route::middleware(['auth', 'panel:admin', 'can:admin'])
         Route::get('device/{token}/history-json', [MapController::class, 'historyJson'])
             ->where('token', '[A-Za-z0-9_-]+')
             ->name('device.history.json');
+        Route::get('device/{token}/history-points-json', [MapController::class, 'historyPointsJson'])
+            ->where('token', '[A-Za-z0-9_-]+')
+            ->name('device.history.points.json');
+        Route::get('device/{token}/history-analytics-json', [MapController::class, 'historyAnalyticsJson'])
+            ->where('token', '[A-Za-z0-9_-]+')
+            ->name('device.history.analytics.json');
         Route::get('device/{token}/live-json', [MapController::class, 'liveJson'])
             ->where('token', '[A-Za-z0-9_-]+')
             ->name('device.live.json');
@@ -291,6 +326,9 @@ Route::middleware(['auth', 'panel:admin', 'can:admin'])
         Route::post('device/{token}/start-new-trip', [MapController::class, 'startNewTrip'])
             ->where('token', '[A-Za-z0-9_-]+')
             ->name('device.start.new.trip');
+        Route::post('device/{token}/restart-trip', [MapController::class, 'restartTrip'])
+            ->where('token', '[A-Za-z0-9_-]+')
+            ->name('device.restart.trip');
         Route::get('device/{token}/summary-json', [MapController::class, 'summaryJson'])
             ->where('token', '[A-Za-z0-9_-]+')
             ->name('device.summary.json');
@@ -383,8 +421,6 @@ Route::middleware(['auth', 'panel:client', 'can:client-panel'])
             ->name('activity-log.index');
 
         Route::middleware('maps.tracking')->group(function () {
-            Route::prefix('tracking')->name('tracking.')->group(require base_path('routes/tracking-modules.php'));
-
             Route::get('locations', [\App\Http\Controllers\Admin\LocationHistoryController::class, 'index'])
                 ->name('locations.index');
 
@@ -407,6 +443,12 @@ Route::middleware(['auth', 'panel:client', 'can:client-panel'])
             Route::get('device/{token}/history-json', [MapController::class, 'historyJson'])
                 ->where('token', '[A-Za-z0-9_-]+')
                 ->name('device.history.json');
+            Route::get('device/{token}/history-points-json', [MapController::class, 'historyPointsJson'])
+                ->where('token', '[A-Za-z0-9_-]+')
+                ->name('device.history.points.json');
+            Route::get('device/{token}/history-analytics-json', [MapController::class, 'historyAnalyticsJson'])
+                ->where('token', '[A-Za-z0-9_-]+')
+                ->name('device.history.analytics.json');
             Route::get('device/{token}/live-json', [MapController::class, 'liveJson'])
                 ->where('token', '[A-Za-z0-9_-]+')
                 ->name('device.live.json');
@@ -416,6 +458,9 @@ Route::middleware(['auth', 'panel:client', 'can:client-panel'])
             Route::post('device/{token}/start-new-trip', [MapController::class, 'startNewTrip'])
                 ->where('token', '[A-Za-z0-9_-]+')
                 ->name('device.start.new.trip');
+            Route::post('device/{token}/restart-trip', [MapController::class, 'restartTrip'])
+                ->where('token', '[A-Za-z0-9_-]+')
+                ->name('device.restart.trip');
             Route::get('device/{token}/summary-json', [MapController::class, 'summaryJson'])
                 ->where('token', '[A-Za-z0-9_-]+')
                 ->name('device.summary.json');

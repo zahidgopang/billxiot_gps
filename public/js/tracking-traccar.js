@@ -10,7 +10,8 @@
 (function (global) {
     'use strict';
 
-    const DEFAULT_CENTER = { lat: 25.276987, lng: 55.296249 };
+    // Riyadh, Saudi Arabia — default when no vehicles are on the map.
+    const DEFAULT_CENTER = { lat: 24.7136, lng: 46.6753 };
     const TRAIL_MAX = 120;
     // Minimum travelled distance (m) before a new GPS vertex is committed to the trail.
     const TRAIL_MIN_STEP_M = 2.0;
@@ -806,7 +807,14 @@
                 const v = this.vehicles.get(id);
                 if (hasGeo(v?.lat, v?.lng)) count++;
             });
-            if (count === 0) return;
+            if (count === 0) {
+                if (this.vehicles.size === 0) {
+                    this.map.setCenter(DEFAULT_CENTER);
+                    this.map.setZoom(11);
+                    this.initialFitDone = true;
+                }
+                return;
+            }
             this.fitAll();
             this.renderLiveClusters();
             this.initialFitDone = true;
@@ -2748,6 +2756,7 @@
         clearHistory() {
             this.historyLayers.forEach((l) => l.setMap(null));
             this.historyLayers = [];
+            this._histFastPath = null;
             this.historyPulse?.hide();
             this.stopInfo?.close();
             if (this.legendEl) this.legendEl.innerHTML = '';
@@ -2792,22 +2801,34 @@
             if (to) params.set('to', to);
 
             const btn = document.getElementById('tcHistShow');
-            const res = document.getElementById('tcHistResults');
+            const resultsEl = document.getElementById('tcHistResults');
             const wrap = document.getElementById('tcHistResultsWrap');
+            const loadSeq = (this._historyLoadSeq = (this._historyLoadSeq || 0) + 1);
+            this._historyAbort?.abort();
+            this._historyAbort = new AbortController();
+            const signal = this._historyAbort.signal;
             btn?.setAttribute('disabled', 'disabled');
             if (wrap) wrap.hidden = false;
-            if (res) res.innerHTML = `<div class="tc-empty">${escHtml(this.cfg.i18n?.loading || 'Loading…')}</div>`;
+            if (resultsEl) resultsEl.innerHTML = `<div class="tc-empty">${escHtml(this.cfg.i18n?.loading || 'Loading…')}</div>`;
             try {
                 const url = `${this.cfg.historyJsonUrl}?${params.toString()}&_=${Date.now()}`;
-                const res = await fetch(url, { credentials: 'same-origin', cache: 'no-store' });
-                const data = await res.json();
-                if (!res.ok) throw new Error(data.message || 'Request failed');
+                const response = await fetch(url, { credentials: 'same-origin', cache: 'no-store', signal });
+                let data;
+                try {
+                    data = await response.json();
+                } catch (_) {
+                    throw new Error('Invalid history response');
+                }
+                if (loadSeq !== this._historyLoadSeq) return;
+                if (!response.ok) throw new Error(data.message || 'Request failed');
                 this.drawHistory((data.vehicles || [])[0] || null);
             } catch (err) {
+                if (loadSeq !== this._historyLoadSeq || err?.name === 'AbortError') return;
                 console.error('[traccar-ui] history', err);
+                if (this.historyActive && this.historyLayers.length > 0) return;
                 this.toast(this.cfg.i18n?.loadFailed || 'Failed to load history.', 'error');
             } finally {
-                btn?.removeAttribute('disabled');
+                if (loadSeq === this._historyLoadSeq) btn?.removeAttribute('disabled');
             }
         }
 
@@ -2816,75 +2837,92 @@
             this.historyActive = true;
             this.showLiveLayer(false);
 
-            const points = vehicle?.points || [];
+            const points = (vehicle?.points || []).filter((p) => hasGeo(p.lat, p.lng));
             if (points.length < 2) {
                 this.toast(this.cfg.i18n?.noData || 'No data for the selected period.', 'warning');
                 this.exitHistory();
                 return;
             }
 
-            for (let i = 1; i < points.length; i++) {
-                const a = points[i - 1];
-                const b = points[i];
-                const speed = Math.max(parseFloat(a.speed || 0), parseFloat(b.speed || 0));
-                if (points.length > 900) {
-                    if (i === 1) {
-                        this._histFastPath = [{ lat: a.lat, lng: a.lng }];
+            let routeDrawn = false;
+            try {
+                for (let i = 1; i < points.length; i++) {
+                    const a = points[i - 1];
+                    const b = points[i];
+                    if (!hasGeo(a.lat, a.lng) || !hasGeo(b.lat, b.lng)) continue;
+                    const speed = Math.max(parseFloat(a.speed || 0), parseFloat(b.speed || 0));
+                    if (points.length > 900) {
+                        if (i === 1) {
+                            this._histFastPath = [{ lat: a.lat, lng: a.lng }];
+                        }
+                        this._histFastPath.push({ lat: b.lat, lng: b.lng });
+                        continue;
                     }
-                    this._histFastPath.push({ lat: b.lat, lng: b.lng });
-                    continue;
+                    const line = new google.maps.Polyline({
+                        path: [{ lat: a.lat, lng: a.lng }, { lat: b.lat, lng: b.lng }],
+                        strokeColor: speedToColor(speed),
+                        strokeOpacity: 0.92,
+                        strokeWeight: speed <= 0 ? 6 : speed <= MEDIUM_SPEED ? 7 : speed <= OVER_SPEED ? 8 : 9,
+                        map: this.map, zIndex: 2, clickable: false,
+                    });
+                    this.historyLayers.push(line);
                 }
-                const line = new google.maps.Polyline({
-                    path: [{ lat: a.lat, lng: a.lng }, { lat: b.lat, lng: b.lng }],
-                    strokeColor: speedToColor(speed),
-                    strokeOpacity: 0.92,
-                    strokeWeight: speed <= 0 ? 6 : speed <= MEDIUM_SPEED ? 7 : speed <= OVER_SPEED ? 8 : 9,
-                    map: this.map, zIndex: 2, clickable: false,
-                });
-                this.historyLayers.push(line);
-            }
-            if (this._histFastPath?.length >= 2) {
-                const line = new google.maps.Polyline({
-                    path: this._histFastPath,
-                    strokeColor: '#2563eb',
-                    strokeOpacity: 0.88,
-                    strokeWeight: 6,
-                    map: this.map,
-                    zIndex: 2,
-                    clickable: false,
-                    geodesic: true,
-                });
-                this.historyLayers.push(line);
-                this._histFastPath = null;
-            }
-            const startPoint = points[0];
-            const endPoint = points[points.length - 1];
-            this.addEndpoint(startPoint, 'start');
-            this.addEndpoint(endPoint, 'end');
-            this.showHistoryPulse(endPoint, vehicle);
+                if (this._histFastPath?.length >= 2) {
+                    const line = new google.maps.Polyline({
+                        path: this._histFastPath,
+                        strokeColor: '#2563eb',
+                        strokeOpacity: 0.88,
+                        strokeWeight: 6,
+                        map: this.map,
+                        zIndex: 2,
+                        clickable: false,
+                        geodesic: true,
+                    });
+                    this.historyLayers.push(line);
+                    this._histFastPath = null;
+                }
+                routeDrawn = this.historyLayers.length > 0;
 
-            const historyEvents = vehicle.history_events || vehicle.events || [];
-            historyEvents.forEach((ev) => {
-                if (!hasGeo(ev.lat, ev.lng)) return;
-                const type = ev.event_type || ev.type || 'event';
-                this.addEventDot({
-                    type,
-                    lat: ev.lat,
-                    lng: ev.lng,
-                    title: ev.title || ev.message || type,
-                });
-            });
+                const startPoint = points[0];
+                const endPoint = points[points.length - 1];
+                this.addEndpoint(startPoint, 'start');
+                this.addEndpoint(endPoint, 'end');
+                try {
+                    this.showHistoryPulse(endPoint, vehicle);
+                } catch (pulseErr) {
+                    console.warn('[traccar-ui] history pulse', pulseErr);
+                }
 
-            const name = vehicle.name || '';
-            this._historyName = name;
-            const stops = computeStops(points);
-            const stats = normalizeHistoryStats(vehicle.stats, points, stops);
-            stops.forEach((stop) => this.addStop(stop, name));
-            this.renderHistoryEventList(historyEvents, name, stats);
-            this.renderSpeedLegend(name);
-            this.renderHistoryFooter(vehicle, points, stops, stats);
-            this.renderGraph(points);
-            this.fitLayers(this.historyLayers);
+                const historyEvents = vehicle.history_events || vehicle.events || [];
+                historyEvents.forEach((ev) => {
+                    if (!hasGeo(ev.lat, ev.lng)) return;
+                    const type = ev.event_type || ev.type || 'event';
+                    this.addEventDot({
+                        type,
+                        lat: ev.lat,
+                        lng: ev.lng,
+                        title: ev.title || ev.message || type,
+                    });
+                });
+
+                const name = vehicle.name || '';
+                this._historyName = name;
+                const stops = computeStops(points);
+                const stats = normalizeHistoryStats(vehicle.stats, points, stops);
+                stops.forEach((stop) => this.addStop(stop, name));
+                this.renderHistoryEventList(historyEvents, name, stats);
+                this.renderSpeedLegend(name);
+                this.renderHistoryFooter(vehicle, points, stops, stats);
+                this.renderGraph(points);
+                this.fitLayers(this.historyLayers);
+            } catch (err) {
+                if (routeDrawn) {
+                    console.warn('[traccar-ui] history render partial', err);
+                    try { this.fitLayers(this.historyLayers); } catch (_) { /* ignore */ }
+                    return;
+                }
+                throw err;
+            }
         }
 
         addStop(stop, name) {
@@ -3152,153 +3190,6 @@
             this.switchFooterTab('data');
         }
 
-        panelFromVehicle(id) {
-            const v = this.vehicles.get(id);
-            if (!v) return null;
-            return {
-                id,
-                name: v.title || v.name || String(id),
-                plate: v.plate || null,
-                status: v.status_label || v.status || null,
-                status_key: v.status_key || null,
-                connectivity_tier: v.connectivity_tier || null,
-                last_known_status: v.last_known_status || null,
-                icon: v.icon || null,
-                color: v.color || null,
-                speed: v.speed != null ? Math.round(parseFloat(v.speed) || 0) : null,
-                angle: v.heading != null ? Math.round(parseFloat(v.heading) || 0) : null,
-                lat: v.lat != null ? parseFloat(v.lat) : null,
-                lng: v.lng != null ? parseFloat(v.lng) : null,
-                ignition: v.ignition ?? null,
-                time_position: v.recorded_at_human || null,
-                time_server: null,
-                status_duration_seconds: v.status_duration_seconds ?? null,
-                stats: null,
-                events: [],
-                positions: [],
-                tasks: [],
-                mileage: null,
-                fuel: v.fuel ?? null,
-                battery: v.battery_level ?? null,
-                speed_max: 160,
-            };
-        }
-
-        async openDevicePanel(id) {
-            if (!this.cfg.devicePanelUrl || !document.getElementById('tcFooter')) return;
-            const v = this.vehicles.get(id);
-            this._footerMode = 'panel';
-            this._panelDeviceId = id;
-            this._panelFetchGen = (this._panelFetchGen || 0) + 1;
-            const fetchGen = this._panelFetchGen;
-            this._panelAbort?.abort();
-            this._panelAbort = new AbortController();
-            const signal = this._panelAbort.signal;
-
-            this.activateRouteTripForVehicle(id);
-            this.showFooter(this.labelFor(v) || ('#' + id));
-            this.switchFooterTab('data');
-
-            const dataEl = document.getElementById('tcFooterData');
-            const msgEl = document.getElementById('tcFooterMessages');
-            const instant = this.panelFromVehicle(v);
-            if (dataEl) {
-                dataEl.classList.remove('tc-fbody--hist');
-                if (instant) {
-                    this._panel = instant;
-                    this.renderPanelData(this._panel);
-                    this._startPanelDurationTick();
-                } else {
-                    dataEl.innerHTML = this.panelSkeleton();
-                }
-            }
-            if (msgEl) msgEl.innerHTML = '';
-
-            const panelUrl = this.cfg.devicePanelUrl;
-            const fetchOpts = {
-                credentials: 'same-origin',
-                cache: 'no-store',
-                signal,
-                headers: { Accept: 'application/json' },
-            };
-
-            const mergePanel = (partial) => {
-                if (this._panelFetchGen !== fetchGen || this._panelDeviceId !== id || !partial) return;
-                this._panel = { ...(this._panel || {}), ...partial };
-                if (partial.positions) {
-                    this._panelGraphRows = (partial.positions || []).map((p) => ({
-                        label: String(p.time || '').slice(11, 16),
-                        speed: Math.round(p.speed || 0),
-                    }));
-                }
-
-                const hasGrid = !!document.querySelector('#tcFooterData .tc-data-grid');
-                if (!hasGrid || partial.id) {
-                    this.renderPanelData(this._panel);
-                } else {
-                    if (partial.stats != null) this.updatePanelStats(partial.stats);
-                    if (partial.events != null) this.updatePanelEvents(partial.events);
-                    if (partial.positions?.length) this.renderPanelMessages(partial.positions);
-                }
-
-                this._startPanelDurationTick();
-                if (partial.lat != null && partial.lng != null) {
-                    this.focusVehicleOnMap(id, {
-                        pan: false,
-                        merge: {
-                            lat: partial.lat,
-                            lng: partial.lng,
-                            speed: partial.speed,
-                            heading: partial.angle,
-                            status_label: partial.status,
-                            status_key: partial.status_key,
-                            color: partial.color,
-                        },
-                    });
-                }
-                if (partial.driver) {
-                    const cur = this.vehicles.get(id);
-                    if (cur) this.vehicles.set(id, { ...cur, driver: partial.driver });
-                    this.syncDriverMapCard();
-                }
-            };
-
-            const fetchSection = async (sections) => {
-                const res = await fetch(
-                    `${panelUrl}?device_id=${encodeURIComponent(id)}&sections=${encodeURIComponent(sections)}&_=${Date.now()}`,
-                    fetchOpts,
-                );
-                const data = await res.json().catch(() => ({}));
-                if (!res.ok || !data.success || !data.panel) {
-                    throw new Error(data.message || 'failed');
-                }
-                return data.panel;
-            };
-
-            try {
-                const core = await fetchSection('core');
-                mergePanel(core);
-
-                const secondary = await Promise.allSettled([
-                    fetchSection('stats'),
-                    fetchSection('events'),
-                    fetchSection('graph'),
-                ]);
-
-                secondary.forEach((result) => {
-                    if (result.status === 'fulfilled') {
-                        mergePanel(result.value);
-                    }
-                });
-            } catch (err) {
-                if (err?.name === 'AbortError') return;
-                if (this._panelFetchGen !== fetchGen || this._panelDeviceId !== id) return;
-                if (dataEl && !this._panel?.id) {
-                    dataEl.innerHTML = `<div class="tc-empty">${escHtml(this.cfg.i18n?.panelLoadFailed || this.cfg.i18n?.loadFailed || 'Failed')}</div>`;
-                }
-            }
-        }
-
         panelFromVehicle(v) {
             if (!v) return null;
             const odoKm = v.odometer_km != null
@@ -3306,11 +3197,13 @@
                 : (v.odometer != null ? Math.round((parseFloat(v.odometer) || 0) / 1000) : null);
 
             return {
-                id: v.id,
-                name: v.title || v.name,
+                id: Number(v.id),
+                name: v.title || v.name || String(v.id),
                 plate: v.plate || '',
                 status: v.status_label || v.status || v.status_key,
                 status_key: v.status_key,
+                connectivity_tier: v.connectivity_tier || null,
+                last_known_status: v.last_known_status || null,
                 color: colorForPoint(v, this.stateColors),
                 speed: v.speed != null ? Math.round(parseFloat(v.speed) || 0) : null,
                 angle: v.heading != null ? Math.round(parseFloat(v.heading) || 0) : (v.angle != null ? Math.round(parseFloat(v.angle) || 0) : null),
@@ -3336,6 +3229,135 @@
                 events: null,
                 positions: null,
             };
+        }
+
+        async openDevicePanel(id) {
+            if (!this.cfg.devicePanelUrl || !document.getElementById('tcFooter')) return;
+            const numId = Number(id);
+            const v = this.vehicles.get(numId);
+            this._footerMode = 'panel';
+            this._panelDeviceId = numId;
+            this._panelFetchGen = (this._panelFetchGen || 0) + 1;
+            const fetchGen = this._panelFetchGen;
+            this._panelAbort?.abort();
+            this._panelAbort = new AbortController();
+            const signal = this._panelAbort.signal;
+
+            this.activateRouteTripForVehicle(numId);
+            this.showFooter(this.labelFor(v) || ('#' + numId));
+            this.switchFooterTab('data');
+
+            const dataEl = document.getElementById('tcFooterData');
+            const msgEl = document.getElementById('tcFooterMessages');
+            const instant = this.panelFromVehicle(v);
+            if (dataEl) {
+                dataEl.classList.remove('tc-fbody--hist');
+                if (instant) {
+                    this._panel = { ...instant, id: numId };
+                    this.renderPanelData(this._panel);
+                    this._startPanelDurationTick();
+                } else {
+                    this._panel = { id: numId };
+                    dataEl.innerHTML = this.panelSkeleton();
+                }
+            }
+            if (msgEl) msgEl.innerHTML = '';
+
+            const panelUrl = this.cfg.devicePanelUrl;
+            const fetchOpts = {
+                credentials: 'same-origin',
+                cache: 'no-store',
+                signal,
+                headers: { Accept: 'application/json' },
+            };
+
+            const mergePanel = (partial) => {
+                if (!partial || this._panelFetchGen !== fetchGen || Number(this._panelDeviceId) !== numId) return;
+                if (partial.id != null && Number(partial.id) !== numId) return;
+
+                const base = (this._panel && Number(this._panel.id) === numId)
+                    ? this._panel
+                    : (this.panelFromVehicle(this.vehicles.get(numId)) || { id: numId });
+                this._panel = { ...base, ...partial, id: numId };
+                if (partial.positions) {
+                    this._panelGraphRows = (partial.positions || []).map((p) => ({
+                        label: String(p.time || '').slice(11, 16),
+                        speed: Math.round(p.speed || 0),
+                    }));
+                }
+
+                const hasGrid = !!document.querySelector('#tcFooterData .tc-data-grid');
+                const isCore = partial.id != null
+                    || partial.name != null
+                    || partial.lat != null
+                    || partial.status != null;
+                if (!hasGrid || isCore) {
+                    this.renderPanelData(this._panel);
+                } else {
+                    if (partial.stats != null) this.updatePanelStats(partial.stats);
+                    if (partial.events != null) this.updatePanelEvents(partial.events);
+                    if (partial.positions?.length) this.renderPanelMessages(partial.positions);
+                }
+
+                this._startPanelDurationTick();
+                if (partial.lat != null && partial.lng != null) {
+                    this.focusVehicleOnMap(numId, {
+                        pan: false,
+                        merge: {
+                            lat: partial.lat,
+                            lng: partial.lng,
+                            speed: partial.speed,
+                            heading: partial.angle,
+                            status_label: partial.status,
+                            status_key: partial.status_key,
+                            color: partial.color,
+                        },
+                    });
+                }
+                if (partial.driver) {
+                    const cur = this.vehicles.get(numId);
+                    if (cur) this.vehicles.set(numId, { ...cur, driver: partial.driver });
+                    this.syncDriverMapCard();
+                }
+            };
+
+            const fetchSection = async (sections) => {
+                const res = await fetch(
+                    `${panelUrl}?device_id=${encodeURIComponent(numId)}&sections=${encodeURIComponent(sections)}&_=${Date.now()}`,
+                    fetchOpts,
+                );
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok || !data.success || !data.panel) {
+                    throw new Error(data.message || 'failed');
+                }
+                if (data.panel.id != null && Number(data.panel.id) !== numId) {
+                    throw new Error('panel device mismatch');
+                }
+                return data.panel;
+            };
+
+            try {
+                const core = await fetchSection('core');
+                mergePanel(core);
+
+                const secondary = await Promise.allSettled([
+                    fetchSection('stats'),
+                    fetchSection('events'),
+                    fetchSection('graph'),
+                ]);
+
+                secondary.forEach((result) => {
+                    if (result.status === 'fulfilled') {
+                        mergePanel(result.value);
+                    }
+                });
+            } catch (err) {
+                if (err?.name === 'AbortError') return;
+                if (this._panelFetchGen !== fetchGen || Number(this._panelDeviceId) !== numId) return;
+                if (dataEl && Number(this._panel?.id) !== numId) {
+                    dataEl.innerHTML = `<div class="tc-empty">${escHtml(this.cfg.i18n?.panelLoadFailed || this.cfg.i18n?.loadFailed || 'Failed')}</div>`;
+                }
+            }
         }
 
         _startPanelDurationTick() {
@@ -3819,7 +3841,11 @@
                     }
                 });
             });
-            el.querySelector('#tcCmdSend')?.addEventListener('click', () => this.sendCommand(panel.id));
+            el.querySelector('#tcCmdSend')?.addEventListener('click', () => {
+                if (Number(this._panelDeviceId) === Number(panel.id)) {
+                    this.sendCommand(this._panelDeviceId);
+                }
+            });
 
             if (panel.mileage == null && this.cfg.deviceMileageUrl) {
                 this.loadPanelMileage(panel.id);
@@ -3886,6 +3912,7 @@
         updatePanelLive(v) {
             if (this._footerMode !== 'panel' || this._panelDeviceId == null) return;
             if (Number(this._panelDeviceId) !== Number(v.id)) return;
+            if (this._panel && Number(this._panel.id) !== Number(v.id)) return;
 
             const i = this.cfg.i18n || {};
             const kmh = i.kmhUnit || 'km/h';
@@ -4117,10 +4144,30 @@
             const bounds = new google.maps.LatLngBounds();
             let count = 0;
             layers.forEach((l) => {
-                if (l.getPath) l.getPath().forEach((ll) => { bounds.extend(ll); count++; });
-                else if (l.getPosition) { bounds.extend(l.getPosition()); count++; }
+                if (l.getPath) {
+                    l.getPath().forEach((ll) => {
+                        const lat = typeof ll.lat === 'function' ? ll.lat() : ll.lat;
+                        const lng = typeof ll.lng === 'function' ? ll.lng() : ll.lng;
+                        if (!hasGeo(lat, lng)) return;
+                        bounds.extend({ lat: parseFloat(lat), lng: parseFloat(lng) });
+                        count++;
+                    });
+                } else if (l.getPosition) {
+                    const pos = l.getPosition();
+                    const lat = pos?.lat?.();
+                    const lng = pos?.lng?.();
+                    if (!hasGeo(lat, lng)) return;
+                    bounds.extend(pos);
+                    count++;
+                }
             });
-            if (count > 0) this.map.fitBounds(bounds, 60);
+            if (count > 0) {
+                try {
+                    this.map.fitBounds(bounds, 60);
+                } catch (fitErr) {
+                    console.warn('[traccar-ui] fitBounds', fitErr);
+                }
+            }
         }
 
         /* ---------- Events tab ---------- */

@@ -189,12 +189,145 @@
         return !!(resolved && typeof resolved.getPosition === 'function');
     }
 
+    function unionClientRect(rects) {
+        let left = Infinity;
+        let top = Infinity;
+        let right = -Infinity;
+        let bottom = -Infinity;
+        let found = false;
+        rects.forEach((r) => {
+            if (!r || r.width < 1 || r.height < 1) return;
+            found = true;
+            left = Math.min(left, r.left);
+            top = Math.min(top, r.top);
+            right = Math.max(right, r.right);
+            bottom = Math.max(bottom, r.bottom);
+        });
+        if (!found) return null;
+        return {
+            left,
+            top,
+            width: right - left,
+            height: bottom - top,
+        };
+    }
+
+    /** Visible marker DOM (AdvancedMarker content can be a zero-size anchor wrapper). */
+    function markerVisualElement(anchor) {
+        const resolved = resolveAnchor(anchor);
+        if (!resolved) return null;
+
+        const candidates = [
+            resolved.element,
+            resolved.content,
+            anchor?.content,
+        ].filter((node) => node instanceof HTMLElement);
+
+        for (const el of candidates) {
+            const rect = el.getBoundingClientRect();
+            if (rect.width >= 2 && rect.height >= 2) {
+                return el;
+            }
+            const parts = [...el.querySelectorAll('img, svg, div, span')]
+                .map((node) => node.getBoundingClientRect())
+                .filter((r) => r.width > 0 && r.height > 0);
+            const union = unionClientRect(parts);
+            if (union) {
+                return el;
+            }
+        }
+
+        return null;
+    }
+
+    /** Pixel position of marker visual top-center relative to map overlay pane. */
+    function markerDomPixel(anchor, mapDiv, paneEl) {
+        const el = markerVisualElement(anchor);
+        if (!el || !mapDiv) return null;
+
+        const origin = paneEl?.getBoundingClientRect() || mapDiv.getBoundingClientRect();
+        let rect = el.getBoundingClientRect();
+        if (rect.width < 2 || rect.height < 2) {
+            const parts = [...el.querySelectorAll('img, svg, div, span')]
+                .map((node) => node.getBoundingClientRect())
+                .filter((r) => r.width > 0 && r.height > 0);
+            rect = unionClientRect(parts);
+            if (!rect) return null;
+        }
+
+        return {
+            x: rect.left + rect.width / 2 - origin.left,
+            y: rect.top - origin.top,
+        };
+    }
+
+    function classicMarkerTopPixel(anchor, projection, g) {
+        if (!anchor || anchor._advanced) return null;
+        const resolved = resolveAnchor(anchor);
+        if (!resolved || typeof resolved.getPosition !== 'function') return null;
+        const pos = resolved.getPosition();
+        if (!pos) return null;
+        const lat = typeof pos.lat === 'function' ? pos.lat() : Number(pos.lat);
+        const lng = typeof pos.lng === 'function' ? pos.lng() : Number(pos.lng);
+        const pt = latLngToPixel(projection, lat, lng, g);
+        if (!pt) return null;
+
+        if (typeof resolved.getIcon !== 'function') {
+            return pt;
+        }
+
+        const icon = resolved.getIcon();
+        if (!icon || typeof icon !== 'object') {
+            return pt;
+        }
+
+        let anchorY = 0;
+        const ss = icon.scaledSize;
+        if (icon.anchor) {
+            const a = icon.anchor;
+            anchorY = typeof a.y === 'number' ? a.y : (typeof a.getY === 'function' ? a.getY() : 0);
+        } else if (ss) {
+            const h = typeof ss.height === 'number' ? ss.height : (typeof ss.getHeight === 'function' ? ss.getHeight() : 48);
+            anchorY = h / 2;
+        }
+
+        pt.y -= anchorY;
+        return pt;
+    }
+
+    function resolvePopupPixel({ anchor, position, projection, map, g, paneEl }) {
+        const mapDiv = map?.getDiv?.();
+        const domPt = markerDomPixel(anchor, mapDiv, paneEl);
+        if (domPt) {
+            return domPt;
+        }
+
+        const classicPt = classicMarkerTopPixel(anchor, projection, g);
+        if (classicPt) {
+            return classicPt;
+        }
+
+        if (!position || !projection) {
+            return null;
+        }
+
+        const pt = latLngToPixel(projection, position.lat, position.lng, g);
+        if (!pt) return null;
+
+        return pt;
+    }
+
     function latLngToPixel(projection, lat, lng, g) {
         const latLng = new g.maps.LatLng(lat, lng);
+        // Overlay panes are aligned to the map div — container pixels drift when the
+        // map sits inside offset shells (sidebar margin, padded nav, flex wrappers).
+        if (typeof projection.fromLatLngToDivPixel === 'function') {
+            return projection.fromLatLngToDivPixel(latLng);
+        }
         if (typeof projection.fromLatLngToContainerPixel === 'function') {
             return projection.fromLatLngToContainerPixel(latLng);
         }
-        return projection.fromLatLngToDivPixel(latLng);
+        return null;
     }
 
     function layoutPopupElement(el, pt, mapDiv) {
@@ -227,6 +360,16 @@
         el.style.margin = '0';
         el.style.right = 'auto';
         el.style.bottom = 'auto';
+        el.style.zIndex = '999999';
+    }
+
+    function schedulePopupRedraw(redraw) {
+        if (typeof redraw !== 'function') return;
+        redraw();
+        global.requestAnimationFrame(redraw);
+        global.setTimeout(redraw, 0);
+        global.setTimeout(redraw, 48);
+        global.setTimeout(redraw, 120);
     }
 
     function openInfoWindow(iw, map, point, anchor) {
@@ -281,6 +424,7 @@
 
         const state = {
             position: null,
+            anchor: null,
             visible: false,
         };
 
@@ -300,12 +444,15 @@
                     global.requestAnimationFrame(() => this.draw());
                     return;
                 }
-                const pt = latLngToPixel(
+                const originEl = el.parentElement || map.getDiv?.();
+                const pt = resolvePopupPixel({
+                    anchor: state.anchor,
+                    position: state.position,
                     projection,
-                    state.position.lat,
-                    state.position.lng,
+                    map,
                     g,
-                );
+                    paneEl: originEl,
+                });
                 if (!pt) return;
                 layoutPopupElement(el, pt, map.getDiv?.());
                 el.classList.add('is-open');
@@ -319,6 +466,14 @@
 
         const overlay = new HostAnchor();
         overlay.setMap(map);
+
+        const mapListeners = [];
+        const redrawHost = () => overlay.draw();
+        ['bounds_changed', 'zoom_changed', 'center_changed', 'idle'].forEach((ev) => {
+            mapListeners.push(g.maps.event.addListener(map, ev, redrawHost));
+        });
+        global.addEventListener('map-sidebar-toggled', redrawHost);
+        global.addEventListener('resize', redrawHost);
 
         return {
             map,
@@ -336,10 +491,13 @@
                 }
                 overlay.draw();
             },
+            setAnchor(anchor) {
+                state.anchor = anchor || null;
+                overlay.draw();
+            },
             show() {
                 state.visible = true;
-                overlay.draw();
-                global.requestAnimationFrame(() => overlay.draw());
+                schedulePopupRedraw(() => overlay.draw());
             },
             hide() {
                 state.visible = false;
@@ -353,10 +511,14 @@
                 return el;
             },
             destroy() {
+                mapListeners.forEach((l) => g.maps.event.removeListener(l));
+                global.removeEventListener('map-sidebar-toggled', redrawHost);
+                global.removeEventListener('resize', redrawHost);
                 overlay.setMap(null);
                 el.innerHTML = '';
                 el.classList.remove('is-open');
                 el.style.display = 'none';
+                state.anchor = null;
             },
             _overlay: overlay,
         };
@@ -371,6 +533,7 @@
         const host = {
             map,
             position: null,
+            anchor: null,
             visible: false,
             _pendingHtml: '',
             _overlay: null,
@@ -389,7 +552,7 @@
                     host._el.innerHTML = host._pendingHtml;
                 }
                 const panes = this.getPanes();
-                const pane = panes?.overlayMouseTarget || panes?.overlayLayer || panes?.floatPane;
+                const pane = panes?.floatPane || panes?.overlayMouseTarget || panes?.overlayLayer;
                 pane?.appendChild(div);
                 if (host.visible) {
                     this.draw();
@@ -406,12 +569,14 @@
                     global.requestAnimationFrame(() => this.draw());
                     return;
                 }
-                const pt = latLngToPixel(
+                const pt = resolvePopupPixel({
+                    anchor: host.anchor,
+                    position: host.position,
                     projection,
-                    host.position.lat,
-                    host.position.lng,
+                    map: host.map,
                     g,
-                );
+                    paneEl: host._el?.parentElement,
+                });
                 if (!pt) return;
                 layoutPopupElement(host._el, pt, host.map?.getDiv?.());
             }
@@ -457,12 +622,14 @@
             host._overlay?.draw();
         };
 
+        host.setAnchor = (anchor) => {
+            host.anchor = anchor || null;
+            host._overlay?.draw();
+        };
+
         host.show = () => {
             host.visible = true;
-            const redraw = () => host._overlay?.draw();
-            redraw();
-            global.requestAnimationFrame(redraw);
-            global.setTimeout(redraw, 0);
+            schedulePopupRedraw(() => host._overlay?.draw());
         };
 
         host.hide = () => {
@@ -474,6 +641,7 @@
 
         host.destroy = () => {
             host.hide();
+            host.anchor = null;
             host._detachMapListeners();
             host._overlay?.setMap(null);
             host._overlay = null;
@@ -549,6 +717,7 @@
                 this.infoWindow?.close();
                 this.overlayHost?.hide();
                 host.setContent(html);
+                host.setAnchor(anchor);
                 host.setPosition(position);
                 host.show();
                 this._wireDom(host.getElement());
@@ -578,6 +747,7 @@
             if (overlay) {
                 this.infoWindow?.close();
                 overlay.setContent(html);
+                overlay.setAnchor(anchor);
                 overlay.setPosition(position);
                 overlay.show();
                 this._wireDom(overlay._el);
@@ -615,6 +785,7 @@
 
             if (this.hostAnchor?.isOpen()) {
                 this.hostAnchor.setContent(html);
+                this.hostAnchor.setAnchor?.(this._anchor);
                 if (Number.isFinite(position.lat) && Number.isFinite(position.lng)) {
                     this.hostAnchor.setPosition(position);
                 }
@@ -624,6 +795,7 @@
 
             if (this.overlayHost?.isOpen()) {
                 this.overlayHost.setContent(html);
+                this.overlayHost.setAnchor?.(this._anchor);
                 if (Number.isFinite(position.lat) && Number.isFinite(position.lng)) {
                     this.overlayHost.setPosition(position);
                 }
