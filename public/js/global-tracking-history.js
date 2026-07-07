@@ -234,17 +234,59 @@
 
             try {
                 const params = this.buildQuery();
-                const url = `${this.cfg.historyJsonUrl}?${params.toString()}&_=${Date.now()}`;
-                const res = await fetch(url, { credentials: 'same-origin', cache: 'no-store' });
-                const data = await res.json();
-                if (!res.ok) throw new Error(data.message || 'Request failed');
-                this.drawHistory((data.vehicles || [])[0] || null);
+                const qs = `${params.toString()}&_=${Date.now()}`;
+                const pointsUrl = this.cfg.historyPointsJsonUrl;
+                const analyticsUrl = this.cfg.historyAnalyticsJsonUrl;
+                const canParallel = Boolean(pointsUrl && analyticsUrl);
+
+                let vehicle = null;
+
+                if (canParallel) {
+                    const [pointsResult, analyticsResult] = await Promise.allSettled([
+                        fetch(`${pointsUrl}?${qs}`, { credentials: 'same-origin', cache: 'no-store' }),
+                        fetch(`${analyticsUrl}?${qs}`, { credentials: 'same-origin', cache: 'no-store' }),
+                    ]);
+
+                    const pointsVehicle = await this.parseHistoryVehicle(pointsResult);
+                    const analyticsVehicle = await this.parseHistoryVehicle(analyticsResult);
+
+                    if (!pointsVehicle && !analyticsVehicle) {
+                        throw new Error(this.cfg.i18n?.loadFailed || 'Failed to load history.');
+                    }
+
+                    vehicle = {
+                        ...(analyticsVehicle || {}),
+                        ...(pointsVehicle || {}),
+                        points: pointsVehicle?.points || [],
+                        events: analyticsVehicle?.events || analyticsVehicle?.history_events || pointsVehicle?.events || [],
+                    };
+                } else {
+                    const res = await fetch(`${this.cfg.historyJsonUrl}?${qs}`, {
+                        credentials: 'same-origin',
+                        cache: 'no-store',
+                    });
+                    const data = await res.json();
+                    if (!res.ok) {
+                        throw new Error(data.message || 'Request failed');
+                    }
+                    vehicle = (data.vehicles || [])[0] || null;
+                }
+
+                this.drawHistory(vehicle);
             } catch (err) {
                 console.error('[global-tracking-history]', err);
-                notify(this.cfg.i18n?.loadFailed || 'Failed to load history.', 'error');
+                notify(err.message || this.cfg.i18n?.loadFailed || 'Failed to load history.', 'error');
             } finally {
                 btn?.removeAttribute('disabled');
             }
+        }
+
+        async parseHistoryVehicle(result) {
+            if (result.status !== 'fulfilled' || !result.value?.ok) {
+                return null;
+            }
+            const data = await result.value.json().catch(() => ({}));
+            return (data.vehicles || [])[0] || null;
         }
 
         drawHistory(vehicle) {

@@ -5,28 +5,33 @@ namespace App\Services\Tracking;
 use App\Contracts\Tracking\EventReaderInterface;
 use App\Models\Device;
 use App\Models\DeviceLocation;
-use App\Models\User;
 use App\Services\Mobile\MobileRouteAnalyticsService;
 use App\Support\DateTime\AppDateTime;
 use App\Support\Tracking\TelemetryFormatter;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\Cache;
 
 /**
  * Cached history fetch + split payloads for global tracking (/tracking).
  */
 class GlobalTrackingHistoryService
 {
-    private const CACHE_SECONDS = 45;
-
     private const MAP_POINT_CAP = 2800;
+
+    /** Downsample before analytics when tracks are very large. */
+    private const ANALYTICS_POINT_CAP = 6000;
+
+    /** Skip building the heavy timeline graph above this (events still compile from stops). */
+    private const SKIP_TIMELINE_POINT_CAP = 5000;
+
+    private const TIMELINE_OUTPUT_CAP = 400;
 
     public function __construct(
         private DeviceHistoryFetcher $historyFetcher,
         private MobileRouteAnalyticsService $analytics,
         private HistoryEventsCompiler $historyEvents,
         private EventReaderInterface $events,
+        private HistoryTrackCache $trackCache,
     ) {}
 
     /**
@@ -34,31 +39,7 @@ class GlobalTrackingHistoryService
      */
     public function fetchLocations(Device $device, Carbon $from, ?Carbon $to): array
     {
-        $cacheKey = sprintf(
-            'global_track_hist:%d:%s:%s',
-            $device->id,
-            $from->timestamp,
-            $to?->timestamp ?? 'open',
-        );
-
-        $lock = Cache::lock($cacheKey . ':lock', 120);
-
-        try {
-            return $lock->block(120, function () use ($cacheKey, $device, $from, $to) {
-                /** @var array{locations: Collection<int, DeviceLocation>, used_fallback: bool, fallback_reason: ?string} $cached */
-                $cached = Cache::remember($cacheKey, self::CACHE_SECONDS, function () use ($device, $from, $to) {
-                    $fetch = $this->historyFetcher->fetch($device, $from, $to, true, allowFallback: false);
-
-                    return [
-                        'locations' => $fetch['locations'],
-                        'used_fallback' => $fetch['used_fallback'],
-                        'fallback_reason' => $fetch['fallback_reason'],
-                    ];
-                });
-
-                return $cached;
-            });
-        } catch (\Throwable) {
+        return $this->trackCache->remember($device, $from, $to, function () use ($device, $from, $to) {
             $fetch = $this->historyFetcher->fetch($device, $from, $to, true, allowFallback: false);
 
             return [
@@ -66,18 +47,20 @@ class GlobalTrackingHistoryService
                 'used_fallback' => $fetch['used_fallback'],
                 'fallback_reason' => $fetch['fallback_reason'],
             ];
-        }
+        });
     }
 
     /**
      * @param  Collection<int, DeviceLocation>  $locations
      * @return array<int, array<string, mixed>>
      */
-    public function formatMapPoints(Collection $locations): array
+    public function formatMapPoints(Collection $locations, bool $lite = true): array
     {
         return $this->downsampleForMap($locations)
             ->values()
-            ->map(fn (DeviceLocation $loc) => $this->formatHistoryPoint($loc))
+            ->map(fn (DeviceLocation $loc) => $lite
+                ? $this->formatMapPointLite($loc)
+                : $this->formatHistoryPoint($loc))
             ->all();
     }
 
@@ -88,27 +71,53 @@ class GlobalTrackingHistoryService
      */
     public function analyticsBundle(Device $device, Collection $locations, Carbon $from, ?Carbon $to): array
     {
-        $cacheKey = sprintf(
-            'global_track_analytics:%d:%s:%s',
-            $device->id,
-            $from->timestamp,
-            $to?->timestamp ?? 'open',
-        );
+        return $this->buildAnalyticsBundle($device, $locations, $from, $to);
+    }
 
-        /** @var array{stats: array<string, mixed>, timeline: list<array<string, mixed>>, events: list<array<string, mixed>>} */
-        return Cache::remember($cacheKey, self::CACHE_SECONDS, function () use ($device, $locations, $from, $to) {
-            $rawStats = $this->analytics->analyze($locations, [
-                'point_statuses' => false,
-                'include_track_points' => false,
-                'skip_timeline' => false,
-            ]);
+    /**
+     * @return array{stats: array<string, mixed>, timeline: list<array<string, mixed>>, events: list<array<string, mixed>>}
+     */
+    private function buildAnalyticsBundle(Device $device, Collection $locations, Carbon $from, ?Carbon $to): array
+    {
+        $count = $locations->count();
+        $analysisPoints = $count > self::ANALYTICS_POINT_CAP
+            ? $this->downsampleForMap($locations, self::ANALYTICS_POINT_CAP)
+            : $locations;
 
-            return [
-                'stats' => $this->publicStatsPayload($rawStats),
-                'timeline' => $rawStats['timeline'] ?? [],
-                'events' => $this->compileHistoryEventsFromStats($device, $rawStats, $from, $to),
-            ];
-        });
+        $rawStats = $this->analytics->analyze($analysisPoints, [
+            'point_statuses' => false,
+            'include_track_points' => false,
+            'skip_timeline' => $count > self::SKIP_TIMELINE_POINT_CAP,
+        ]);
+
+        return [
+            'stats' => $this->publicStatsPayload($rawStats),
+            'timeline' => $this->capTimeline($rawStats['timeline'] ?? []),
+            'events' => $this->compileHistoryEventsFromStats($device, $rawStats, $from, $to),
+        ];
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $timeline
+     * @return list<array<string, mixed>>
+     */
+    private function capTimeline(array $timeline, int $max = self::TIMELINE_OUTPUT_CAP): array
+    {
+        $count = count($timeline);
+        if ($count <= $max) {
+            return $timeline;
+        }
+
+        $step = (int) ceil($count / $max);
+        $sampled = [];
+
+        foreach ($timeline as $index => $segment) {
+            if ($index === 0 || $index === $count - 1 || $index % $step === 0) {
+                $sampled[] = $segment;
+            }
+        }
+
+        return $sampled;
     }
 
     /**
@@ -204,6 +213,21 @@ class GlobalTrackingHistoryService
     /**
      * @return array<string, mixed>
      */
+    public function formatMapPointLite(DeviceLocation $location): array
+    {
+        return [
+            'lat' => (float) $location->lat,
+            'lng' => (float) $location->lng,
+            'speed' => (float) ($location->speed ?? 0),
+            'heading' => (float) ($location->heading ?? 0),
+            'ignition' => (bool) $location->ignition,
+            'recorded_at' => AppDateTime::toApi($location->recorded_at),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
     public function formatHistoryPoint(DeviceLocation $location): array
     {
         return [
@@ -234,6 +258,62 @@ class GlobalTrackingHistoryService
     }
 
     /**
+     * @return array<string, mixed>
+     */
+    public function vehiclePointsPayload(
+        Device $device,
+        Collection $locations,
+        bool $usedFallback,
+        ?string $fallbackReason,
+        ?string $color = null,
+    ): array {
+        $points = $this->formatMapPoints($locations);
+
+        return array_merge([
+            'id' => $device->id,
+            'name' => $device->mapMarkerTitle(),
+            'title' => $device->mapMarkerTitle(),
+            'plate' => $device->mapMarkerPlateLine() ?? $device->vehiclePlateNumber(),
+            'color' => $color,
+            'points' => $points,
+            'point_count' => $locations->count(),
+            'display_point_count' => count($points),
+            'used_fallback' => $usedFallback,
+            'fallback_reason' => $fallbackReason,
+        ], $device->mapAppearancePayload());
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function vehicleAnalyticsPayload(
+        Device $device,
+        Collection $locations,
+        Carbon $from,
+        ?Carbon $to,
+        bool $usedFallback,
+        ?string $fallbackReason,
+        ?string $color = null,
+    ): array {
+        $bundle = $this->analyticsBundle($device, $locations, $from, $to);
+
+        return array_merge([
+            'id' => $device->id,
+            'name' => $device->mapMarkerTitle(),
+            'title' => $device->mapMarkerTitle(),
+            'plate' => $device->mapMarkerPlateLine() ?? $device->vehiclePlateNumber(),
+            'color' => $color,
+            'stats' => $bundle['stats'],
+            'timeline' => $bundle['timeline'],
+            'events' => $bundle['events'],
+            'history_events' => $bundle['events'],
+            'point_count' => $locations->count(),
+            'used_fallback' => $usedFallback,
+            'fallback_reason' => $fallbackReason,
+        ], $device->mapAppearancePayload());
+    }
+
+    /**
      * Build one vehicle history bundle (legacy single endpoint).
      *
      * @return array<string, mixed>|null
@@ -250,9 +330,9 @@ class GlobalTrackingHistoryService
         }
 
         $bundle = $this->analyticsBundle($device, $locations, $from, $to);
-        $points = $this->formatMapPoints($locations);
+        $points = $this->formatMapPoints($locations, lite: $locations->count() > self::SKIP_TIMELINE_POINT_CAP);
 
-        return array_merge([
+        $payload = [
             'id' => $device->id,
             'name' => $device->mapMarkerTitle(),
             'title' => $device->mapMarkerTitle(),
@@ -260,11 +340,18 @@ class GlobalTrackingHistoryService
             'color' => $color,
             'points' => $points,
             'stats' => $bundle['stats'],
-            'timeline' => $bundle['timeline'],
             'events' => $bundle['events'],
             'history_events' => $bundle['events'],
             'point_count' => $locations->count(),
             'display_point_count' => count($points),
-        ], $device->mapAppearancePayload());
+        ];
+
+        if ($locations->count() <= self::SKIP_TIMELINE_POINT_CAP) {
+            $payload['timeline'] = $bundle['timeline'];
+        } else {
+            $payload['timeline'] = [];
+        }
+
+        return array_merge($payload, $device->mapAppearancePayload());
     }
 }

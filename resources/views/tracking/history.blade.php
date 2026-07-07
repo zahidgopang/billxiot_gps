@@ -293,6 +293,8 @@
             googleMapsKey: @json(config('services.google.maps_key')),
             googleMapsMapId: @json(config('services.google.maps_map_id')),
             historyJsonUrl: @json(route($routes['historyJson'])),
+            historyPointsJsonUrl: @json(Route::has($routes['historyPoints'] ?? '') ? route($routes['historyPoints']) : null),
+            historyAnalyticsJsonUrl: @json(Route::has($routes['historyAnalytics'] ?? '') ? route($routes['historyAnalytics']) : null),
             multiColors: @json($multiColors),
             appTimezone: @json(config('app.timezone')),
             vehicles: @json($vehicles),

@@ -30,21 +30,32 @@ class DeviceMapHistoryService
     {
         $cacheKey = $this->cacheKey($device, $from, $to, $explicitRange);
 
-        /** @var array{locations: Collection<int, DeviceLocation>, used_fallback: bool, fallback_reason: ?string} $cached */
-        $cached = Cache::remember($cacheKey, self::CACHE_SECONDS, function () use ($device, $from, $to, $explicitRange) {
-            $fetch = $this->historyFetcher->fetch($device, $from, $to, $explicitRange);
+        if (Cache::has($cacheKey)) {
+            /** @var array{locations: Collection<int, DeviceLocation>, used_fallback: bool, fallback_reason: ?string} $cached */
+            $cached = Cache::get($cacheKey);
 
             return [
+                'locations' => $cached['locations'],
+                'used_fallback' => $cached['used_fallback'],
+                'fallback_reason' => $cached['fallback_reason'],
+                'range' => ['from' => $from, 'to' => $to],
+            ];
+        }
+
+        $fetch = $this->historyFetcher->fetch($device, $from, $to, $explicitRange);
+
+        if ($fetch['locations']->count() <= 4000) {
+            Cache::put($cacheKey, [
                 'locations' => $fetch['locations'],
                 'used_fallback' => $fetch['used_fallback'],
                 'fallback_reason' => $fetch['fallback_reason'],
-            ];
-        });
+            ], self::CACHE_SECONDS);
+        }
 
         return [
-            'locations' => $cached['locations'],
-            'used_fallback' => $cached['used_fallback'],
-            'fallback_reason' => $cached['fallback_reason'],
+            'locations' => $fetch['locations'],
+            'used_fallback' => $fetch['used_fallback'],
+            'fallback_reason' => $fetch['fallback_reason'],
             'range' => ['from' => $from, 'to' => $to],
         ];
     }
