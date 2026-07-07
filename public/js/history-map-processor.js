@@ -117,7 +117,9 @@
             return Promise.resolve(syncFallback(points, opts || {}));
         }
 
-        return new Promise((resolve, reject) => {
+        const timeoutMs = opts?.workerTimeoutMs ?? 12000;
+
+        const workerTask = new Promise((resolve, reject) => {
             const id = ++workerMsgId;
             pending.set(id, { resolve, reject });
             w.postMessage({
@@ -126,7 +128,13 @@
                 points: slimPoints(points),
                 opts: opts || {},
             });
-        }).catch(() => syncFallback(points, opts || {}));
+        });
+
+        const timeoutTask = new Promise((_, reject) => {
+            setTimeout(() => reject(new Error('worker_timeout')), timeoutMs);
+        });
+
+        return Promise.race([workerTask, timeoutTask]).catch(() => syncFallback(points, opts || {}));
     }
 
     global.HistoryMapProcessor = {

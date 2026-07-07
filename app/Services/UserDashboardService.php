@@ -570,22 +570,68 @@ class UserDashboardService
 
     public function getProfileStats(User $user): array
     {
-        $devices = $this->resolveDashboardDevices($user);
-        $this->positionLoader->attachLatestToMany($devices);
-        $deviceIds = $devices->pluck('id');
-        $fleetCounts = $this->mapStatus->fleetCounts($devices);
-        $pageStats = $this->getDevicePageStats($devices);
-        $heavy = $this->cachedHeavyMetrics($user, $devices, $deviceIds, $fleetCounts);
+        $memberDays = max(1, $user->created_at?->diffInDays(now()) ?? 1);
 
-        return array_merge($pageStats, [
-            'totalDistanceKm' => $heavy['totalDistanceKm'],
-            'activeAlerts' => $heavy['activeAlerts'],
-            'trackingDaysActive' => $deviceIds->isEmpty()
-                ? 0
-                : $this->metrics->activeTrackingDays($deviceIds),
-            'geofenceCount' => $this->countGeofencesForDevices($devices),
-            'memberDays' => max(1, $user->created_at?->diffInDays(now()) ?? 1),
-        ]);
+        try {
+            $devices = $this->resolveDashboardDevices($user);
+            $this->positionLoader->attachLatestToMany($devices);
+            $deviceIds = $devices->pluck('id');
+            $fleetCounts = $this->mapStatus->fleetCounts($devices);
+            $pageStats = $this->getDevicePageStats($devices);
+
+            try {
+                $activities = $this->getRecentActivities($deviceIds);
+            } catch (\Throwable $e) {
+                report($e);
+                $activities = collect();
+            }
+
+            try {
+                $heavy = $this->cachedHeavyMetrics($user, $devices, $deviceIds, $fleetCounts);
+            } catch (\Throwable $e) {
+                report($e);
+                $heavy = [
+                    'totalDistanceKm' => 0,
+                    'activeAlerts' => 0,
+                ];
+            }
+
+            try {
+                $trackingDaysActive = $deviceIds->isEmpty()
+                    ? 0
+                    : $this->metrics->activeTrackingDays($deviceIds);
+            } catch (\Throwable $e) {
+                report($e);
+                $trackingDaysActive = 0;
+            }
+
+            try {
+                $geofenceCount = $this->countGeofencesForDevices($devices);
+            } catch (\Throwable $e) {
+                report($e);
+                $geofenceCount = 0;
+            }
+
+            return array_merge($pageStats, [
+                'totalDistanceKm' => $heavy['totalDistanceKm'],
+                'activeAlerts' => $heavy['activeAlerts'],
+                'trackingDaysActive' => $trackingDaysActive,
+                'geofenceCount' => $geofenceCount,
+                'memberDays' => $memberDays,
+                'activities' => $activities,
+            ]);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return array_merge($this->getDevicePageStats(collect()), [
+                'totalDistanceKm' => 0,
+                'activeAlerts' => 0,
+                'trackingDaysActive' => 0,
+                'geofenceCount' => 0,
+                'memberDays' => $memberDays,
+                'activities' => collect(),
+            ]);
+        }
     }
 
     private function countGeofencesForDevices(Collection $devices): int

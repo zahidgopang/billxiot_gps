@@ -19,6 +19,12 @@ class DeviceMapIconAuthorization
         return $user->trackerDevicesQuery()->where('id', $device->id)->exists();
     }
 
+    /** Vehicle name and plate number on the user devices page. */
+    public function canEditVehicleLabel(User $user, Device $device): bool
+    {
+        return $user->trackerDevicesQuery()->where('id', $device->id)->exists();
+    }
+
     /** Preset icon, size, style, rotation toggles. */
     public function canEditAppearance(User $user, Device $device): bool
     {

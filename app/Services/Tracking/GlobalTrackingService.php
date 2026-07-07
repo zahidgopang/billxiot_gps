@@ -716,6 +716,7 @@ class GlobalTrackingService
         $multi = count($ids) > 1;
         $vehicles = [];
         $colorIndex = 0;
+        $history = app(GlobalTrackingHistoryService::class);
 
         foreach ($ids as $id) {
             $device = Device::query()->find($id);
@@ -723,64 +724,23 @@ class GlobalTrackingService
                 continue;
             }
 
-            $result = $this->historyFetcher->fetch($device, $from, $to, true, allowFallback: false);
-            $locations = $result['locations'];
-
-            $stats = $this->analytics->analyze($locations, [
-                'point_statuses' => false,
-                'include_track_points' => false,
-                'skip_timeline' => false,
-            ]);
-
-            $displayLocations = $this->downsampleHistoryPoints($locations);
-
-            $points = $displayLocations
-                ->values()
-                ->map(fn (DeviceLocation $loc) => $this->formatHistoryPoint($loc))
-                ->values()
-                ->all();
-
-            $dbEvents = $this->events
-                ->forDevice($device, $from, $to, limit: 300);
-
-            $historyEvents = $this->historyEvents->compile(
-                $dbEvents,
-                $stats['timeline'] ?? [],
-                $stats['stops'] ?? [],
+            $fetch = $history->fetchLocations($device, $from, $to);
+            $bundle = $history->vehicleHistoryBundle(
+                $device,
+                $fetch['locations'],
+                $from,
+                $to,
+                $multi ? self::MULTI_VEHICLE_COLORS[$colorIndex++ % count(self::MULTI_VEHICLE_COLORS)] : null,
             );
 
-            $events = $historyEvents;
+            if ($bundle === null) {
+                continue;
+            }
 
-            $vehicles[] = array_merge([
-                'id' => $device->id,
-                'name' => $device->mapMarkerTitle(),
-                'title' => $device->mapMarkerTitle(),
-                'plate' => $device->mapMarkerPlateLine() ?? $device->vehiclePlateNumber(),
-                'color' => $multi
-                    ? self::MULTI_VEHICLE_COLORS[$colorIndex++ % count(self::MULTI_VEHICLE_COLORS)]
-                    : null,
-                'points' => $points,
-                'stats' => [
-                    'total_distance_km' => $stats['total_distance_km'] ?? 0,
-                    'moving_time_seconds' => max(0, (int) ($stats['moving_time_seconds'] ?? 0)),
-                    'idle_time_seconds' => max(0, (int) ($stats['idle_time_seconds'] ?? 0)),
-                    'parking_time_seconds' => max(0, (int) ($stats['parking_time_seconds'] ?? 0)),
-                    'stopped_time_seconds' => max(0, (int) ($stats['stopped_time_seconds'] ?? 0)),
-                    'offline_time_seconds' => max(0, (int) ($stats['offline_time_seconds'] ?? 0)),
-                    'max_speed_kmh' => $stats['max_speed_kmh'] ?? 0,
-                    'average_speed_kmh' => $stats['average_speed_kmh'] ?? 0,
-                    'overspeed_events' => (int) ($stats['overspeed_events'] ?? 0),
-                    'total_duration_seconds' => max(0, (int) ($stats['total_duration_seconds'] ?? 0)),
-                    'stop_count' => (int) ($stats['stop_count'] ?? 0),
-                ],
-                'timeline' => $stats['timeline'] ?? [],
-                'used_fallback' => $result['used_fallback'],
-                'fallback_reason' => $result['fallback_reason'],
-                'events' => $events,
-                'history_events' => $historyEvents,
-                'point_count' => $locations->count(),
-                'display_point_count' => count($points),
-            ], $device->mapAppearancePayload());
+            $vehicles[] = array_merge($bundle, [
+                'used_fallback' => $fetch['used_fallback'],
+                'fallback_reason' => $fetch['fallback_reason'],
+            ]);
         }
 
         return $vehicles;

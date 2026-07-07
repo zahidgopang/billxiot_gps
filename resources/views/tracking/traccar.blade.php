@@ -719,6 +719,16 @@
             max-width: min(960px, calc(100% - 20px));
             margin-inline: auto;
         }
+        .tc-map-area > .route-trip-bar.route-trip-bar--footer:not(.is-user-positioned) {
+            position: absolute;
+            bottom: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 6;
+            width: min(960px, calc(100% - 20px));
+            max-width: calc(100% - 20px);
+            pointer-events: auto;
+        }
         .tc-map-route-footer .route-trip-bar {
             position: static;
             top: auto;
@@ -727,6 +737,43 @@
             width: 100%;
             pointer-events: auto;
         }
+        .map-panel-drag-grip {
+            flex-shrink: 0;
+            width: 24px;
+            height: 28px;
+            margin: 0;
+            padding: 0;
+            border: none;
+            border-radius: 8px;
+            background: transparent;
+            color: #94a3b8;
+            cursor: grab;
+            touch-action: none;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .map-panel-drag-grip:hover {
+            color: #64748b;
+            background: rgba(148, 163, 184, 0.16);
+        }
+        .map-panel-drag-grip:active { cursor: grabbing; }
+        .map-panel-drag-grip--route {
+            width: 20px;
+            height: 22px;
+            margin-inline-end: 4px;
+        }
+        .route-trip-bar.is-user-positioned {
+            margin: 0;
+            transform: none !important;
+            z-index: 1205;
+        }
+        .route-trip-bar.is-dragging {
+            z-index: 1206;
+            box-shadow: 0 18px 48px rgba(15, 23, 42, 0.22);
+            opacity: 0.97;
+        }
+        .route-trip-bar__head .map-panel-drag-grip { align-self: flex-start; }
         .route-trip-bar {
             position: absolute;
             top: var(--tc-chrome-top, 12px);
@@ -1305,7 +1352,20 @@
         }
         .tc-legend:empty { display: none; }
         .tc-legend .tc-legend-item { display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.2rem; }
+        .tc-legend .tc-legend-item--heading { margin-top: 0.35rem; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--tc-text-muted); }
         .tc-legend .tc-legend-swatch { width: 14px; height: 14px; border-radius: 3px; }
+        .tc-legend .tc-legend-pin {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 16px;
+            height: 16px;
+            border-radius: 999px;
+            color: #fff;
+            font-size: 0.58rem;
+            font-weight: 800;
+            line-height: 1;
+        }
 
         .tc-map-error {
             position: absolute;
@@ -1712,6 +1772,127 @@
             height: 100dvh;
             max-height: 100dvh;
         }
+
+        /* History progressive load banner */
+        .map-history-load-banner {
+            position: absolute;
+            top: 12px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 12;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            justify-content: center;
+            max-width: min(96vw, 720px);
+            pointer-events: none;
+        }
+        .map-history-load-banner[hidden] { display: none !important; }
+        .map-history-load-banner__item {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 5px 10px;
+            border-radius: 999px;
+            background: rgba(15, 23, 42, 0.88);
+            color: #e2e8f0;
+            font-size: 0.72rem;
+            font-weight: 600;
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(148, 163, 184, 0.25);
+        }
+        .map-history-load-banner__item[data-state="done"] {
+            background: rgba(22, 101, 52, 0.9);
+            border-color: rgba(74, 222, 128, 0.35);
+        }
+        .map-history-load-banner__icon.is-spinning i { animation: tc-spin 0.8s linear infinite; }
+        .map-history-load-banner__icon.is-done::before { content: '✓'; margin-right: 2px; }
+        .map-history-load-banner__icon.is-done i { display: none; }
+        @keyframes tc-spin { to { transform: rotate(360deg); } }
+
+        /* Virtualized history event list */
+        .tc-hist-virtual-host {
+            position: relative;
+            overflow: auto;
+            max-height: 42vh;
+        }
+        .tc-hist-virtual__spacer { position: relative; width: 100%; }
+        .tc-hist-virtual__viewport {
+            position: absolute;
+            left: 0;
+            right: 0;
+            top: 0;
+        }
+
+        /* Route playback panel */
+        .playback-panel {
+            position: absolute;
+            left: 50%;
+            bottom: max(16px, env(safe-area-inset-bottom));
+            transform: translateX(-50%) translateY(120%);
+            width: min(560px, calc(100% - 24px));
+            z-index: 1100;
+            opacity: 0;
+            visibility: hidden;
+            pointer-events: none;
+            transition: transform 0.35s ease, opacity 0.25s ease, visibility 0.25s;
+        }
+        .playback-panel.active {
+            transform: translateX(-50%) translateY(0);
+            opacity: 1;
+            visibility: visible;
+            pointer-events: auto;
+        }
+        .playback-panel__inner {
+            background: linear-gradient(145deg, #ffffff 0%, #f8fafc 100%);
+            border: 1px solid var(--tc-border, #e2e8f0);
+            border-radius: 14px;
+            box-shadow: 0 12px 40px rgba(15, 23, 42, 0.18);
+            padding: 14px 16px 16px;
+        }
+        .playback-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+        .playback-header__left { display: flex; align-items: center; gap: 10px; min-width: 0; }
+        .playback-badge {
+            width: 40px; height: 40px; border-radius: 12px;
+            background: linear-gradient(135deg, #2563eb, #3b82f6);
+            color: #fff; display: flex; align-items: center; justify-content: center;
+        }
+        .playback-title { margin: 0; font-size: 0.92rem; font-weight: 700; color: #0f172a; }
+        .playback-subtitle { margin: 2px 0 0; font-size: 0.72rem; color: #64748b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .playback-close {
+            width: 34px; height: 34px; border: none; border-radius: 10px;
+            background: #f1f5f9; color: #64748b; cursor: pointer;
+        }
+        .playback-progress {
+            position: relative; height: 8px; background: #e2e8f0; border-radius: 999px; cursor: pointer;
+        }
+        .playback-progress-bar {
+            position: absolute; inset: 0 auto 0 0; width: 0;
+            background: linear-gradient(90deg, #2563eb, #3b82f6); border-radius: 999px;
+        }
+        .playback-progress-thumb {
+            position: absolute; top: 50%; width: 14px; height: 14px;
+            border-radius: 50%; background: #fff; border: 2px solid #2563eb;
+            transform: translate(-50%, -50%); pointer-events: none;
+        }
+        .playback-time-row { display: flex; justify-content: space-between; font-size: 0.72rem; color: #64748b; margin-top: 6px; }
+        .playback-stats-row { display: flex; gap: 16px; margin: 10px 0; font-size: 0.8rem; color: #334155; }
+        .playback-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+        .playback-transport { display: flex; gap: 6px; align-items: center; }
+        .playback-btn {
+            width: 36px; height: 36px; border-radius: 10px; border: 1px solid #e2e8f0;
+            background: #fff; color: #334155; cursor: pointer;
+        }
+        .playback-btn--primary { background: #2563eb; border-color: #2563eb; color: #fff; width: 42px; height: 42px; }
+        .playback-speed-group { display: flex; align-items: center; gap: 8px; }
+        .playback-speed-pills { display: flex; gap: 4px; }
+        .speed-btn {
+            border: 1px solid #e2e8f0; background: #fff; border-radius: 8px;
+            padding: 4px 8px; font-size: 0.72rem; cursor: pointer;
+        }
+        .speed-btn.active { background: #2563eb; color: #fff; border-color: #2563eb; }
+        .tc-map-area.tc-playback-open > .route-trip-bar--footer:not(.is-user-positioned) { bottom: 130px; }
+        .tc-map-area.tc-playback-open .tc-map-route-footer { margin-bottom: 120px; }
     </style>
 @endpush
 
@@ -1939,7 +2120,7 @@
             @endif
 
             <div class="tc-map-wrap">
-                <div class="tc-map-area tc-map-area--dark-panels">
+                <div class="tc-map-area tc-map-area--dark-panels" id="mapArea">
                     <div class="tc-map-overlay--start">
                         <div id="tcCompanyMapCard" class="tc-info-card tc-company-card is-open" hidden aria-live="polite">
                             <button type="button" class="tc-info-card__collapse" id="tcCompanyMapCardToggle" aria-expanded="true" aria-label="{{ __('app.tracking.company_map_collapse') }}" data-collapsed-label="{{ __('app.tracking.company_map_card_title') }}">
@@ -2010,8 +2191,81 @@
                         </div>
                     </div>
                     <div id="tcMap" aria-label="{{ __('app.tracking.live_map_aria') }}"></div>
+                    @if(! empty($ui['route_progress']))
+                    <div id="routeTripProgressBar" class="route-trip-bar route-trip-bar--footer" hidden aria-live="polite"></div>
+                    @endif
                     <div id="tcVehicleMapPopupHost" aria-live="polite" aria-label="Vehicle details"></div>
                     <div id="tcLegend" class="tc-legend"></div>
+                    <div class="map-history-load-banner" id="tcHistoryLoadBanner" hidden aria-live="polite">
+                        <div class="map-history-load-banner__item" data-load="route" data-state="idle">
+                            <span class="map-history-load-banner__icon"><i class="fas fa-route" aria-hidden="true"></i></span>
+                            <span class="map-history-load-banner__label">{{ __('app.map.loading_route') }}</span>
+                        </div>
+                        <div class="map-history-load-banner__item" data-load="stats" data-state="idle">
+                            <span class="map-history-load-banner__icon"><i class="fas fa-chart-line" aria-hidden="true"></i></span>
+                            <span class="map-history-load-banner__label">{{ __('app.map.loading_statistics') }}</span>
+                        </div>
+                        <div class="map-history-load-banner__item" data-load="stops" data-state="idle">
+                            <span class="map-history-load-banner__icon"><i class="fas fa-parking" aria-hidden="true"></i></span>
+                            <span class="map-history-load-banner__label">{{ __('app.map.loading_stops') }}</span>
+                        </div>
+                        <div class="map-history-load-banner__item" data-load="events" data-state="idle">
+                            <span class="map-history-load-banner__icon"><i class="fas fa-bolt" aria-hidden="true"></i></span>
+                            <span class="map-history-load-banner__label">{{ __('app.map.loading_events') }}</span>
+                        </div>
+                        <div class="map-history-load-banner__item" data-load="timeline" data-state="idle">
+                            <span class="map-history-load-banner__icon"><i class="fas fa-stream" aria-hidden="true"></i></span>
+                            <span class="map-history-load-banner__label">{{ __('app.map.loading_timeline') }}</span>
+                        </div>
+                    </div>
+                    <div class="playback-panel" id="tcPlaybackPanel">
+                        <div class="playback-panel__inner">
+                            <header class="playback-header">
+                                <div class="playback-header__left">
+                                    <span class="playback-badge"><i class="fas fa-route"></i></span>
+                                    <div>
+                                        <h6 class="playback-title">{{ __('app.map.route_playback') }}</h6>
+                                        <p class="playback-subtitle" id="tcPlaybackSubtitle">{{ __('app.map.load_history') }}</p>
+                                    </div>
+                                </div>
+                                <button type="button" class="playback-close" id="tcPlaybackClose" aria-label="{{ __('app.map.playback_close') }}">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </header>
+                            <div class="playback-timeline">
+                                <div class="playback-progress" id="tcPlaybackProgress" role="slider" aria-label="{{ __('app.map.playback_position') }}">
+                                    <div class="playback-progress-bar" id="tcPlaybackProgressBar"></div>
+                                    <div class="playback-progress-thumb" id="tcPlaybackProgressThumb"></div>
+                                </div>
+                                <div class="playback-time-row">
+                                    <span id="tcPlaybackTimeCurrent">00:00</span>
+                                    <span id="tcPlaybackTimeTotal">00:00</span>
+                                </div>
+                            </div>
+                            <div class="playback-stats-row">
+                                <div class="playback-stat"><i class="fas fa-tachometer-alt"></i> <span><span id="tcPbLiveSpeed">0</span> km/h</span></div>
+                                <div class="playback-stat"><i class="fas fa-location-dot"></i> <span><span id="tcPbPointIndex">0</span> / <span id="tcPbPointTotal">0</span></span></div>
+                            </div>
+                            <div class="playback-toolbar">
+                                <div class="playback-transport">
+                                    <button type="button" class="playback-btn playback-btn--ghost" id="tcPbStepBack" title="{{ __('app.map.step_back') }}"><i class="fas fa-step-backward"></i></button>
+                                    <button type="button" class="playback-btn playback-btn--ghost" id="tcPbRewind" title="{{ __('app.map.restart') }}"><i class="fas fa-rotate-left"></i></button>
+                                    <button type="button" class="playback-btn playback-btn--primary" id="tcPbPlayPause" title="{{ __('app.map.play') }}"><i class="fas fa-play" id="tcPbPlayPauseIcon"></i></button>
+                                    <button type="button" class="playback-btn playback-btn--ghost" id="tcPbStepForward" title="{{ __('app.map.step_forward') }}"><i class="fas fa-step-forward"></i></button>
+                                    <button type="button" class="playback-btn playback-btn--ghost" id="tcPbStop" title="{{ __('app.map.stop') }}"><i class="fas fa-stop"></i></button>
+                                </div>
+                                <div class="playback-speed-group">
+                                    <span class="playback-speed-label">{{ __('app.map.speed_label') }}</span>
+                                    <div class="playback-speed-pills">
+                                        <button type="button" class="speed-btn active" data-tc-speed="1">1×</button>
+                                        <button type="button" class="speed-btn" data-tc-speed="2">2×</button>
+                                        <button type="button" class="speed-btn" data-tc-speed="4">4×</button>
+                                        <button type="button" class="speed-btn" data-tc-speed="8">8×</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                     <div id="tcMapError" class="tc-map-error" hidden>
                         <div class="alert alert-danger mb-0">
                             <span data-tc-error-text>{{ __('app.map.loading_map_failed') }}</span>
@@ -2121,14 +2375,14 @@
                             <i class="fas fa-camera"></i>
                         </button>
                         @endif
+                        @if(! empty($tabPerms['history']))
+                        <button type="button" class="btn btn-light" data-tc-playback title="{{ __('app.map.open_playback') }}" disabled>
+                            <i class="fas fa-play"></i>
+                        </button>
+                        @endif
                     </div>
                     @endif
                     </div>
-                    @if(! empty($ui['route_progress']))
-                    <div class="tc-map-route-footer">
-                        <div id="routeTripProgressBar" class="route-trip-bar route-trip-bar--footer" hidden aria-live="polite"></div>
-                    </div>
-                    @endif
                 </div>
 
                 @if(! empty($ui['vehicle_footer']))
@@ -2185,6 +2439,9 @@
             googleMapsMapId: @json(config('services.google.maps_map_id')),
             liveJsonUrl: @json(route($routes['liveJson'])),
             historyJsonUrl: @json(route($routes['historyJson'])),
+            historyPointsJsonUrl: @json(Route::has($routes['historyPoints'] ?? '') ? route($routes['historyPoints']) : null),
+            historyAnalyticsJsonUrl: @json(Route::has($routes['historyAnalytics'] ?? '') ? route($routes['historyAnalytics']) : null),
+            historyWorkerUrl: @json(asset('js/history-map-worker.js')),
             eventsJsonUrl: @json(Route::has($routes['eventsJson']) ? route($routes['eventsJson']) : null),
             geofencesJsonUrl: @json(Route::has($routes['geofencesJson']) ? route($routes['geofencesJson']) : null),
             devicePanelUrl: @json(Route::has($routes['devicePanel']) ? route($routes['devicePanel']) : null),
@@ -2223,6 +2480,21 @@
                 ignitionOff: @json(__('app.map.ignition_off')),
                 routeStart: @json(__('app.map.route_start')),
                 routeEnd: @json(__('app.map.route_end')),
+                loadingRoute: @json(__('app.map.loading_route')),
+                loadingStatistics: @json(__('app.map.loading_statistics')),
+                loadingTimeline: @json(__('app.map.loading_timeline')),
+                loadingEvents: @json(__('app.map.loading_events')),
+                loadingStops: @json(__('app.map.loading_stops')),
+                routeLoaded: @json(__('app.map.route_loaded')),
+                statisticsLoaded: @json(__('app.map.statistics_loaded')),
+                timelineLoaded: @json(__('app.map.timeline_loaded')),
+                eventsLoaded: @json(__('app.map.events_loaded')),
+                stopsLoaded: @json(__('app.map.stops_loaded')),
+                playRoute: @json(__('app.map.play_route')),
+                loadHistoryPlayback: @json(__('app.map.load_history')),
+                loadHistoryFirst: @json(__('app.map.load_history')),
+                playbackFinished: @json(__('app.map.playback_finished')),
+                noPlaybackData: @json(__('app.map.no_playback_data')),
                 noData: @json(__('app.tracking.no_data')),
                 noStops: @json(__('app.tracking.no_stops')),
                 parkingStops: @json(__('app.tracking.parking_stops')),
@@ -2232,6 +2504,14 @@
                 lblArrived: @json(__('app.tracking.lbl_arrived')),
                 lblDeparted: @json(__('app.tracking.lbl_departed')),
                 lblDuration: @json(__('app.tracking.lbl_duration')),
+                lblAddress: @json(__('app.tracking.lbl_address')),
+                addressLoading: @json(__('app.map.address_loading')),
+                addressUnavailable: @json(__('app.map.address_not_found')),
+                statusParking: @json(__('app.map.timeline_parked')),
+                statusIdle: @json(__('app.map.timeline_idle')),
+                statusStopped: @json(__('app.map.status_stopped')),
+                statusOffline: @json(__('app.map.status_offline')),
+                historyMarkers: @json(__('app.tracking.history_status_markers')),
                 colShow: @json(__('app.tracking.col_show')),
                 colFollow: @json(__('app.tracking.col_follow')),
                 ftData: @json(__('app.tracking.ft_data')),
@@ -2359,6 +2639,8 @@
                 routeNavSlightDeviation: @json(__('app.routes.nav_slight_deviation')),
                 routeNavDestinationReached: @json(__('app.routes.nav_destination_reached')),
                 routeOffRouteBadge: @json(__('app.routes.off_route_badge')),
+                dragPanel: @json(__('app.map.drag_panel_position')),
+                resetPanelPosition: @json(__('app.map.reset_panel_position')),
             },
         };
     </script>
@@ -2366,8 +2648,12 @@
     @include('partials.google-maps-platform')
     <script src="{{ protected_js('vehicle-marker.js') }}"></script>
     <script src="{{ protected_js('fleet-map-cluster.js') }}"></script>
+    <script src="{{ protected_js('polyline-simplify.js') }}"></script>
     <script src="{{ protected_js('history-analytics.js') }}"></script>
+    <script src="{{ protected_js('fleet-map-renderer.js') }}"></script>
+    <script src="{{ protected_js('history-map-processor.js') }}"></script>
     <script src="{{ protected_js('route-trip-progress.js') }}"></script>
+    <script src="{{ protected_js('map-panel-position.js') }}"></script>
     <script src="{{ protected_js('vehicle-map-popup.js') }}"></script>
     <script src="{{ protected_js('tracking-traccar.js') }}"></script>
 @endpush

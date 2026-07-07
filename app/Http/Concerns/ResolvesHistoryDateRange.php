@@ -26,7 +26,16 @@ trait ResolvesHistoryDateRange
                 ? $this->parseHistoryDate($toInput, $tz, false)
                 : $from->copy()->endOfDay();
 
-            return HistoryRangeBounds::normalize($from, $to);
+            if ($this->isDateOnlyInput($fromInput)
+                && ($toInput === '' || $this->isDateOnlyInput($toInput))) {
+                return HistoryRangeBounds::normalize($from, $to);
+            }
+
+            if ($to->lessThan($from)) {
+                [$from, $to] = [$to->copy(), $from->copy()];
+            }
+
+            return ['from' => $from, 'to' => $to];
         }
 
         return [

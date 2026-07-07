@@ -21,9 +21,14 @@ class DeviceHistoryFetcher
     public function fetch(Device $device, \Carbon\Carbon $from, ?\Carbon\Carbon $to, bool $explicitRange, bool $allowFallback = true): array
     {
         if ($to !== null) {
-            $normalized = HistoryRangeBounds::normalize($from, $to);
-            $from = $normalized['from'];
-            $to = $normalized['to'];
+            if (HistoryRangeBounds::isCalendarDayStart($from)
+                && HistoryRangeBounds::isCalendarDayEnd($to)) {
+                $normalized = HistoryRangeBounds::normalize($from, $to);
+                $from = $normalized['from'];
+                $to = $normalized['to'];
+            } elseif ($to->lessThan($from)) {
+                [$from, $to] = [$to->copy(), $from->copy()];
+            }
         }
 
         $locations = $this->positions->historyForDevice($device, $from, $to, 'asc');

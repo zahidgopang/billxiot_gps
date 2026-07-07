@@ -58,10 +58,29 @@ class UserController extends Controller
     {
         $user = auth()->user();
 
-        return view('user.profile', array_merge(
-            $dashboard->getProfileStats($user),
-            ['user' => $user]
-        ));
+        try {
+            $payload = array_merge(
+                $dashboard->getProfileStats($user),
+                ['user' => $user],
+            );
+        } catch (\Throwable $e) {
+            report($e);
+
+            $payload = array_merge(
+                $dashboard->getDevicePageStats(collect()),
+                [
+                    'user' => $user,
+                    'totalDistanceKm' => 0,
+                    'activeAlerts' => 0,
+                    'trackingDaysActive' => 0,
+                    'geofenceCount' => 0,
+                    'memberDays' => max(1, $user->created_at?->diffInDays(now()) ?? 1),
+                    'activities' => collect(),
+                ],
+            );
+        }
+
+        return view('user.profile', $payload);
     }
 
     public function updateProfile(Request $req, UserAvatarService $avatars)

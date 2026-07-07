@@ -164,6 +164,7 @@ Route::middleware(['auth', 'user.active', 'tracker.access'])->group(function () 
         Route::get('/', [UserDevicesController::class, 'index'])->name('index');
         Route::get('/fleet-map', [UserDevicesController::class, 'fleetMap'])->name('fleet-map');
         Route::get('/fleet-map/live-json', [UserDevicesController::class, 'fleetMapLiveJson'])->name('fleet-map.live-json');
+        Route::post('/{device}/vehicle-label', [UserDevicesController::class, 'updateVehicleLabel'])->name('vehicle-label');
         Route::post('/{device}/map-appearance', [UserDevicesController::class, 'updateMapAppearance'])->name('map-appearance');
         Route::post('/{device}/map-custom-icon', [UserDevicesController::class, 'uploadMapCustomIcon'])->name('map-custom-icon');
         Route::delete('/{device}/map-custom-icon', [UserDevicesController::class, 'deleteMapCustomIcon'])->name('map-custom-icon.delete');

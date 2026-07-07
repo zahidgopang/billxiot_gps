@@ -7,6 +7,7 @@ use App\Services\DeviceSubscriptionService;
 use App\Services\FleetMapDeviceService;
 use App\Services\Mobile\MapRenderingSpec;
 use App\Services\Tracking\DeviceMapAppearanceService;
+use App\Services\Tracking\UserDeviceLabelService;
 use App\Services\Traccar\TraccarTrackingGate;
 use App\Services\Tracking\DevicePositionLoader;
 use App\Services\UserDashboardService;
@@ -185,6 +186,33 @@ class UserDevicesController extends Controller
             'devices' => $devicesPayload,
             'stats' => $dashboard->getDevicePageStats($devices),
         ])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+    }
+
+    public function updateVehicleLabel(Request $request, Device $device): JsonResponse
+    {
+        $user = Auth::user();
+
+        try {
+            $labels = app(UserDeviceLabelService::class)->update(
+                $user,
+                $device,
+                $request->only(['vehicle_name', 'vehicle_number'])
+            );
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            $status = collect($e->errors())->has('device') ? 404 : 422;
+
+            return response()->json([
+                'success' => false,
+                'message' => collect($e->errors())->flatten()->first() ?: __('app.user.devices.vehicle_label_save_failed'),
+                'errors' => $e->errors(),
+            ], $status);
+        }
+
+        return response()->json([
+            'success' => true,
+            'labels' => $labels,
+            'message' => __('app.user.devices.vehicle_label_saved'),
+        ]);
     }
 
     public function updateMapAppearance(Request $request, Device $device): JsonResponse

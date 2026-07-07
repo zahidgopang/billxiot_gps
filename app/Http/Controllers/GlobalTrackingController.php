@@ -365,6 +365,111 @@ class GlobalTrackingController extends Controller
         ]);
     }
 
+    public function historyPointsJson(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        $ids = $this->tracking->filterAllowedIds($user, $this->parseTrackingIdList($request));
+
+        if ($ids === []) {
+            return $this->noStoreJson(['vehicles' => [], 'message' => 'No devices selected']);
+        }
+
+        $range = $this->resolveGlobalHistoryRange($request);
+        $history = app(\App\Services\Tracking\GlobalTrackingHistoryService::class);
+        $multi = count($ids) > 1;
+        $vehicles = [];
+        $colorIndex = 0;
+
+        foreach ($ids as $id) {
+            $device = \App\Models\Device::query()->find($id);
+            if (! $device) {
+                continue;
+            }
+
+            $fetch = $history->fetchLocations($device, $range['from'], $range['to']);
+            $locations = $fetch['locations'];
+            if ($locations->isEmpty()) {
+                continue;
+            }
+
+            $points = $history->formatMapPoints($locations);
+            $vehicles[] = array_merge([
+                'id' => $device->id,
+                'name' => $device->mapMarkerTitle(),
+                'title' => $device->mapMarkerTitle(),
+                'plate' => $device->mapMarkerPlateLine() ?? $device->vehiclePlateNumber(),
+                'color' => $multi
+                    ? GlobalTrackingService::MULTI_VEHICLE_COLORS[$colorIndex++ % count(GlobalTrackingService::MULTI_VEHICLE_COLORS)]
+                    : null,
+                'points' => $points,
+                'point_count' => $locations->count(),
+                'display_point_count' => count($points),
+                'used_fallback' => $fetch['used_fallback'],
+                'fallback_reason' => $fetch['fallback_reason'],
+            ], $device->mapAppearancePayload());
+        }
+
+        return $this->noStoreJson([
+            'vehicles' => $vehicles,
+            'from' => $range['from']->toIso8601String(),
+            'to' => $range['to']?->toIso8601String(),
+        ]);
+    }
+
+    public function historyAnalyticsJson(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        $ids = $this->tracking->filterAllowedIds($user, $this->parseTrackingIdList($request));
+
+        if ($ids === []) {
+            return $this->noStoreJson(['vehicles' => [], 'message' => 'No devices selected']);
+        }
+
+        $range = $this->resolveGlobalHistoryRange($request);
+        $history = app(\App\Services\Tracking\GlobalTrackingHistoryService::class);
+        $multi = count($ids) > 1;
+        $vehicles = [];
+        $colorIndex = 0;
+
+        foreach ($ids as $id) {
+            $device = \App\Models\Device::query()->find($id);
+            if (! $device) {
+                continue;
+            }
+
+            $fetch = $history->fetchLocations($device, $range['from'], $range['to']);
+            $locations = $fetch['locations'];
+            if ($locations->isEmpty()) {
+                continue;
+            }
+
+            $bundle = $history->analyticsBundle($device, $locations, $range['from'], $range['to']);
+
+            $vehicles[] = array_merge([
+                'id' => $device->id,
+                'name' => $device->mapMarkerTitle(),
+                'title' => $device->mapMarkerTitle(),
+                'plate' => $device->mapMarkerPlateLine() ?? $device->vehiclePlateNumber(),
+                'color' => $multi
+                    ? GlobalTrackingService::MULTI_VEHICLE_COLORS[$colorIndex++ % count(GlobalTrackingService::MULTI_VEHICLE_COLORS)]
+                    : null,
+                'stats' => $bundle['stats'],
+                'timeline' => $bundle['timeline'],
+                'events' => $bundle['events'],
+                'history_events' => $bundle['events'],
+                'point_count' => $locations->count(),
+                'used_fallback' => $fetch['used_fallback'],
+                'fallback_reason' => $fetch['fallback_reason'],
+            ], $device->mapAppearancePayload());
+        }
+
+        return $this->noStoreJson([
+            'vehicles' => $vehicles,
+            'from' => $range['from']->toIso8601String(),
+            'to' => $range['to']?->toIso8601String(),
+        ]);
+    }
+
     /**
      * @return array{from: Carbon, to: Carbon|null}
      */
@@ -386,7 +491,23 @@ class GlobalTrackingController extends Controller
             ? $this->parseHistoryDateTime($toInput, $tz, false)
             : $from->copy()->endOfDay();
 
-        return \App\Support\Tracking\HistoryRangeBounds::normalize($from, $to);
+        if ($this->isDateOnlyHistoryInput($fromInput)
+            && ($toInput === '' || $this->isDateOnlyHistoryInput($toInput))) {
+            return \App\Support\Tracking\HistoryRangeBounds::normalize($from, $to);
+        }
+
+        if ($to->lessThan($from)) {
+            [$from, $to] = [$to->copy(), $from->copy()];
+        }
+
+        return ['from' => $from, 'to' => $to];
+    }
+
+    private function isDateOnlyHistoryInput(string $value): bool
+    {
+        $value = str_replace('T', ' ', trim($value));
+
+        return (bool) preg_match('/^\d{4}-\d{2}-\d{2}$/', $value);
     }
 
     private function parseHistoryDateTime(string $value, string $tz, bool $start): Carbon
@@ -422,6 +543,8 @@ class GlobalTrackingController extends Controller
             'liveJson' => 'tracking.live-json',
             'history' => 'tracking.history',
             'historyJson' => 'tracking.history-json',
+            'historyPoints' => 'tracking.history-points-json',
+            'historyAnalytics' => 'tracking.history-analytics-json',
             'eventsJson' => 'tracking.events.json',
             'geofencesJson' => 'tracking.geofences.json',
             'devicePanel' => 'tracking.device-panel',

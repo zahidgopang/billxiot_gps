@@ -1,5 +1,5 @@
 <div class="activity-list">
-    @forelse($activities as $activity)
+    @forelse(($activities ?? []) as $activity)
         <div class="activity-card">
             <div class="d-flex">
                 <div class="activity-icon me-3" style="background: {{ $activity['gradient'] ?? 'rgba(25, 118, 210, 0.1)' }}; color: #fff;">

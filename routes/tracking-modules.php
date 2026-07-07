@@ -36,6 +36,8 @@ return function (): void {
     Route::middleware('permission:web.history.view')->group(function (): void {
         Route::get('/history', [GlobalTrackingController::class, 'history'])->name('history');
         Route::get('/history-json', [GlobalTrackingController::class, 'historyJson'])->name('history-json');
+        Route::get('/history-points-json', [GlobalTrackingController::class, 'historyPointsJson'])->name('history-points-json');
+        Route::get('/history-analytics-json', [GlobalTrackingController::class, 'historyAnalyticsJson'])->name('history-analytics-json');
     });
 
     Route::prefix('reports')->name('reports.')->middleware('permission:web.reports.view')->group(function () {

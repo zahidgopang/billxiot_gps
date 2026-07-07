@@ -169,7 +169,7 @@
                         @endphp
                         <tr class="device-row" data-device-id="{{ $d->id }}" data-imei="{{ $d->imei }}"
                             data-search="{{ strtolower(($d->vehicle_name ?? '') . ' ' . ($d->vehicle_number ?? '') . ' ' . $d->name . ' ' . $d->imei . ' ' . ($d->vehicle_model ?? '')) }}">
-                            <td>
+                            <td data-field="vehicle-identity">
                                 <div class="d-flex align-items-center">
                                     <div class="device-icon me-3">
                                         <i class="fas {{ $d->deviceTypeIconClass() }} fa-lg" style="color: var(--primary-blue);"></i>
@@ -178,6 +178,8 @@
                                         <span class="vehicle-list-name">{{ $d->listPrimaryLabel() }}</span>
                                         @if($secondary = $d->listSecondaryLabel())
                                             <span class="vehicle-list-plate"><x-admin.ltr>{{ $secondary }}</x-admin.ltr></span>
+                                        @else
+                                            <span class="vehicle-list-plate d-none"></span>
                                         @endif
                                     </div>
                                 </div>
@@ -214,6 +216,15 @@
                             </td>
                             <td>
                                 <div class="d-flex justify-content-end gap-2">
+                                    <button type="button"
+                                            class="btn btn-outline-premium btn-sm btn-edit-vehicle"
+                                            data-device-id="{{ $d->id }}"
+                                            data-vehicle-name="{{ $d->vehicle_name ?? '' }}"
+                                            data-vehicle-number="{{ $d->vehicle_number ?? '' }}"
+                                            data-update-url="{{ route('user.devices.vehicle-label', $d) }}"
+                                            title="{{ __('app.user.devices.edit_vehicle') }}">
+                                        <i class="fas fa-pen me-1"></i> {{ __('app.user.devices.edit_vehicle') }}
+                                    </button>
                                     @if($canTrack)
                                         <a href="{{ $d->launchMapRoute() }}" class="btn btn-premium btn-sm">
                                             <i class="fas fa-map-marked-alt me-1"></i> {{ __('app.user.devices.track') }}
@@ -228,7 +239,7 @@
                         </tr>
                     @empty
                         <tr id="noDevicesRow">
-                            <td colspan="8">
+                            <td colspan="9">
                                 <div class="text-center py-5">
                                     <div class="mb-3">
                                         <i class="fas fa-satellite fa-4x text-muted opacity-25"></i>
@@ -246,6 +257,41 @@
 
     </div>
 
+    <div class="modal fade" id="editVehicleModal" tabindex="-1" aria-labelledby="editVehicleModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <form id="editVehicleForm" novalidate>
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="editVehicleModalLabel">{{ __('app.user.devices.edit_vehicle_modal_title') }}</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="{{ __('app.map.close_panel') }}"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p class="text-muted small mb-3">{{ __('app.user.devices.edit_vehicle_modal_hint') }}</p>
+                        <div class="alert alert-danger d-none" id="editVehicleError" role="alert"></div>
+                        <div class="mb-3">
+                            <label for="editVehicleName" class="form-label">{{ __('app.forms.vehicle_name') }}</label>
+                            <input type="text" class="form-control" id="editVehicleName" name="vehicle_name" maxlength="120"
+                                   placeholder="{{ __('app.forms.vehicle_name_placeholder') }}">
+                            <div class="form-text">{{ __('app.forms.vehicle_name_hint') }}</div>
+                        </div>
+                        <div class="mb-0">
+                            <label for="editVehicleNumber" class="form-label">{{ __('app.forms.vehicle_number') }}</label>
+                            <input type="text" class="form-control admin-ltr" dir="ltr" id="editVehicleNumber" name="vehicle_number" maxlength="40"
+                                   placeholder="{{ __('app.forms.vehicle_number_placeholder') }}">
+                            <div class="form-text">{{ __('app.forms.vehicle_number_hint') }}</div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-outline-premium" data-bs-dismiss="modal">{{ __('app.common.cancel') }}</button>
+                        <button type="submit" class="btn btn-premium" id="editVehicleSaveBtn">
+                            <i class="fas fa-save me-1"></i> {{ __('app.common.save') }}
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
 @endsection
 
 @push('scripts')
@@ -256,6 +302,12 @@
             dash: @json(__('app.map.dash')),
             noData: @json(__('app.user.devices.no_data_yet')),
             kmh: @json(__('app.map.kmh_unit')),
+        };
+        window.USER_DEVICES_EDIT = {
+            saving: @json(__('app.user.devices.saving')),
+            save: @json(__('app.common.save')),
+            saved: @json(__('app.user.devices.vehicle_label_saved')),
+            failed: @json(__('app.user.devices.vehicle_label_save_failed')),
         };
     </script>
     <script src="{{ protected_js('user-devices-live.js') }}"></script>
@@ -284,6 +336,121 @@
                 deviceSearch.value = globalSearch.value;
                 runFilter();
             }
+
+            const editModalEl = document.getElementById('editVehicleModal');
+            const editForm = document.getElementById('editVehicleForm');
+            if (!editModalEl || !editForm || typeof bootstrap === 'undefined') {
+                return;
+            }
+
+            const editModal = new bootstrap.Modal(editModalEl);
+            const nameInput = document.getElementById('editVehicleName');
+            const numberInput = document.getElementById('editVehicleNumber');
+            const errorBox = document.getElementById('editVehicleError');
+            const saveBtn = document.getElementById('editVehicleSaveBtn');
+            const i18n = window.USER_DEVICES_EDIT || {};
+            let activeRow = null;
+            let updateUrl = '';
+
+            const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+
+            document.querySelectorAll('.btn-edit-vehicle').forEach((btn) => {
+                btn.addEventListener('click', function () {
+                    activeRow = btn.closest('.device-row');
+                    updateUrl = btn.getAttribute('data-update-url') || '';
+                    nameInput.value = btn.getAttribute('data-vehicle-name') || '';
+                    numberInput.value = btn.getAttribute('data-vehicle-number') || '';
+                    errorBox.classList.add('d-none');
+                    errorBox.textContent = '';
+                    editModal.show();
+                });
+            });
+
+            editForm.addEventListener('submit', async function (event) {
+                event.preventDefault();
+                if (!updateUrl) {
+                    return;
+                }
+
+                errorBox.classList.add('d-none');
+                errorBox.textContent = '';
+                saveBtn.disabled = true;
+                const originalHtml = saveBtn.innerHTML;
+                saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> ' + (i18n.saving || 'Saving...');
+
+                try {
+                    const response = await fetch(updateUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': csrf,
+                            'X-Requested-With': 'XMLHttpRequest',
+                        },
+                        body: JSON.stringify({
+                            vehicle_name: nameInput.value.trim(),
+                            vehicle_number: numberInput.value.trim(),
+                        }),
+                    });
+
+                    const payload = await response.json().catch(() => ({}));
+
+                    if (!response.ok || !payload.success) {
+                        const message = payload.message || i18n.failed || 'Could not save vehicle details.';
+                        errorBox.textContent = message;
+                        errorBox.classList.remove('d-none');
+                        return;
+                    }
+
+                    const labels = payload.labels || {};
+                    const deviceId = activeRow?.getAttribute('data-device-id');
+
+                    if (activeRow) {
+                        const nameEl = activeRow.querySelector('.vehicle-list-name');
+                        const plateEl = activeRow.querySelector('.vehicle-list-plate');
+                        if (nameEl) {
+                            nameEl.textContent = labels.primary_label || nameInput.value.trim();
+                        }
+                        if (plateEl) {
+                            const plate = labels.secondary_label || numberInput.value.trim();
+                            if (plate) {
+                                plateEl.textContent = plate;
+                                plateEl.classList.remove('d-none');
+                            } else {
+                                plateEl.textContent = '';
+                                plateEl.classList.add('d-none');
+                            }
+                        }
+
+                        const imei = activeRow.getAttribute('data-imei') || '';
+                        activeRow.setAttribute(
+                            'data-search',
+                            [
+                                labels.vehicle_name || nameInput.value.trim(),
+                                labels.vehicle_number || numberInput.value.trim(),
+                                imei,
+                            ].join(' ').toLowerCase()
+                        );
+                        activeRow.classList.add('row-updated');
+                        window.setTimeout(() => activeRow.classList.remove('row-updated'), 1200);
+                    }
+
+                    document.querySelectorAll('.btn-edit-vehicle').forEach((btn) => {
+                        if (deviceId && btn.getAttribute('data-device-id') === deviceId) {
+                            btn.setAttribute('data-vehicle-name', labels.vehicle_name || '');
+                            btn.setAttribute('data-vehicle-number', labels.vehicle_number || '');
+                        }
+                    });
+
+                    editModal.hide();
+                } catch (error) {
+                    errorBox.textContent = i18n.failed || 'Could not save vehicle details.';
+                    errorBox.classList.remove('d-none');
+                } finally {
+                    saveBtn.disabled = false;
+                    saveBtn.innerHTML = originalHtml;
+                }
+            });
         });
     </script>
 @endpush
