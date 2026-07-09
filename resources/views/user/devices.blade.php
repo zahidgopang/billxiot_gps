@@ -353,10 +353,27 @@
                                     <button type="button" class="btn btn-sm btn-outline-secondary" id="changeIconClearBtn">{{ __('app.user.devices.icon_clear_selection') }}</button>
                                 </div>
                             </div>
+                            <div class="input-group input-group-sm mb-2">
+                                <span class="input-group-text bg-white"><i class="fas fa-search text-muted"></i></span>
+                                <input type="search"
+                                       class="form-control"
+                                       id="changeIconVehicleSearch"
+                                       placeholder="{{ __('app.user.devices.icon_search_placeholder') }}"
+                                       autocomplete="off">
+                            </div>
                             <div class="icon-vehicle-picker" id="changeIconVehicleList">
                                 @foreach($devices as $pickerDevice)
                                     @if($mapIconAuth->canEditAppearance($devicesUser, $pickerDevice))
-                                        <div class="icon-vehicle-picker__item">
+                                        @php
+                                            $pickerSearch = strtolower(trim(implode(' ', array_filter([
+                                                $pickerDevice->listPrimaryLabel(),
+                                                $pickerDevice->listSecondaryLabel(),
+                                                $pickerDevice->imei,
+                                                $pickerDevice->name,
+                                                $pickerDevice->vehicle_model,
+                                            ]))));
+                                        @endphp
+                                        <div class="icon-vehicle-picker__item" data-search="{{ $pickerSearch }}">
                                             <input type="checkbox"
                                                    class="form-check-input js-modal-icon-device"
                                                    id="modalIconDevice{{ $pickerDevice->id }}"
@@ -365,12 +382,15 @@
                                                 <span>{{ $pickerDevice->listPrimaryLabel() }}</span>
                                                 @if($secondary = $pickerDevice->listSecondaryLabel())
                                                     <span class="icon-vehicle-picker__meta"><x-admin.ltr>{{ $secondary }}</x-admin.ltr></span>
+                                                @elseif($pickerDevice->imei)
+                                                    <span class="icon-vehicle-picker__meta"><x-admin.ltr>{{ $pickerDevice->imei }}</x-admin.ltr></span>
                                                 @endif
                                             </label>
                                         </div>
                                     @endif
                                 @endforeach
                             </div>
+                            <p class="small text-muted mb-0 mt-1 d-none" id="changeIconSearchEmpty">{{ __('app.user.devices.icon_search_empty') }}</p>
                         </div>
 
                         @include('user.partials.map-marker-appearance-form', [
@@ -684,6 +704,22 @@
                 syncSelectedCount();
             };
 
+            const vehicleSearch = document.getElementById('changeIconVehicleSearch');
+            const searchEmpty = document.getElementById('changeIconSearchEmpty');
+            const vehicleItems = () => Array.from(document.querySelectorAll('#changeIconVehicleList .icon-vehicle-picker__item'));
+
+            const filterVehicleList = () => {
+                const q = (vehicleSearch?.value || '').trim().toLowerCase();
+                let visible = 0;
+                vehicleItems().forEach((item) => {
+                    const hay = item.getAttribute('data-search') || item.textContent || '';
+                    const show = !q || hay.includes(q);
+                    item.classList.toggle('d-none', !show);
+                    if (show) visible += 1;
+                });
+                if (searchEmpty) searchEmpty.classList.toggle('d-none', visible > 0 || !q);
+            };
+
             const openIconModal = (ids) => {
                 if (errorBox) {
                     errorBox.classList.add('d-none');
@@ -695,12 +731,16 @@
                 }
                 const statusEl = iconForm.querySelector('[data-map-save-status]');
                 if (statusEl) statusEl.textContent = '';
+                if (vehicleSearch) vehicleSearch.value = '';
+                filterVehicleList();
                 setModalSelection(ids || []);
                 iconModal.show();
+                setTimeout(() => vehicleSearch?.focus(), 200);
             };
 
             tableChecks().forEach((el) => el.addEventListener('change', syncSelectedCount));
             modalChecks().forEach((el) => el.addEventListener('change', syncSelectedCount));
+            vehicleSearch?.addEventListener('input', filterVehicleList);
 
             document.getElementById('iconSelectAllHeader')?.addEventListener('change', function () {
                 const checked = this.checked;
@@ -728,7 +768,11 @@
             });
 
             document.getElementById('changeIconSelectAllBtn')?.addEventListener('click', () => {
-                modalChecks().forEach((el) => { el.checked = true; });
+                modalChecks().forEach((el) => {
+                    const item = el.closest('.icon-vehicle-picker__item');
+                    if (item && item.classList.contains('d-none')) return;
+                    el.checked = true;
+                });
                 syncSelectedCount();
             });
 

@@ -749,6 +749,8 @@ return [
             'icon_select_vehicles' => 'Select at least one vehicle.',
             'icon_selected_count' => ':count vehicle(s) selected',
             'icon_select_all' => 'Select all',
+            'icon_search_placeholder' => 'Search vehicle name, plate, or IMEI…',
+            'icon_search_empty' => 'No vehicles match your search.',
             'icon_clear_selection' => 'Clear',
             'icon_bulk_saved' => 'Icon updated for :count vehicle(s).',
             'icon_bulk_uploaded' => 'Custom icon uploaded for :count vehicle(s).',
