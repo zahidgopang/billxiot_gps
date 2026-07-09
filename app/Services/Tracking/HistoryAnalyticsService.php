@@ -19,8 +19,17 @@ class HistoryAnalyticsService
     /** Idle (ignition ON, speed ~0) longer than this becomes Stopped on the map. */
     public const STOPPED_MIN_SECONDS = 600;
 
-    /** Gap between fixes treated as offline in timeline / status markers. */
+    /**
+     * Gap between fixes. Stationary gaps become Parking/Stopped;
+     * only gaps where the vehicle clearly moved are Offline.
+     */
     public const OFFLINE_GAP_SECONDS = 600;
+
+    /** Max distance (km) to treat a time-gap as “stayed in place” (parking), not offline. */
+    public const STATIONARY_GAP_MAX_KM = 0.15;
+
+    /** Stationary gap this long is Parking even if ignition stayed true (device sleep). */
+    public const PARKING_GAP_SECONDS = 1800;
 
     public const OVERSPEED_KMH = 120;
 
@@ -103,8 +112,21 @@ class HistoryAnalyticsService
             $dt = $this->segmentDurationSeconds($t0, $t1);
 
             if ($dt > self::OFFLINE_GAP_SECONDS) {
-                $offlineSec += $dt;
-                $flushStop();
+                $gapMotion = $this->gapMotionKey($a, $b, $dt);
+                if ($gapMotion === 'offline') {
+                    $offlineSec += $dt;
+                    $flushStop();
+                } else {
+                    match ($gapMotion) {
+                        'parked' => $parkingSec += $dt,
+                        'stopped' => $idleSec += $dt,
+                        default => $idleSec += $dt,
+                    };
+                    // Keep a stop run so overnight parking still produces a stop marker.
+                    $stopRun[] = $a;
+                    $stopRun[] = $b;
+                    $flushStop();
+                }
             } else {
                 $spd = (float) ($b->speed ?? 0);
                 if ($spd > $maxSpeed) {
@@ -255,11 +277,14 @@ class HistoryAnalyticsService
             }
 
             if ($dt > self::OFFLINE_GAP_SECONDS) {
+                $gapMotion = $this->gapMotionKey($a, $b, $dt);
                 $raw[] = [
-                    'status_key' => 'offline',
-                    'status_label' => VehicleStatusSpec::labelForKey('offline'),
-                    'motion_key' => null,
-                    'ignition' => null,
+                    'status_key' => $gapMotion,
+                    'status_label' => $gapMotion === 'offline'
+                        ? VehicleStatusSpec::labelForKey('offline')
+                        : $this->timelineLabel($gapMotion),
+                    'motion_key' => $gapMotion === 'offline' ? null : $gapMotion,
+                    'ignition' => $gapMotion === 'parked' ? false : ($gapMotion === 'offline' ? null : $this->pointIgnition($a)),
                     'start' => $t0,
                     'end' => $t1,
                     'duration_seconds' => $dt,
@@ -535,18 +560,76 @@ class HistoryAnalyticsService
 
     /**
      * Prefer ignition; fall back to ACC when devices only report ACC.
+     * Handles bool/int/string forms from Traccar attributes.
      */
     private function pointIgnition(object $point): bool
     {
         if (isset($point->ignition) && $point->ignition !== null && $point->ignition !== '') {
-            return filter_var($point->ignition, FILTER_VALIDATE_BOOLEAN);
+            return $this->toBool($point->ignition);
         }
 
         if (isset($point->acc) && $point->acc !== null && $point->acc !== '') {
-            return filter_var($point->acc, FILTER_VALIDATE_BOOLEAN);
+            return $this->toBool($point->acc);
         }
 
         return false;
+    }
+
+    private function toBool(mixed $value): bool
+    {
+        if (is_bool($value)) {
+            return $value;
+        }
+
+        if (is_numeric($value)) {
+            return (int) $value !== 0;
+        }
+
+        $normalized = strtolower(trim((string) $value));
+
+        return in_array($normalized, ['1', 'true', 'yes', 'on'], true);
+    }
+
+    /**
+     * Classify a long gap between two fixes.
+     * Overnight parking usually creates a gap with almost no movement → Parking, not Offline.
+     *
+     * @return 'parked'|'stopped'|'offline'
+     */
+    public function gapMotionKey(object $a, object $b, int $dt): string
+    {
+        $dist = $this->haversineKm(
+            (float) ($a->lat ?? 0),
+            (float) ($a->lng ?? 0),
+            (float) ($b->lat ?? 0),
+            (float) ($b->lng ?? 0),
+        );
+
+        $stationary = $dist <= self::STATIONARY_GAP_MAX_KM
+            || (
+                (float) ($a->speed ?? 0) <= VehicleStatusSpec::MOVING_SPEED_KMH
+                && (float) ($b->speed ?? 0) <= VehicleStatusSpec::MOVING_SPEED_KMH
+                && $dist <= self::STATIONARY_GAP_MAX_KM * 2
+            );
+
+        if (! $stationary) {
+            return 'offline';
+        }
+
+        $ignA = $this->pointIgnition($a);
+        $ignB = $this->pointIgnition($b);
+
+        // Engine off on either side of the gap → Parking.
+        if (! $ignA || ! $ignB) {
+            return 'parked';
+        }
+
+        // Long sleep with ignition still reported ON (common) → treat as Parking.
+        if ($dt >= self::PARKING_GAP_SECONDS) {
+            return 'parked';
+        }
+
+        return 'stopped';
     }
 
     private function segmentDurationSeconds(?Carbon $from, ?Carbon $to): int

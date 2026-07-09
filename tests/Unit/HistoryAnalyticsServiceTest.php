@@ -182,7 +182,7 @@ class HistoryAnalyticsServiceTest extends TestCase
         $this->assertGreaterThanOrEqual(600, $timeline[0]['duration_seconds']);
     }
 
-    public function test_gap_over_ten_minutes_creates_offline_segment(): void
+    public function test_gap_with_movement_creates_offline_segment(): void
     {
         $service = new HistoryAnalyticsService;
 
@@ -206,6 +206,58 @@ class HistoryAnalyticsServiceTest extends TestCase
         $timeline = $service->buildTimeline($points);
         $keys = array_column($timeline, 'status_key');
         $this->assertContains('offline', $keys);
+    }
+
+    public function test_stationary_overnight_gap_is_parking_not_offline(): void
+    {
+        $service = new HistoryAnalyticsService;
+
+        $points = collect([
+            (object) [
+                'lat' => 21.4000,
+                'lng' => 39.8000,
+                'speed' => 0,
+                'ignition' => true,
+                'recorded_at' => Carbon::parse('2026-07-03 22:00:00'),
+            ],
+            (object) [
+                'lat' => 21.4001,
+                'lng' => 39.8001,
+                'speed' => 0,
+                'ignition' => true,
+                'recorded_at' => Carbon::parse('2026-07-04 07:00:00'),
+            ],
+        ]);
+
+        $timeline = $service->buildTimeline($points);
+        $this->assertNotEmpty($timeline);
+        $this->assertSame('parked', $timeline[0]['status_key']);
+        $this->assertGreaterThanOrEqual(1800, $timeline[0]['duration_seconds']);
+    }
+
+    public function test_stationary_gap_with_ignition_off_is_parking(): void
+    {
+        $service = new HistoryAnalyticsService;
+
+        $points = collect([
+            (object) [
+                'lat' => 21.4,
+                'lng' => 39.8,
+                'speed' => 0,
+                'ignition' => false,
+                'recorded_at' => Carbon::parse('2026-07-03 10:00:00'),
+            ],
+            (object) [
+                'lat' => 21.4,
+                'lng' => 39.8,
+                'speed' => 0,
+                'ignition' => false,
+                'recorded_at' => Carbon::parse('2026-07-03 10:20:00'),
+            ],
+        ]);
+
+        $timeline = $service->buildTimeline($points);
+        $this->assertSame('parked', $timeline[0]['status_key']);
     }
 
     public function test_acc_is_used_when_ignition_missing(): void

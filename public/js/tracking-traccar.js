@@ -405,6 +405,35 @@
             return markers;
         }
 
+        // Prefer backend stop list when timeline was skipped (large week ranges).
+        const backendStops = Array.isArray(vehicle?.stats?.stops) ? vehicle.stats.stops : [];
+        if (backendStops.length) {
+            backendStops.forEach((stop) => {
+                const durationSec = Math.max(0, parseInt(stop.duration_seconds ?? stop.duration, 10) || 0);
+                if (durationSec < STOP_MIN_SEC || !hasGeo(stop.lat, stop.lng)) return;
+                const motion = String(stop.motion_key || stop.status_key || 'parked').toLowerCase();
+                let typeKey = statusMarkerTypeKey(motion) || 'parked';
+                if (typeKey === 'idle' && durationSec >= STOPPED_MIN_SEC) typeKey = 'stopped';
+                const style = STATUS_MARKER_STYLES[typeKey] || STATUS_MARKER_STYLES.parked;
+                markers.push({
+                    typeKey,
+                    letter: style.letter,
+                    color: style.color,
+                    zIndex: style.zIndex,
+                    lat: parseFloat(stop.lat),
+                    lng: parseFloat(stop.lng),
+                    status_key: typeKey === 'parked' ? 'parked' : typeKey,
+                    status_label: stop.status_label || ha?.timelineLabel?.(typeKey) || typeKey,
+                    durationSec,
+                    arrived: stop.start,
+                    departed: stop.end,
+                    arrivedDisplay: stop.start_display || fmtTime(stop.start),
+                    departedDisplay: stop.end_display || fmtTime(stop.end),
+                });
+            });
+            if (markers.length) return markers;
+        }
+
         // Fallback when timeline is unavailable: derive runs from GPS points.
         if (!ha?.motionKey) {
             return computeStops(points).map((stop) => ({
@@ -482,16 +511,18 @@
             const dt = ha.segmentSeconds?.(t0, t1) ?? Math.max(0, (t1 - t0) / 1000);
             if (dt > (ha.OFFLINE_GAP_SECONDS || OFFLINE_GAP_SEC)) {
                 flushRun();
-                const style = STATUS_MARKER_STYLES.offline;
+                const gapType = ha.gapMotionKey?.(a, b, dt) || 'offline';
+                const typeKey = statusMarkerTypeKey(gapType) || (gapType === 'parked' ? 'parked' : 'offline');
+                const style = STATUS_MARKER_STYLES[typeKey] || STATUS_MARKER_STYLES.offline;
                 markers.push({
-                    typeKey: 'offline',
+                    typeKey,
                     letter: style.letter,
                     color: style.color,
                     zIndex: style.zIndex,
                     lat: b.lat,
                     lng: b.lng,
-                    status_key: 'offline',
-                    status_label: ha.timelineLabel?.('offline') || 'Offline',
+                    status_key: typeKey === 'parked' ? 'parked' : typeKey,
+                    status_label: ha.timelineLabel?.(typeKey) || typeKey,
                     durationSec: dt,
                     arrived: a.recorded_at,
                     departed: b.recorded_at,

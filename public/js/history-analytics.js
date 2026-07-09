@@ -8,6 +8,8 @@
     const STOP_MIN_SECONDS = 120;
     const STOPPED_MIN_SECONDS = 600;
     const OFFLINE_GAP_SECONDS = 600;
+    const STATIONARY_GAP_MAX_KM = 0.15;
+    const PARKING_GAP_SECONDS = 1800;
     const OVERSPEED_KMH = 120;
 
     function parseMs(ts) {
@@ -33,11 +35,43 @@
         return earth * 2 * Math.asin(Math.min(1, Math.sqrt(a)));
     }
 
-    function pointIgnition(point) {
-        if (point?.ignition === true || point?.ignition === 1 || point?.ignition === '1') return true;
-        if (point?.ignition === false || point?.ignition === 0 || point?.ignition === '0') return false;
-        if (point?.acc === true || point?.acc === 1 || point?.acc === '1') return true;
+    function toBool(value) {
+        if (value === true || value === 1 || value === '1') return true;
+        if (value === false || value === 0 || value === '0') return false;
+        if (typeof value === 'string') {
+            const n = value.trim().toLowerCase();
+            return n === 'true' || n === 'yes' || n === 'on';
+        }
         return false;
+    }
+
+    function pointIgnition(point) {
+        if (point?.ignition !== undefined && point?.ignition !== null && point?.ignition !== '') {
+            return toBool(point.ignition);
+        }
+        if (point?.acc !== undefined && point?.acc !== null && point?.acc !== '') {
+            return toBool(point.acc);
+        }
+        return false;
+    }
+
+    function gapMotionKey(a, b, dt) {
+        const dist = haversineKm(
+            parseFloat(a?.lat || 0),
+            parseFloat(a?.lng || 0),
+            parseFloat(b?.lat || 0),
+            parseFloat(b?.lng || 0),
+        );
+        const spdA = parseFloat(a?.speed || 0);
+        const spdB = parseFloat(b?.speed || 0);
+        const stationary = dist <= STATIONARY_GAP_MAX_KM
+            || (spdA <= MOVING_SPEED_KMH && spdB <= MOVING_SPEED_KMH && dist <= STATIONARY_GAP_MAX_KM * 2);
+        if (!stationary) return 'offline';
+        const ignA = pointIgnition(a);
+        const ignB = pointIgnition(b);
+        if (!ignA || !ignB) return 'parked';
+        if (dt >= PARKING_GAP_SECONDS) return 'parked';
+        return 'stopped';
     }
 
     function motionKey(point) {
@@ -152,8 +186,19 @@
             const dt = segmentSeconds(t0, t1);
 
             if (dt > OFFLINE_GAP_SECONDS) {
-                offlineSec += dt;
-                flushStop();
+                const gapMotion = gapMotionKey(a, b, dt);
+                if (gapMotion === 'offline') {
+                    offlineSec += dt;
+                    flushStop();
+                } else if (gapMotion === 'parked') {
+                    parkingSec += dt;
+                    stopRun.push(a, b);
+                    flushStop();
+                } else {
+                    idleSec += dt;
+                    stopRun.push(a, b);
+                    flushStop();
+                }
                 continue;
             }
 
@@ -231,12 +276,15 @@
         STOP_MIN_SECONDS,
         STOPPED_MIN_SECONDS,
         OFFLINE_GAP_SECONDS,
+        STATIONARY_GAP_MAX_KM,
+        PARKING_GAP_SECONDS,
         analyze,
         motionKey,
         tripStatusKey,
         timelineLabel,
         refineIdleToStopped,
         pointIgnition,
+        gapMotionKey,
         statusPayloadAtIndex,
         statusDurationAtIndex,
         segmentSeconds,
