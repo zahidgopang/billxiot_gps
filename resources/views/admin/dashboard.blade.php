@@ -248,7 +248,7 @@
                 </div>
             </div>
 
-            <div class="ad-card">
+            <div class="ad-card ad-card--fleet-map">
                 <h5 class="ad-card-title"><i class="fas fa-map-marked-alt"></i> {{ __('app.admin.dashboard.fleet_map') }}</h5>
                 <div class="ad-map-preview">
                     <div class="ad-map-overlay">
@@ -262,7 +262,7 @@
                         </p>
                     </div>
                 </div>
-                <div class="mt-3">
+                <div class="ad-fleet-map-body mt-3">
                     <div class="ad-row-between">
                         <span class="text-muted small">{{ __('app.admin.dashboard.gps_points_today') }}</span>
                         <span class="fw-semibold small">{{ number_format($dataPointsToday) }}</span>
@@ -277,14 +277,16 @@
                     </div>
                     <hr class="my-2">
                     <h6 class="small text-muted text-uppercase mb-2">{{ __('app.admin.dashboard.event_breakdown') }}</h6>
-                    @forelse($eventsByType as $row)
-                        <div class="ad-event-pill">
-                            <span>{{ \App\Models\VehicleEvent::make(['type' => $row->type])->typeLabel() }}</span>
-                            <span class="ad-badge-count">{{ $row->total }}</span>
-                        </div>
-                    @empty
-                        <p class="ad-empty mb-0" style="padding: 12px 0;">{{ __('app.admin.dashboard.no_events') }}</p>
-                    @endforelse
+                    <div class="ad-fleet-map-events">
+                        @forelse($eventsByType as $row)
+                            <div class="ad-event-pill">
+                                <span>{{ \App\Models\VehicleEvent::make(['type' => $row->type])->typeLabel() }}</span>
+                                <span class="ad-badge-count">{{ $row->total }}</span>
+                            </div>
+                        @empty
+                            <p class="ad-empty mb-0" style="padding: 12px 0;">{{ __('app.admin.dashboard.no_events') }}</p>
+                        @endforelse
+                    </div>
                 </div>
             </div>
         </div>

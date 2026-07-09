@@ -829,7 +829,56 @@ body.admin-panel.apple-hig .ad-mini-avatar {
     font-size: 11px;
 }
 
-/* Fleet snapshot preview */
+/* Fleet snapshot preview — keep card height in check with an inner scrollbar */
+body.admin-panel.apple-hig .ad-card--fleet-map {
+    display: flex;
+    flex-direction: column;
+    max-height: min(720px, calc(100vh - 180px));
+    overflow: hidden;
+}
+
+body.admin-panel.apple-hig .ad-card--fleet-map > .ad-card-title,
+body.admin-panel.apple-hig .ad-card--fleet-map > .ad-map-preview {
+    flex-shrink: 0;
+}
+
+body.admin-panel.apple-hig .ad-fleet-map-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    padding-inline-end: 2px;
+}
+
+body.admin-panel.apple-hig .ad-fleet-map-body::-webkit-scrollbar {
+    width: 8px;
+}
+
+body.admin-panel.apple-hig .ad-fleet-map-body::-webkit-scrollbar-thumb {
+    background: rgba(15, 23, 42, 0.22);
+    border-radius: 999px;
+}
+
+body.admin-panel.apple-hig .ad-fleet-map-events {
+    max-height: 220px;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    padding-inline-end: 2px;
+}
+
+body.admin-panel.apple-hig .ad-fleet-map-events::-webkit-scrollbar {
+    width: 8px;
+}
+
+body.admin-panel.apple-hig .ad-fleet-map-events::-webkit-scrollbar-thumb {
+    background: rgba(15, 23, 42, 0.22);
+    border-radius: 999px;
+}
+
 body.admin-panel.apple-hig .ad-map-preview {
     height: 190px;
     border-radius: var(--apple-radius-sm);

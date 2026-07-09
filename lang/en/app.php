@@ -749,6 +749,7 @@ return [
             'icon_select_vehicles' => 'Select at least one vehicle.',
             'icon_selected_count' => ':count vehicle(s) selected',
             'icon_select_all' => 'Select all',
+            'icon_checkbox_hint' => 'Use the checkboxes to pick vehicles, then click Change icon — those vehicles will already be selected in the next screen.',
             'icon_search_placeholder' => 'Search vehicle name, plate, or IMEI…',
             'icon_search_empty' => 'No vehicles match your search.',
             'icon_clear_selection' => 'Clear',

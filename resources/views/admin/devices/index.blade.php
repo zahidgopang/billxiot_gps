@@ -41,6 +41,27 @@
         .device-icon-check { width: 1.1rem; height: 1.1rem; cursor: pointer; }
         #iconBulkBar { display: none; }
         #iconBulkBar.is-visible { display: flex; }
+        /* Device list: show ~10 rows, then scroll */
+        .devices-table-scroll {
+            max-height: 620px;
+            overflow: auto;
+            overscroll-behavior: contain;
+            border: 1px solid rgba(15, 23, 42, 0.08);
+            border-radius: 12px;
+            scrollbar-width: thin;
+        }
+        .devices-table-scroll::-webkit-scrollbar { width: 8px; height: 8px; }
+        .devices-table-scroll::-webkit-scrollbar-thumb {
+            background: rgba(15, 23, 42, 0.22);
+            border-radius: 999px;
+        }
+        .devices-table-scroll thead th {
+            position: sticky;
+            top: 0;
+            z-index: 2;
+            background: #fff;
+            box-shadow: 0 1px 0 rgba(15, 23, 42, 0.08);
+        }
         .icon-vehicle-picker {
             max-height: 220px;
             overflow: auto;
@@ -107,10 +128,14 @@
         </div>
 
         @if($canChangeIcons && $iconDevice)
+            <p class="small text-muted mb-2">{{ __('app.user.devices.icon_checkbox_hint') }}</p>
             <div id="iconBulkBar" class="align-items-center flex-wrap gap-3 mb-3 p-3 rounded-3 border bg-light">
                 <strong id="iconSelectedCountLabel">{{ __('app.user.devices.icon_selected_count', ['count' => 0]) }}</strong>
                 <button type="button" class="btn btn-sm btn-outline-secondary" id="iconSelectAllBtn">{{ __('app.user.devices.icon_select_all') }}</button>
                 <button type="button" class="btn btn-sm btn-outline-secondary" id="iconClearSelectionBtn">{{ __('app.user.devices.icon_clear_selection') }}</button>
+                <button type="button" class="btn btn-sm btn-primary" id="iconBulkChangeBtn">
+                    <i class="fas fa-icons me-1"></i>{{ __('app.user.devices.change_icon') }}
+                </button>
             </div>
         @endif
 
@@ -130,8 +155,8 @@
         </div>
 
         <!-- REAL TABLE: initially hidden by JS until DOM ready -->
-        <div id="real-area" style="display:none;">
-            <table class="table table-hover table-small" id="devicesTable">
+        <div id="real-area" class="devices-table-scroll" style="display:none;">
+            <table class="table table-hover table-small mb-0" id="devicesTable">
                 <thead>
                 <tr>
                     @if($canChangeIcons && $iconDevice)
@@ -388,6 +413,10 @@
                 syncSelectedCount();
             };
 
+            const syncTableFromModal = () => {
+                setTableSelection(modalChecks().filter((el) => el.checked).map((el) => el.value));
+            };
+
             const vehicleSearch = document.getElementById('changeIconVehicleSearch');
             const searchEmpty = document.getElementById('changeIconSearchEmpty');
             const vehicleItems = () => Array.from(document.querySelectorAll('#changeIconVehicleList .icon-vehicle-picker__item'));
@@ -405,6 +434,7 @@
             };
 
             const openIconModal = (ids) => {
+                const selected = (ids || []).map((id) => String(id)).filter(Boolean);
                 if (errorBox) {
                     errorBox.classList.add('d-none');
                     errorBox.textContent = '';
@@ -417,13 +447,21 @@
                 if (statusEl) statusEl.textContent = '';
                 if (vehicleSearch) vehicleSearch.value = '';
                 filterVehicleList();
-                setModalSelection(ids || []);
+                setTableSelection(selected);
+                setModalSelection(selected);
                 iconModal.show();
-                setTimeout(() => vehicleSearch?.focus(), 200);
+                setTimeout(() => {
+                    const firstSelected = modalChecks().find((el) => el.checked);
+                    firstSelected?.closest('.icon-vehicle-picker__item')?.scrollIntoView({ block: 'nearest' });
+                    if (!selected.length) vehicleSearch?.focus();
+                }, 200);
             };
 
             tableChecks().forEach((el) => el.addEventListener('change', syncSelectedCount));
-            modalChecks().forEach((el) => el.addEventListener('change', syncSelectedCount));
+            modalChecks().forEach((el) => el.addEventListener('change', () => {
+                syncTableFromModal();
+                syncSelectedCount();
+            }));
             vehicleSearch?.addEventListener('input', filterVehicleList);
 
             document.getElementById('iconSelectAllHeader')?.addEventListener('change', function () {
@@ -456,10 +494,12 @@
                 setModalSelection([]);
             });
 
-            document.getElementById('openIconBulkModalBtn')?.addEventListener('click', () => {
-                const ids = tableChecks().filter((el) => el.checked).map((el) => el.value);
+            const openFromTableSelection = () => {
+                const ids = tableChecks().filter((el) => el.checked).map((el) => String(el.value));
                 openIconModal(ids);
-            });
+            };
+            document.getElementById('openIconBulkModalBtn')?.addEventListener('click', openFromTableSelection);
+            document.getElementById('iconBulkChangeBtn')?.addEventListener('click', openFromTableSelection);
 
             window.MapMarkerAppearance.bindForm({
                 form: iconForm,

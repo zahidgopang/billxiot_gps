@@ -672,6 +672,25 @@ body.user-panel.apple-hig .sidebar-overlay {
     border: 1px solid var(--apple-border);
 }
 
+/* Fleet Overview: show ~5 rows, then scroll */
+.ud-table-wrap--fleet {
+    max-height: 360px;
+    overflow-x: auto;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+}
+
+.ud-table-wrap--fleet::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+.ud-table-wrap--fleet::-webkit-scrollbar-thumb {
+    background: rgba(15, 23, 42, 0.22);
+    border-radius: 999px;
+}
+
 .ud-table {
     width: 100%;
     border-collapse: collapse;

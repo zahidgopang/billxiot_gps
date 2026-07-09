@@ -726,6 +726,7 @@ return [
             'icon_select_vehicles' => 'اختر مركبة واحدة على الأقل.',
             'icon_selected_count' => 'تم اختيار :count مركبة',
             'icon_select_all' => 'تحديد الكل',
+            'icon_checkbox_hint' => 'استخدم مربعات الاختيار لاختيار المركبات، ثم انقر تغيير الأيقونة — ستظهر هذه المركبات محددةً في الشاشة التالية.',
             'icon_search_placeholder' => 'ابحث باسم المركبة أو اللوحة أو IMEI…',
             'icon_search_empty' => 'لا توجد مركبات مطابقة لبحثك.',
             'icon_clear_selection' => 'مسح',

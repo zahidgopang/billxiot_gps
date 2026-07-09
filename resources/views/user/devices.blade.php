@@ -16,6 +16,61 @@
         .device-icon-check { width: 1.1rem; height: 1.1rem; cursor: pointer; }
         #iconBulkBar { display: none; }
         #iconBulkBar.is-visible { display: flex; }
+        /* Device List: show ~10 rows, then scroll */
+        .devices-table-scroll {
+            max-height: 620px;
+            overflow: auto;
+            overscroll-behavior: contain;
+            border: 1px solid rgba(15, 23, 42, 0.08);
+            border-radius: 12px;
+            scrollbar-width: thin;
+        }
+        .devices-table-scroll::-webkit-scrollbar { width: 8px; height: 8px; }
+        .devices-table-scroll::-webkit-scrollbar-thumb {
+            background: rgba(15, 23, 42, 0.22);
+            border-radius: 999px;
+        }
+        .devices-table-scroll thead th {
+            position: sticky;
+            top: 0;
+            z-index: 2;
+            background: #fff;
+            box-shadow: 0 1px 0 rgba(15, 23, 42, 0.08);
+        }
+        /* Compact Track / Edit so the actions column does not wrap awkwardly */
+        #devicesTable td:last-child {
+            white-space: nowrap;
+            width: 1%;
+        }
+        #devicesTable .device-actions {
+            display: inline-flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 0.35rem;
+            flex-wrap: nowrap;
+        }
+        #devicesTable .device-actions .btn {
+            padding: 0.2rem 0.45rem;
+            font-size: 0.72rem;
+            line-height: 1.2;
+            border-radius: 0.4rem;
+        }
+        #devicesTable .device-actions .btn i {
+            margin-inline-end: 0.2rem !important;
+            font-size: 0.7rem;
+        }
+        @media (max-width: 991px) {
+            #devicesTable .device-actions .btn .btn-label {
+                display: none;
+            }
+            #devicesTable .device-actions .btn i {
+                margin-inline-end: 0 !important;
+            }
+            #devicesTable .device-actions .btn {
+                padding: 0.3rem 0.45rem;
+                min-width: 2rem;
+            }
+        }
         .icon-vehicle-picker {
             max-height: 220px;
             overflow: auto;
@@ -188,15 +243,19 @@
             </div>
 
             @if($canChangeIcons)
+                <p class="small text-muted mb-2" id="iconCheckboxHint">{{ __('app.user.devices.icon_checkbox_hint') }}</p>
                 <div id="iconBulkBar" class="align-items-center flex-wrap gap-3 mb-3 p-3 rounded-3 border bg-light">
                     <strong id="iconSelectedCountLabel">{{ __('app.user.devices.icon_selected_count', ['count' => 0]) }}</strong>
                     <button type="button" class="btn btn-sm btn-outline-secondary" id="iconSelectAllBtn">{{ __('app.user.devices.icon_select_all') }}</button>
                     <button type="button" class="btn btn-sm btn-outline-secondary" id="iconClearSelectionBtn">{{ __('app.user.devices.icon_clear_selection') }}</button>
+                    <button type="button" class="btn btn-sm btn-primary" id="iconBulkChangeBtn">
+                        <i class="fas fa-icons me-1"></i>{{ __('app.user.devices.change_icon') }}
+                    </button>
                 </div>
             @endif
 
-            <div class="table-responsive">
-                <table class="table table-hover" id="devicesTable">
+            <div class="table-responsive devices-table-scroll">
+                <table class="table table-hover mb-0" id="devicesTable">
                     <thead>
                     <tr>
                         @if($canChangeIcons)
@@ -285,8 +344,8 @@
                             <td>
                                 @include('partials.device-status-badge', ['device' => $d])
                             </td>
-                            <td>
-                                <div class="d-flex justify-content-end gap-2 flex-wrap">
+                            <td class="text-end">
+                                <div class="device-actions">
                                     @if($canViewVehicleDetails)
                                         <button type="button"
                                                 class="btn btn-outline-premium btn-sm btn-edit-vehicle"
@@ -297,16 +356,16 @@
                                                 data-odometer-display-km="{{ $d->odometerDisplayKm() ?? '' }}"
                                                 data-update-url="{{ route('user.devices.vehicle-label', $d) }}"
                                                 title="{{ __('app.user.devices.edit_vehicle') }}">
-                                            <i class="fas fa-pen me-1"></i> {{ __('app.user.devices.edit_vehicle') }}
+                                            <i class="fas fa-pen"></i><span class="btn-label">{{ __('app.user.devices.edit_vehicle') }}</span>
                                         </button>
                                     @endif
                                     @if($canTrack)
-                                        <a href="{{ $d->launchMapRoute() }}" class="btn btn-premium btn-sm">
-                                            <i class="fas fa-map-marked-alt me-1"></i> {{ __('app.user.devices.track') }}
+                                        <a href="{{ $d->launchMapRoute() }}" class="btn btn-premium btn-sm" title="{{ __('app.user.devices.track') }}">
+                                            <i class="fas fa-map-marked-alt"></i><span class="btn-label">{{ __('app.user.devices.track') }}</span>
                                         </a>
                                     @else
                                         <button type="button" class="btn btn-secondary btn-sm" disabled title="{{ $lockTitle }}">
-                                            <i class="fas fa-lock me-1"></i> {{ __('app.user.devices.map_locked') }}
+                                            <i class="fas fa-lock"></i><span class="btn-label">{{ __('app.user.devices.map_locked') }}</span>
                                         </button>
                                     @endif
                                 </div>
@@ -704,6 +763,10 @@
                 syncSelectedCount();
             };
 
+            const syncTableFromModal = () => {
+                setTableSelection(modalChecks().filter((el) => el.checked).map((el) => el.value));
+            };
+
             const vehicleSearch = document.getElementById('changeIconVehicleSearch');
             const searchEmpty = document.getElementById('changeIconSearchEmpty');
             const vehicleItems = () => Array.from(document.querySelectorAll('#changeIconVehicleList .icon-vehicle-picker__item'));
@@ -721,6 +784,7 @@
             };
 
             const openIconModal = (ids) => {
+                const selected = (ids || []).map((id) => String(id)).filter(Boolean);
                 if (errorBox) {
                     errorBox.classList.add('d-none');
                     errorBox.textContent = '';
@@ -733,13 +797,22 @@
                 if (statusEl) statusEl.textContent = '';
                 if (vehicleSearch) vehicleSearch.value = '';
                 filterVehicleList();
-                setModalSelection(ids || []);
+                // Keep table + modal in sync: checked list rows become selected in Change icon.
+                setTableSelection(selected);
+                setModalSelection(selected);
                 iconModal.show();
-                setTimeout(() => vehicleSearch?.focus(), 200);
+                setTimeout(() => {
+                    const firstSelected = modalChecks().find((el) => el.checked);
+                    firstSelected?.closest('.icon-vehicle-picker__item')?.scrollIntoView({ block: 'nearest' });
+                    if (!selected.length) vehicleSearch?.focus();
+                }, 200);
             };
 
             tableChecks().forEach((el) => el.addEventListener('change', syncSelectedCount));
-            modalChecks().forEach((el) => el.addEventListener('change', syncSelectedCount));
+            modalChecks().forEach((el) => el.addEventListener('change', () => {
+                syncTableFromModal();
+                syncSelectedCount();
+            }));
             vehicleSearch?.addEventListener('input', filterVehicleList);
 
             document.getElementById('iconSelectAllHeader')?.addEventListener('change', function () {
@@ -780,10 +853,12 @@
                 setModalSelection([]);
             });
 
-            document.getElementById('openIconBulkModalBtn')?.addEventListener('click', () => {
-                const ids = tableChecks().filter((el) => el.checked).map((el) => el.value);
+            const openFromTableSelection = () => {
+                const ids = tableChecks().filter((el) => el.checked).map((el) => String(el.value));
                 openIconModal(ids);
-            });
+            };
+            document.getElementById('openIconBulkModalBtn')?.addEventListener('click', openFromTableSelection);
+            document.getElementById('iconBulkChangeBtn')?.addEventListener('click', openFromTableSelection);
 
             window.MapMarkerAppearance.bindForm({
                 form: iconForm,

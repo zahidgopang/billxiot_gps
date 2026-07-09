@@ -76,75 +76,47 @@
     }
 
     function renderCharts(data) {
-        if (!global.ApexCharts || !data) return;
+        if (!global.ApexCharts || !data) {
+            clearChartLoading();
+            return;
+        }
 
         const donutEl = document.getElementById('udChartStatus');
-        if (donutEl && data.statusDonut) {
+        if (donutEl && data.statusDonut && !donutEl.dataset.chartReady) {
             const s = data.statusDonut;
+            const series = [
+                Number(s.running) || 0,
+                Number(s.parked) || 0,
+                Number(s.idle) || 0,
+                Number(s.offline) || 0,
+            ];
+            // ApexCharts rejects all-zero donut series — show a neutral placeholder slice.
+            const chartSeries = series.every((n) => n === 0) ? [1] : series;
+            const chartLabels = series.every((n) => n === 0)
+                ? ['No vehicles']
+                : ['Running', 'Parked', 'Idle', 'Offline'];
+            const chartColors = series.every((n) => n === 0)
+                ? ['#C7C7CC']
+                : ['#34C759', '#007AFF', '#FF9F0A', '#8E8E93'];
+
             new ApexCharts(donutEl, {
                 ...chartBase(),
                 chart: { ...chartBase().chart, type: 'donut', height: 280 },
-                labels: ['Running', 'Parked', 'Idle', 'Offline'],
-                series: [s.running, s.parked, s.idle, s.offline],
-                colors: ['#34C759', '#007AFF', '#FF9F0A', '#8E8E93'],
+                labels: chartLabels,
+                series: chartSeries,
+                colors: chartColors,
                 legend: { position: 'bottom', fontSize: '12px' },
                 plotOptions: { pie: { donut: { size: '68%' } } },
+                tooltip: {
+                    y: {
+                        formatter(val, opts) {
+                            if (series.every((n) => n === 0)) return '0';
+                            return String(val);
+                        },
+                    },
+                },
             }).render();
-        }
-
-        const areaEl = document.getElementById('udChartActivity');
-        if (areaEl && data.activityArea) {
-            new ApexCharts(areaEl, {
-                ...chartBase(),
-                chart: { ...chartBase().chart, type: 'area', height: 280, sparkline: { enabled: false } },
-                series: [{ name: 'Devices reporting', data: data.activityArea.values || [] }],
-                xaxis: { categories: data.activityArea.labels || [], labels: { style: { fontSize: '11px' } } },
-                colors: ['#007AFF'],
-                fill: { type: 'gradient', gradient: { opacityFrom: 0.35, opacityTo: 0.02 } },
-                stroke: { curve: 'smooth', width: 2 },
-            }).render();
-        }
-
-        const barEl = document.getElementById('udChartAlerts');
-        if (barEl && data.alertsBar) {
-            new ApexCharts(barEl, {
-                ...chartBase(),
-                chart: { ...chartBase().chart, type: 'bar', height: 280 },
-                series: [{ name: 'Alerts', data: data.alertsBar.values || [] }],
-                xaxis: { categories: data.alertsBar.labels || [], labels: { style: { fontSize: '11px' } } },
-                colors: ['#FF9F0A'],
-                plotOptions: { bar: { borderRadius: 8, columnWidth: '55%' } },
-            }).render();
-        }
-
-        const lineEl = document.getElementById('udChartPerformance');
-        if (lineEl && data.performanceLine) {
-            const p = data.performanceLine;
-            new ApexCharts(lineEl, {
-                ...chartBase(),
-                chart: { ...chartBase().chart, type: 'line', height: 280 },
-                series: [
-                    { name: 'GPS pings', data: p.gpsPings || [] },
-                    { name: 'Reporting devices', data: p.activeDevices || [] },
-                ],
-                xaxis: { categories: p.labels || [], labels: { rotate: -45, style: { fontSize: '10px' } } },
-                colors: ['#007AFF', '#AF52DE'],
-                stroke: { curve: 'smooth', width: 2 },
-            }).render();
-        }
-
-        const weekEl = document.getElementById('udChartWeekly');
-        if (weekEl && data.weeklyKm) {
-            const w = data.weeklyKm;
-            new ApexCharts(weekEl, {
-                ...chartBase(),
-                chart: { ...chartBase().chart, type: 'bar', height: 280 },
-                series: [{ name: 'Distance (km)', data: w.values || [] }],
-                xaxis: { categories: w.labels || [], labels: { style: { fontSize: '11px' } } },
-                colors: ['#007AFF'],
-                plotOptions: { bar: { borderRadius: 8, columnWidth: '55%' } },
-                yaxis: { labels: { formatter: (v) => `${Math.round(v)} km` } },
-            }).render();
+            donutEl.dataset.chartReady = '1';
         }
 
         clearChartLoading();
@@ -209,32 +181,26 @@
         initCounters(document);
         initTableFilter();
 
-        document.getElementById('udRefreshActivity')?.addEventListener('click', () => {
-            global.location.reload();
-        });
-
-        if (!cfg.metricsUrl) {
+        // Render Vehicle Status immediately from shell fleet counts (no wait on heavy metrics).
+        try {
+            await loadApexCharts();
             if (cfg.charts) {
-                await loadApexCharts().catch(() => {});
                 renderCharts(cfg.charts);
             }
+        } catch (err) {
+            console.warn('[user-dashboard] chart boot failed', err);
+            clearChartLoading();
+        }
+
+        if (!cfg.metricsUrl) {
             return;
         }
 
         try {
-            const [metrics] = await Promise.all([
-                loadMetrics(cfg.metricsUrl),
-                loadApexCharts().catch(() => null),
-            ]);
+            const metrics = await loadMetrics(cfg.metricsUrl);
             applyDeferredMetrics(metrics);
-            if (metrics.chartData && global.ApexCharts) {
-                renderCharts(metrics.chartData);
-            } else {
-                clearChartLoading();
-            }
         } catch (err) {
             console.warn('[user-dashboard] metrics load failed', err);
-            clearChartLoading();
         }
     }
 
