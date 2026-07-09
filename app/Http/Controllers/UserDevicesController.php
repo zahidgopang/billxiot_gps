@@ -196,7 +196,7 @@ class UserDevicesController extends Controller
             $labels = app(UserDeviceLabelService::class)->update(
                 $user,
                 $device,
-                $request->only(['vehicle_name', 'vehicle_number'])
+                $request->only(['vehicle_name', 'vehicle_number', 'odometer_base_km'])
             );
         } catch (\Illuminate\Validation\ValidationException $e) {
             $status = collect($e->errors())->has('device') ? 404 : 422;

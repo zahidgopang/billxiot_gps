@@ -294,6 +294,7 @@
                                                 data-vehicle-name="{{ $d->vehicle_name ?? '' }}"
                                                 data-vehicle-number="{{ $d->vehicle_number ?? '' }}"
                                                 data-odometer-base-km="{{ $d->odometerBaselineKm() ?? '' }}"
+                                                data-odometer-display-km="{{ $d->odometerDisplayKm() ?? '' }}"
                                                 data-update-url="{{ route('user.devices.vehicle-label', $d) }}"
                                                 title="{{ __('app.user.devices.edit_vehicle') }}">
                                             <i class="fas fa-pen me-1"></i> {{ __('app.user.devices.edit_vehicle') }}
@@ -415,6 +416,7 @@
                             <input type="number" class="form-control admin-ltr" dir="ltr" id="editVehicleOdometer" name="odometer_base_km"
                                    step="0.1" min="0" placeholder="{{ __('app.odometer.placeholder') }}">
                             <div class="form-text">{{ __('app.odometer.hint') }}</div>
+                            <div class="form-text d-none" id="editVehicleOdometerLive"></div>
                         </div>
                     </div>
                     <div class="modal-footer">
@@ -444,6 +446,7 @@
             save: @json(__('app.common.save')),
             saved: @json(__('app.user.devices.vehicle_label_saved')),
             failed: @json(__('app.user.devices.vehicle_label_save_failed')),
+            liveOdometer: @json(__('app.odometer.live_reading')),
         };
         window.USER_DEVICES_ICON = {
             enabled: @json($canChangeIcons),
@@ -504,11 +507,25 @@
                 const nameInput = document.getElementById('editVehicleName');
                 const numberInput = document.getElementById('editVehicleNumber');
                 const odometerInput = document.getElementById('editVehicleOdometer');
+                const odometerLive = document.getElementById('editVehicleOdometerLive');
                 const errorBox = document.getElementById('editVehicleError');
                 const saveBtn = document.getElementById('editVehicleSaveBtn');
                 const i18n = window.USER_DEVICES_EDIT || {};
                 let activeRow = null;
                 let updateUrl = '';
+
+                function setOdometerLive(km) {
+                    if (!odometerLive) return;
+                    if (km === undefined || km === null || km === '') {
+                        odometerLive.classList.add('d-none');
+                        odometerLive.textContent = '';
+                        return;
+                    }
+                    const n = Number(km);
+                    odometerLive.textContent = (i18n.liveOdometer || 'Live odometer') + ': ' +
+                        (Number.isFinite(n) ? n.toLocaleString(undefined, { maximumFractionDigits: 1 }) : km) + ' km';
+                    odometerLive.classList.remove('d-none');
+                }
 
                 document.querySelectorAll('.btn-edit-vehicle').forEach((btn) => {
                     btn.addEventListener('click', function () {
@@ -519,6 +536,7 @@
                         if (odometerInput) {
                             odometerInput.value = btn.getAttribute('data-odometer-base-km') || '';
                         }
+                        setOdometerLive(btn.getAttribute('data-odometer-display-km'));
                         errorBox.classList.add('d-none');
                         errorBox.textContent = '';
                         editModal.show();
@@ -602,9 +620,13 @@
                                 if (labels.odometer_base_km !== undefined && labels.odometer_base_km !== null) {
                                     btn.setAttribute('data-odometer-base-km', labels.odometer_base_km);
                                 }
+                                if (labels.odometer_display_km !== undefined && labels.odometer_display_km !== null) {
+                                    btn.setAttribute('data-odometer-display-km', labels.odometer_display_km);
+                                }
                             }
                         });
 
+                        setOdometerLive(labels.odometer_display_km);
                         editModal.hide();
                     } catch (error) {
                         errorBox.textContent = i18n.failed || 'Could not save vehicle details.';
