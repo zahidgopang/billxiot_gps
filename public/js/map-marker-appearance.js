@@ -19,6 +19,7 @@
         const pathEl = form.querySelector('[data-map-builtin-icon-path]');
         const sizeValueEl = form.querySelector('[data-map-size-value]');
         const rotationEl = form.querySelector('[data-map-rotation]');
+        const offsetEl = form.querySelector('[data-map-rotation-offset]');
         const rangeEl = form.querySelector('[data-map-size-range]');
         let size = sizeValueEl?.textContent || '100';
         if (rangeEl) {
@@ -34,6 +35,7 @@
         const type = typeEl?.value || 'car';
         const path = pathEl?.value || null;
         const iconMeta = registry?.icons?.[type];
+        const offsetFromSelect = offsetEl?.value;
         const offsetFromIcon = iconMeta?.rotation_offset;
         const offsetFromForm = form.dataset.rotationOffset;
         const customActive = form.dataset.customActive === '1';
@@ -43,6 +45,13 @@
             : ((!customActive && type && global.BuiltinMapIcons?.urlForType)
                 ? global.BuiltinMapIcons.urlForType(type, registry)
                 : (iconMeta?.url || null));
+        const resolvedOffset = Number(
+            offsetFromSelect != null && offsetFromSelect !== ''
+                ? offsetFromSelect
+                : (offsetFromForm != null && offsetFromForm !== ''
+                    ? offsetFromForm
+                    : (offsetFromIcon ?? 0))
+        ) || 0;
         return {
             vehicle_type: type,
             map_builtin_icon_path: path,
@@ -50,11 +59,7 @@
             map_marker_style: 'body',
             map_marker_size: size,
             map_icon_rotation_enabled: rotationEl ? rotationEl.checked : true,
-            map_icon_rotation_offset: Number(
-                offsetFromForm != null && offsetFromForm !== ''
-                    ? offsetFromForm
-                    : (offsetFromIcon ?? 0)
-            ) || 0,
+            map_icon_rotation_offset: resolvedOffset,
             map_icon_source: customUrl ? 'custom' : 'default',
             map_custom_icon_url: customUrl,
         };
@@ -379,7 +384,10 @@
                     if (pathEl && icon?.path) {
                         pathEl.value = icon.path;
                     }
-                    form.dataset.rotationOffset = String(icon?.rotation_offset ?? 0);
+                    const nextOffset = String(icon?.rotation_offset ?? 0);
+                    form.dataset.rotationOffset = nextOffset;
+                    const offsetSelect = form.querySelector('[data-map-rotation-offset]');
+                    if (offsetSelect) offsetSelect.value = nextOffset;
                     form.dataset.customActive = '0';
                     delete form.dataset.customPreviewUrl;
                     const revertBtn = form.querySelector('[data-map-revert-custom]');
@@ -429,6 +437,7 @@
         const btnInc = form.querySelector('[data-map-size-inc]');
         const rangeEl = form.querySelector('[data-map-size-range]');
         const rotationEl = form.querySelector('[data-map-rotation]');
+        const offsetEl = form.querySelector('[data-map-rotation-offset]');
         const fileEl = form.querySelector('[data-map-custom-file]');
         const revertBtn = form.querySelector('[data-map-revert-custom]');
         const backBtn = form.querySelector('[data-map-appearance-back]');
@@ -454,6 +463,10 @@
         }
         if (rotationEl && options.initial?.map_icon_rotation_enabled === false) {
             rotationEl.checked = false;
+        }
+        if (offsetEl && options.initial?.map_icon_rotation_offset != null) {
+            offsetEl.value = String(options.initial.map_icon_rotation_offset);
+            form.dataset.rotationOffset = String(options.initial.map_icon_rotation_offset);
         }
 
         bindIconPicker(form, options);
@@ -487,6 +500,11 @@
             renderPreview(form, options);
             options.onPreviewChange?.(readState(form, sizes));
         });
+        offsetEl?.addEventListener('change', () => {
+            form.dataset.rotationOffset = String(offsetEl.value ?? 0);
+            renderPreview(form, options);
+            options.onPreviewChange?.(readState(form, sizes));
+        });
         backBtn?.addEventListener('click', () => {
             if (typeof options.onBack === 'function') {
                 options.onBack(form);
@@ -505,7 +523,13 @@
 
         fileEl?.addEventListener('change', async () => {
             const file = fileEl.files?.[0];
-            if (!file || !options.uploadUrl) return;
+            if (!file) return;
+            if (!options.uploadUrl) {
+                const msg = options.i18n?.uploadUnavailable || options.i18n?.failed || 'Custom upload is not available.';
+                if (statusEl) statusEl.textContent = msg;
+                options.onError?.(msg);
+                return;
+            }
             statusEl && (statusEl.textContent = '');
             const body = new FormData();
             try {
@@ -516,9 +540,18 @@
                 form.dataset.customActive = '1';
                 form.dataset.customPreviewUrl = blobUrl;
                 revertBtn?.removeAttribute('hidden');
+                // Clear library selection highlight — custom upload is the active icon.
+                form.querySelectorAll('.vehicle-icon-picker__btn.is-active').forEach((btn) => {
+                    btn.classList.remove('is-active');
+                    btn.setAttribute('aria-selected', 'false');
+                });
                 renderPreview(form, options);
 
                 body.append('icon', prepared);
+                const offsetEl = form.querySelector('[data-map-rotation-offset]');
+                if (offsetEl?.value != null && offsetEl.value !== '') {
+                    body.append('map_icon_rotation_offset', String(offsetEl.value));
+                }
                 const deviceIds = typeof options.getDeviceIds === 'function' ? options.getDeviceIds() : null;
                 if (Array.isArray(deviceIds)) {
                     if (deviceIds.length === 0) {
@@ -536,18 +569,21 @@
                 });
                 const data = await res.json().catch(() => ({}));
                 if (!res.ok || data.success === false) {
-                    throw new Error(data.message || 'Upload failed');
+                    throw new Error(data.message || options.i18n?.failed || 'Upload failed');
                 }
                 const appearance = data.appearance || {};
                 if (appearance.map_custom_icon_url) {
                     form.dataset.customPreviewUrl = appearance.map_custom_icon_url;
                 }
+                form.dataset.customActive = '1';
                 showResizeNotice(form, appearance.upload_meta || data.upload_meta, options);
                 options.onSaved?.(appearance, data);
                 renderPreview(form, options);
                 if (statusEl) statusEl.textContent = data.message || options.i18n?.uploaded || 'Uploaded';
             } catch (err) {
-                if (statusEl) statusEl.textContent = err.message || options.i18n?.failed || 'Failed';
+                const msg = err.message || options.i18n?.failed || 'Failed';
+                if (statusEl) statusEl.textContent = msg;
+                options.onError?.(msg);
             } finally {
                 fileEl.value = '';
             }
@@ -583,7 +619,14 @@
             e.preventDefault();
             const state = readState(form, sizes);
             const payload = {};
-            if (form.dataset.canChangeIcon === '1' || form.querySelector('[data-map-vehicle-type]:not([type="hidden"])')) {
+            const customActive = form.dataset.customActive === '1';
+
+            // Custom upload is already stored by the upload endpoint.
+            // Do NOT re-send library vehicle_type on Save — that used to wipe the custom icon.
+            if (customActive) {
+                payload.map_marker_style = 'body';
+                payload.map_icon_rotation_offset = state.map_icon_rotation_offset ?? 0;
+            } else if (form.dataset.canChangeIcon === '1' || form.querySelector('[data-map-vehicle-type]:not([type="hidden"])')) {
                 payload.vehicle_type = state.vehicle_type;
                 payload.map_builtin_icon_path = state.map_builtin_icon_path
                     || registry?.icons?.[state.vehicle_type]?.path
@@ -595,10 +638,6 @@
             if (form.querySelector('[data-map-size-range]') || form.querySelector('[data-map-size-value]')) {
                 payload.map_marker_size = state.map_marker_size;
                 payload.map_icon_rotation_enabled = state.map_icon_rotation_enabled;
-            }
-            if (form.dataset.customActive === '1') {
-                payload.map_marker_style = 'body';
-                delete payload.map_icon_source;
             }
 
             const btn = form.querySelector('[type="submit"]');

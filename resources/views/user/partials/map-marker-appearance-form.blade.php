@@ -125,9 +125,27 @@
                 </button>
             </div>
             <p class="small text-muted mb-0 mt-1">
+                {{ __('app.map.custom_icon_upload_apply_hint') }}
                 PNG / SVG · max {{ $appearanceOptions['upload']['max_kb'] ?? 512 }} KB ·
                 {{ __('app.map.custom_icon_auto_resize_hint', ['max' => $appearanceOptions['upload']['max_width'] ?? 256]) }}
             </p>
+        </div>
+    @endif
+
+    @if($canChangeIcon)
+        @php $currentOffset = (string) ((int) ($appearance['map_icon_rotation_offset'] ?? 0)); @endphp
+        <div class="map-marker-appearance__row map-marker-appearance__orientation">
+            <span class="map-marker-appearance__label">{{ __('app.map.icon_default_orientation') }}</span>
+            <div class="alert alert-light border small mb-2 py-2 px-3" role="note">
+                {{ __('app.map.icon_orientation_hint') }}
+            </div>
+            <select class="form-select form-select-sm" data-map-rotation-offset name="map_icon_rotation_offset" aria-describedby="{{ $formId }}-orient-help">
+                <option value="0" @selected($currentOffset === '0')>{{ __('app.map.icon_orient_north') }}</option>
+                <option value="-90" @selected($currentOffset === '-90')>{{ __('app.map.icon_orient_east') }}</option>
+                <option value="180" @selected($currentOffset === '180')>{{ __('app.map.icon_orient_south') }}</option>
+                <option value="90" @selected($currentOffset === '90')>{{ __('app.map.icon_orient_west') }}</option>
+            </select>
+            <p class="small text-muted mb-0 mt-1" id="{{ $formId }}-orient-help">{{ __('app.map.icon_orientation_example') }}</p>
         </div>
     @endif
 

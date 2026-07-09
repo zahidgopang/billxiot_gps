@@ -2,6 +2,8 @@
 
 namespace Tests\Unit;
 
+use App\Services\Authorization\RbacService;
+use App\Services\Authorization\TenantScopeService;
 use App\Services\Tracking\DeviceMapAppearanceService;
 use App\Services\Tracking\DeviceMapIconAuthorization;
 use App\Services\Tracking\DeviceVehicleIconService;
@@ -21,6 +23,8 @@ class DeviceMapAppearanceServiceTest extends TestCase
         $service = new DeviceMapAppearanceService(
             Mockery::mock(DeviceVehicleIconService::class),
             Mockery::mock(DeviceMapIconAuthorization::class),
+            Mockery::mock(TenantScopeService::class),
+            Mockery::mock(RbacService::class),
         );
 
         $options = $service->mobileUploadOptions();

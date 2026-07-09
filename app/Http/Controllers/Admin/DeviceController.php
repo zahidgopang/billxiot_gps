@@ -59,8 +59,14 @@ class DeviceController extends Controller
         $devices = $q->paginate(15)->withQueryString();
         app(\App\Services\Tracking\DevicePositionLoader::class)->attachLatestToMany($devices->getCollection());
 
+        // Change-icon modal needs every in-scope vehicle, not only the current page.
+        $iconDevices = $this->tenantScope()->scopeDevices(Device::query(), $request->user())
+            ->orderByDesc('id')
+            ->get();
+
         return view('admin.devices.index', [
             'devices' => $devices,
+            'iconDevices' => $iconDevices,
             'panel' => $this->panelPrefix(),
         ]);
     }

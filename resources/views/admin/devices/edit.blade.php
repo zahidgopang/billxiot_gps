@@ -30,15 +30,9 @@
             </button>
         </x-slot:footer>
     </x-admin.form-shell>
-
-    @include('admin.devices._map-marker-appearance-section', [
-        'device' => $device,
-        'panel' => $panel,
-    ])
 @endsection
 
 @push('scripts')
-    @include('admin.devices._map-marker-appearance-script', ['device' => $device])
     @include('admin.devices._users-script', [
         'panel' => $panel,
         'clients' => $clients ?? collect(),

@@ -247,6 +247,10 @@ Route::middleware(['auth', 'panel:admin', 'can:admin'])
             ->name('reports.profit-loss');
         Route::patch('devices/{device}/toggle-status', [AdminDeviceController::class, 'toggleStatus'])
             ->name('devices.toggle-status');
+        Route::post('devices/map-appearance-bulk', [UserDevicesController::class, 'updateMapAppearanceBulk'])
+            ->name('devices.map-appearance-bulk');
+        Route::post('devices/map-custom-icon-bulk', [UserDevicesController::class, 'uploadMapCustomIconBulk'])
+            ->name('devices.map-custom-icon-bulk');
         Route::post('devices/{device}/map-appearance', [UserDevicesController::class, 'updateMapAppearance'])
             ->name('devices.map-appearance');
         Route::post('devices/{device}/map-custom-icon', [UserDevicesController::class, 'uploadMapCustomIcon'])
@@ -397,6 +401,10 @@ Route::middleware(['auth', 'panel:client', 'can:client-panel'])
 
         Route::patch('devices/{device}/toggle-status', [AdminDeviceController::class, 'toggleStatus'])
             ->name('devices.toggle-status');
+        Route::post('devices/map-appearance-bulk', [UserDevicesController::class, 'updateMapAppearanceBulk'])
+            ->name('devices.map-appearance-bulk');
+        Route::post('devices/map-custom-icon-bulk', [UserDevicesController::class, 'uploadMapCustomIconBulk'])
+            ->name('devices.map-custom-icon-bulk');
         Route::post('devices/{device}/map-appearance', [UserDevicesController::class, 'updateMapAppearance'])
             ->name('devices.map-appearance');
         Route::post('devices/{device}/map-custom-icon', [UserDevicesController::class, 'uploadMapCustomIcon'])

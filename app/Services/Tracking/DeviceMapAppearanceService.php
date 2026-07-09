@@ -4,6 +4,8 @@ namespace App\Services\Tracking;
 
 use App\Models\Device;
 use App\Models\User;
+use App\Services\Authorization\RbacService;
+use App\Services\Authorization\TenantScopeService;
 use App\Services\Mobile\MapRenderingSpec;
 use App\Support\VehicleIcons\BuiltinMapIconStorage;
 use App\Support\VehicleIcons\VehicleIconLibrary;
@@ -17,6 +19,8 @@ class DeviceMapAppearanceService
     public function __construct(
         private DeviceVehicleIconService $iconService,
         private DeviceMapIconAuthorization $auth,
+        private TenantScopeService $tenantScope,
+        private RbacService $rbac,
     ) {}
 
     /**
@@ -138,7 +142,8 @@ class DeviceMapAppearanceService
 
         if (array_key_exists('vehicle_type', $validated)) {
             $device->vehicle_type = $validated['vehicle_type'] ?: null;
-            // Selecting a library / shared icon clears per-device custom upload.
+            // Selecting a library / shared icon clears per-device custom upload
+            // only when the client explicitly switches source to default.
             if ($validated['vehicle_type']) {
                 if (! array_key_exists('map_builtin_icon_path', $validated)) {
                     if (\App\Support\VehicleIcons\SharedMapIconStorage::isSharedType($validated['vehicle_type'])) {
@@ -148,7 +153,7 @@ class DeviceMapAppearanceService
                         $device->map_builtin_icon_path = BuiltinMapIconStorage::relativePathForType($validated['vehicle_type']);
                     }
                 }
-                if (! array_key_exists('map_icon_source', $validated)) {
+                if (($validated['map_icon_source'] ?? null) === 'default') {
                     $this->iconService->delete($device);
                 }
                 if (! array_key_exists('map_marker_style', $validated)) {
@@ -270,11 +275,12 @@ class DeviceMapAppearanceService
      * @param  list<int|string>  $deviceIds
      * @return array{updated: int, failed: list<array{id: int, message: string}>}
      */
-    public function uploadCustomIconMany(User $user, array $deviceIds, UploadedFile $file): array
+    public function uploadCustomIconMany(User $user, array $deviceIds, UploadedFile $file, int|string|null $rotationOffset = null): array
     {
         $updated = 0;
         $failed = [];
         $tempPath = null;
+        $appearance = null;
 
         try {
             $contents = file_get_contents($file->getRealPath());
@@ -291,7 +297,19 @@ class DeviceMapAppearanceService
                 ]);
             }
 
-            foreach ($this->resolveOwnedDevices($user, $deviceIds) as $device) {
+            $devices = $this->resolveOwnedDevices($user, $deviceIds);
+            if ($devices->isEmpty()) {
+                return [
+                    'updated' => 0,
+                    'failed' => [[
+                        'id' => 0,
+                        'message' => __('app.user.devices.icon_select_vehicles'),
+                    ]],
+                    'appearance' => null,
+                ];
+            }
+
+            foreach ($devices as $device) {
                 try {
                     $clone = new UploadedFile(
                         $tempPath,
@@ -300,7 +318,7 @@ class DeviceMapAppearanceService
                         null,
                         true
                     );
-                    $this->uploadCustomIcon($user, $device, $clone);
+                    $appearance = $this->uploadCustomIcon($user, $device, $clone, $rotationOffset);
                     $updated++;
                 } catch (ValidationException $e) {
                     $failed[] = [
@@ -316,6 +334,7 @@ class DeviceMapAppearanceService
                     'id' => 0,
                     'message' => collect($e->errors())->flatten()->first() ?: __('app.map.icon_upload_permission_denied'),
                 ]],
+                'appearance' => null,
             ];
         } finally {
             if (is_string($tempPath) && is_file($tempPath)) {
@@ -323,7 +342,7 @@ class DeviceMapAppearanceService
             }
         }
 
-        return compact('updated', 'failed');
+        return compact('updated', 'failed', 'appearance');
     }
 
     /**
@@ -343,9 +362,16 @@ class DeviceMapAppearanceService
             return collect();
         }
 
-        return $user->trackerDevicesQuery()
+        // Panel managers resolve by tenant device scope; end users by assigned trackers.
+        $query = $this->rbac->hasPermission($user, 'devices.manage')
+            ? $this->tenantScope->scopeDevices(Device::query(), $user)
+            : $user->trackerDevicesQuery();
+
+        return $query
             ->whereIn('id', $ids)
-            ->get();
+            ->get()
+            ->filter(fn (Device $device) => $this->auth->canEditAppearance($user, $device))
+            ->values();
     }
 
     /**

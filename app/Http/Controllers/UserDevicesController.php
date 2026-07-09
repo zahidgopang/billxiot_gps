@@ -232,6 +232,7 @@ class UserDevicesController extends Controller
                     'map_marker_style',
                     'map_marker_size',
                     'map_icon_rotation_enabled',
+                    'map_icon_rotation_offset',
                     'map_icon_source',
                 ])
             );
@@ -276,6 +277,7 @@ class UserDevicesController extends Controller
                 'map_marker_style',
                 'map_marker_size',
                 'map_icon_rotation_enabled',
+                'map_icon_rotation_offset',
                 'map_icon_source',
             ])
         );
@@ -311,11 +313,18 @@ class UserDevicesController extends Controller
         if ($deviceIds === [] || ! $file) {
             return response()->json([
                 'success' => false,
-                'message' => __('app.user.devices.icon_select_vehicles'),
+                'message' => $deviceIds === []
+                    ? __('app.user.devices.icon_select_vehicles')
+                    : __('app.map.custom_icon_invalid_image'),
             ], 422);
         }
 
-        $result = app(DeviceMapAppearanceService::class)->uploadCustomIconMany($user, $deviceIds, $file);
+        $result = app(DeviceMapAppearanceService::class)->uploadCustomIconMany(
+            $user,
+            $deviceIds,
+            $file,
+            $request->input('rotation_offset', $request->input('map_icon_rotation_offset', 0))
+        );
 
         if ($result['updated'] === 0) {
             return response()->json([
@@ -329,6 +338,8 @@ class UserDevicesController extends Controller
             'success' => true,
             'updated' => $result['updated'],
             'failed' => $result['failed'],
+            'appearance' => $result['appearance'] ?? null,
+            'upload_meta' => $result['appearance']['upload_meta'] ?? null,
             'message' => __('app.user.devices.icon_bulk_uploaded', ['count' => $result['updated']]),
         ]);
     }

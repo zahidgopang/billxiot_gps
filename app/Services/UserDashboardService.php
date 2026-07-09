@@ -551,15 +551,14 @@ class UserDashboardService
      */
     public function emptyTrackerStats(): array
     {
-        return [
+        // Must include the same top-level KPI keys as getDevicePageStats() —
+        // dashboard.blade.php reads $running / $parked / $idle directly.
+        return array_merge($this->getDevicePageStats(collect()), [
             'devices' => collect(),
-            'totalDevices' => 0,
-            'activeDevices' => 0,
             'totalDistanceKm' => 0,
             'activeAlerts' => 0,
-            'onlineNow' => 0,
             'vehicleStates' => ['running' => 0, 'parked' => 0, 'maintenance' => 0, 'alerts' => 0],
-            'fleetCounts' => ['running' => 0, 'parked' => 0, 'idle' => 0, 'stopped' => 0, 'offline' => 0, 'with_gps' => 0],
+            'fleetCounts' => ['running' => 0, 'parked' => 0, 'idle' => 0, 'stopped' => 0, 'offline' => 0, 'with_gps' => 0, 'alert' => 0],
             'recentDevices' => collect(),
             'activities' => collect(),
             'alertDeviceIds' => collect(),
@@ -568,7 +567,6 @@ class UserDashboardService
             'alertsPercent' => 0,
             'distancePercent' => 0,
             'distanceTodayKm' => 0,
-            'offlineNow' => 0,
             'chartData' => [
                 'statusDonut' => ['running' => 0, 'parked' => 0, 'idle' => 0, 'offline' => 0],
                 'activityArea' => ['labels' => [], 'values' => []],
@@ -578,7 +576,7 @@ class UserDashboardService
             ],
             'mapMarkers' => [],
             'maintenanceDue' => ['overdue' => 0, 'soon' => 0, 'items' => []],
-        ];
+        ]);
     }
 
     public function getProfileStats(User $user): array

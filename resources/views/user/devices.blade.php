@@ -767,6 +767,16 @@
                         errorBox.textContent = '';
                     }
                 },
+                onError: (message) => {
+                    if (errorBox) {
+                        errorBox.textContent = message || iconCfg.failed || 'Failed';
+                        errorBox.classList.remove('d-none');
+                    }
+                    if (successBox) {
+                        successBox.classList.add('d-none');
+                        successBox.textContent = '';
+                    }
+                },
             });
 
             syncSelectedCount();
