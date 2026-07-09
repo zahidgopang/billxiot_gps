@@ -151,6 +151,9 @@ class DeviceController extends Controller
         $this->authorizePermission('devices.manage');
         $this->authorizeManageDevice($device);
 
+        // Same Traccar position pattern as show/index — live odometer uses tc_positions.
+        app(\App\Services\Tracking\DevicePositionLoader::class)->attachLatest($device);
+
         [$users, $clients, $usersByClient] = $this->deviceFormUserData(auth()->user());
 
         $formClientId = $this->resolveFormClientId($device);

@@ -362,12 +362,7 @@ class Device extends Model
 
     public function odometerDisplayKm($reportedOdometerMeters = null): ?float
     {
-        if ($reportedOdometerMeters === null) {
-            $reportedOdometerMeters = $this->relationLoaded('latestLocation')
-                ? $this->latestLocation?->odometer
-                : null;
-        }
-
+        // DeviceOdometerService resolves positions via Traccar PositionReader (tc_positions).
         return app(DeviceOdometerService::class)->displayKm($this, $reportedOdometerMeters);
     }
 

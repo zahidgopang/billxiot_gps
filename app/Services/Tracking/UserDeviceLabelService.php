@@ -48,11 +48,14 @@ class UserDeviceLabelService
             }
         }
 
+        // Live reading uses Traccar positions (same path as admin device form).
+        $this->odometer->latestPosition($device);
+
         return [
             'vehicle_name' => $device->vehicle_name,
             'vehicle_number' => $device->vehicle_number,
             'odometer_base_km' => $this->odometer->baselineKm($device),
-            'odometer_display_km' => $device->odometerDisplayKm(),
+            'odometer_display_km' => $this->odometer->displayKm($device),
             'primary_label' => $device->listPrimaryLabel(),
             'secondary_label' => $device->listSecondaryLabel(),
         ];

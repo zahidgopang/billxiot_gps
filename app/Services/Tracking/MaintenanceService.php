@@ -531,13 +531,13 @@ class MaintenanceService
             return null;
         }
 
-        $reported = $device->latestLocation?->odometer;
-        $km = $this->odometer->displayKm($device, $reported);
+        // Same Traccar PositionReader path as admin/end-user vehicle odometer.
+        $km = $this->odometer->displayKm($device);
         if ($km !== null) {
             return round((float) $km, 1);
         }
 
-        return $device->odometerDisplayKm($reported);
+        return null;
     }
 
     private function nullableDate(mixed $value): ?string

@@ -74,9 +74,7 @@ class DeviceOdometerService
             TraccarAppFields::KEY_ODOMETER_LAST_ACCUM_AT => $now,
         ];
 
-        $latest = $device->relationLoaded('latestLocation')
-            ? $device->latestLocation
-            : $device->latestLocation()->first();
+        $latest = $this->latestPosition($device);
 
         if ($latest && $latest->lat !== null && $latest->lng !== null) {
             $patch[TraccarAppFields::KEY_ODOMETER_LAST_ACCUM_LAT] = (float) $latest->lat;
@@ -119,6 +117,7 @@ class DeviceOdometerService
 
     /**
      * Display odometer: client baseline + GPS when set, otherwise device-reported reading.
+     * Always resolves positions via PositionReader (Traccar tc_positions) — never Eloquent device_locations.
      */
     public function displayKm(Device $device, mixed $reportedOdometerMeters = null): ?float
     {
@@ -127,7 +126,29 @@ class DeviceOdometerService
             return $resolved;
         }
 
+        if ($reportedOdometerMeters === null) {
+            $reportedOdometerMeters = $this->latestPosition($device)?->odometer;
+        }
+
         return TelemetryFormatter::odometerKm($reportedOdometerMeters);
+    }
+
+    /**
+     * Latest GPS point for odometer work. Uses an already-attached relation when present
+     * (from DevicePositionLoader), otherwise PositionReader → Traccar tc_positions.
+     */
+    public function latestPosition(Device $device): ?DeviceLocation
+    {
+        if ($device->relationLoaded('latestLocation')) {
+            $loaded = $device->getRelation('latestLocation');
+
+            return $loaded instanceof DeviceLocation ? $loaded : null;
+        }
+
+        $latest = $this->positions->latestForDevice($device);
+        $device->setRelation('latestLocation', $latest);
+
+        return $latest;
     }
 
     public function onPositionRecorded(Device $device, DeviceLocation $location): void
