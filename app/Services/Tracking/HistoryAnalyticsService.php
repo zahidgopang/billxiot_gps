@@ -16,8 +16,11 @@ class HistoryAnalyticsService
 {
     public const STOP_MIN_SECONDS = 120;
 
-    /** Gap between fixes treated as offline in timeline. */
-    public const OFFLINE_GAP_SECONDS = 1800;
+    /** Idle (ignition ON, speed ~0) longer than this becomes Stopped on the map. */
+    public const STOPPED_MIN_SECONDS = 600;
+
+    /** Gap between fixes treated as offline in timeline / status markers. */
+    public const OFFLINE_GAP_SECONDS = 600;
 
     public const OVERSPEED_KMH = 120;
 
@@ -273,8 +276,8 @@ class HistoryAnalyticsService
             }
 
             $motion = $this->motionKey($b);
-            $ignitionA = (bool) ($a->ignition ?? false);
-            $ignitionB = (bool) ($b->ignition ?? false);
+            $ignitionA = $this->pointIgnition($a);
+            $ignitionB = $this->pointIgnition($b);
 
             if ($ignitionA !== $ignitionB) {
                 $raw[] = $this->rawIgnitionTransition($b, $t1, $ignitionB);
@@ -299,7 +302,33 @@ class HistoryAnalyticsService
             ];
         }
 
-        return $this->mergeTimelineSegments($raw);
+        return $this->refineIdleToStopped($this->mergeTimelineSegments($raw));
+    }
+
+    /**
+     * Long ignition-on idle segments become Stopped (S) for map markers / legend.
+     *
+     * @param  list<array<string, mixed>>  $timeline
+     * @return list<array<string, mixed>>
+     */
+    public function refineIdleToStopped(array $timeline): array
+    {
+        return array_map(function (array $segment) {
+            if (($segment['is_transition'] ?? false)) {
+                return $segment;
+            }
+
+            $key = (string) ($segment['status_key'] ?? '');
+            $duration = (int) ($segment['duration_seconds'] ?? 0);
+
+            if ($key === 'idle' && $duration >= self::STOPPED_MIN_SECONDS) {
+                $segment['status_key'] = 'stopped';
+                $segment['motion_key'] = 'stopped';
+                $segment['status_label'] = $this->timelineLabel('stopped');
+            }
+
+            return $segment;
+        }, $timeline);
     }
 
     /**
@@ -366,7 +395,7 @@ class HistoryAnalyticsService
         $motion = $this->motionKey($point);
         $tripKey = VehicleStatusSpec::tripStatusKey(
             (float) ($point->speed ?? 0),
-            (bool) ($point->ignition ?? false),
+            $this->pointIgnition($point),
         );
 
         return [
@@ -488,8 +517,10 @@ class HistoryAnalyticsService
     {
         return match (VehicleStatusSpec::normalizeKey($motionKey)) {
             'running', 'moving' => (string) __('app.map.timeline_moving'),
-            'stopped', 'idle' => (string) __('app.map.timeline_idle'),
+            'idle' => (string) __('app.map.timeline_idle'),
+            'stopped' => (string) __('app.map.status_stopped'),
             'parked' => (string) __('app.map.timeline_parked'),
+            'offline' => (string) __('app.map.status_offline'),
             default => VehicleStatusSpec::motionLabel($motionKey),
         };
     }
@@ -498,8 +529,24 @@ class HistoryAnalyticsService
     {
         return VehicleStatusSpec::motionKey(
             (float) ($point->speed ?? 0),
-            (bool) ($point->ignition ?? false),
+            $this->pointIgnition($point),
         );
+    }
+
+    /**
+     * Prefer ignition; fall back to ACC when devices only report ACC.
+     */
+    private function pointIgnition(object $point): bool
+    {
+        if (isset($point->ignition) && $point->ignition !== null && $point->ignition !== '') {
+            return filter_var($point->ignition, FILTER_VALIDATE_BOOLEAN);
+        }
+
+        if (isset($point->acc) && $point->acc !== null && $point->acc !== '') {
+            return filter_var($point->acc, FILTER_VALIDATE_BOOLEAN);
+        }
+
+        return false;
     }
 
     private function segmentDurationSeconds(?Carbon $from, ?Carbon $to): int

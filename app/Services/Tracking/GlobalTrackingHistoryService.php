@@ -98,6 +98,8 @@ class GlobalTrackingHistoryService
     }
 
     /**
+     * Cap timeline size while keeping status-marker segments (P/I/S/X) and transitions.
+     *
      * @param  list<array<string, mixed>>  $timeline
      * @return list<array<string, mixed>>
      */
@@ -108,16 +110,51 @@ class GlobalTrackingHistoryService
             return $timeline;
         }
 
-        $step = (int) ceil($count / $max);
-        $sampled = [];
+        $priorityKeys = ['parked', 'parking', 'idle', 'stopped', 'offline', 'ignition_on', 'ignition_off'];
+        $priority = [];
+        $rest = [];
 
         foreach ($timeline as $index => $segment) {
-            if ($index === 0 || $index === $count - 1 || $index % $step === 0) {
-                $sampled[] = $segment;
+            $key = (string) ($segment['status_key'] ?? '');
+            $isTransition = (bool) ($segment['is_transition'] ?? false);
+            $duration = (int) ($segment['duration_seconds'] ?? 0);
+            $keep = $isTransition
+                || in_array($key, $priorityKeys, true)
+                || $index === 0
+                || $index === $count - 1
+                || $duration >= 120;
+
+            if ($keep) {
+                $priority[] = $segment;
+            } else {
+                $rest[] = $segment;
             }
         }
 
-        return $sampled;
+        if (count($priority) >= $max) {
+            usort($priority, fn (array $a, array $b) => ((int) ($b['duration_seconds'] ?? 0)) <=> ((int) ($a['duration_seconds'] ?? 0)));
+
+            return array_slice($priority, 0, $max);
+        }
+
+        $room = $max - count($priority);
+        if ($room > 0 && $rest !== []) {
+            $step = max(1, (int) ceil(count($rest) / $room));
+            foreach ($rest as $index => $segment) {
+                if ($index % $step === 0) {
+                    $priority[] = $segment;
+                    if (count($priority) >= $max) {
+                        break;
+                    }
+                }
+            }
+        }
+
+        usort($priority, function (array $a, array $b) {
+            return strcmp((string) ($a['start'] ?? ''), (string) ($b['start'] ?? ''));
+        });
+
+        return $priority;
     }
 
     /**
@@ -221,6 +258,7 @@ class GlobalTrackingHistoryService
             'speed' => (float) ($location->speed ?? 0),
             'heading' => (float) ($location->heading ?? 0),
             'ignition' => (bool) $location->ignition,
+            'acc' => (bool) ($location->acc ?? false),
             'recorded_at' => AppDateTime::toApi($location->recorded_at),
         ];
     }

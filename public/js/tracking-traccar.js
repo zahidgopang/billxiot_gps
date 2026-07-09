@@ -18,6 +18,8 @@
     const MEDIUM_SPEED = 60;
     const OVER_SPEED = 80;
     const STOP_MIN_SEC = 120;
+    const STOPPED_MIN_SEC = 600;
+    const OFFLINE_GAP_SEC = 600;
     const HISTORY_CACHE_TTL_MS = 5 * 60 * 1000;
     const HISTORY_CACHE_MAX_ENTRIES = 16;
     const MOVING_KEYS = new Set(['running', 'moving']);
@@ -354,14 +356,22 @@
 
     function computeHistoryStatusMarkers(vehicle, points) {
         const markers = [];
-        const timeline = Array.isArray(vehicle?.timeline) ? vehicle.timeline : [];
+        const ha = global.HistoryAnalytics;
+        let timeline = Array.isArray(vehicle?.timeline) ? vehicle.timeline : [];
+        if (timeline.length && ha?.refineIdleToStopped) {
+            timeline = ha.refineIdleToStopped(timeline);
+        }
 
         if (timeline.length) {
             timeline.forEach((seg) => {
                 if (seg?.is_transition) return;
-                const typeKey = statusMarkerTypeKey(seg.status_key);
-                if (!typeKey) return;
+                let typeKey = statusMarkerTypeKey(seg.status_key);
                 const durationSec = Math.max(0, parseInt(seg.duration_seconds, 10) || 0);
+                // Long idle → Stopped (S) when backend/fallback still sends idle.
+                if (typeKey === 'idle' && durationSec >= STOPPED_MIN_SEC) {
+                    typeKey = 'stopped';
+                }
+                if (!typeKey) return;
                 if (typeKey === 'offline') {
                     if (durationSec < 60) return;
                 } else if (durationSec < STOP_MIN_SEC) {
@@ -377,8 +387,10 @@
                     zIndex: style.zIndex,
                     lat: coords.lat,
                     lng: coords.lng,
-                    status_key: seg.status_key,
-                    status_label: seg.status_label || seg.status_key,
+                    status_key: typeKey === 'stopped' ? 'stopped' : seg.status_key,
+                    status_label: typeKey === 'stopped'
+                        ? (ha?.timelineLabel?.('stopped') || 'Stopped')
+                        : (seg.status_label || seg.status_key),
                     durationSec,
                     arrived: seg.start,
                     departed: seg.end,
@@ -394,7 +406,6 @@
         }
 
         // Fallback when timeline is unavailable: derive runs from GPS points.
-        const ha = global.HistoryAnalytics;
         if (!ha?.motionKey) {
             return computeStops(points).map((stop) => ({
                 typeKey: 'parked',
@@ -432,19 +443,23 @@
             const t0 = ha.parseMs?.(run[0].recorded_at) ?? (Date.parse(run[0].recorded_at || '') || 0);
             const t1 = ha.parseMs?.(run[run.length - 1].recorded_at) ?? (Date.parse(run[run.length - 1].recorded_at || '') || 0);
             const durationSec = ha.segmentSeconds?.(t0, t1) ?? Math.max(0, (t1 - t0) / 1000);
-            const minDur = runType === 'offline' ? 60 : STOP_MIN_SEC;
+            let finalType = runType;
+            if (finalType === 'idle' && durationSec >= STOPPED_MIN_SEC) {
+                finalType = 'stopped';
+            }
+            const minDur = finalType === 'offline' ? 60 : STOP_MIN_SEC;
             if (durationSec >= minDur) {
                 const mid = run[Math.floor(run.length / 2)];
-                const style = STATUS_MARKER_STYLES[runType];
+                const style = STATUS_MARKER_STYLES[finalType];
                 markers.push({
-                    typeKey: runType,
+                    typeKey: finalType,
                     letter: style.letter,
                     color: style.color,
                     zIndex: style.zIndex,
                     lat: mid.lat,
                     lng: mid.lng,
-                    status_key: runType === 'parked' ? 'parked' : runType,
-                    status_label: ha.timelineLabel?.(runType) || runType,
+                    status_key: finalType === 'parked' ? 'parked' : finalType,
+                    status_label: ha.timelineLabel?.(finalType) || finalType,
                     durationSec,
                     arrived: run[0].recorded_at,
                     departed: run[run.length - 1].recorded_at,
@@ -465,7 +480,7 @@
             const t0 = ha.parseMs?.(a.recorded_at) ?? (Date.parse(a.recorded_at || '') || 0);
             const t1 = ha.parseMs?.(b.recorded_at) ?? (Date.parse(b.recorded_at || '') || 0);
             const dt = ha.segmentSeconds?.(t0, t1) ?? Math.max(0, (t1 - t0) / 1000);
-            if (dt > (ha.OFFLINE_GAP_SECONDS || 1800)) {
+            if (dt > (ha.OFFLINE_GAP_SECONDS || OFFLINE_GAP_SEC)) {
                 flushRun();
                 const style = STATUS_MARKER_STYLES.offline;
                 markers.push({
@@ -3510,7 +3525,8 @@
             this.clearLazyStatusMarkers();
             if (!this._statusMarkers.length) return;
 
-            if (this._statusMarkers.length <= 40) {
+            // Show markers immediately for typical day tracks; lazy-load only huge sets.
+            if (this._statusMarkers.length <= 120) {
                 this._statusMarkers.forEach((seg) => this.addStatusMarker(seg, name));
                 return;
             }
@@ -3646,12 +3662,14 @@
 
             this.renderSpeedLegend(name);
             this.renderHistoryFooter(vehicle, points, stops, stats);
-            this.renderGraph(points);
+
+            // Status markers first (what users look for on the map), then chart/events.
+            this.renderStatusMarkersLazy(name);
+            this.setHistoryLoadBanner('stops', 'done');
 
             this.scheduleIdleWork(() => {
                 if (seq !== this._historyLoadSeq) return;
-                this.renderStatusMarkersLazy(name);
-                this.setHistoryLoadBanner('stops', 'done');
+                this.renderGraph(points);
                 this.renderHistoryEventsChunked(historyEvents, name, () => {
                     if (seq !== this._historyLoadSeq) return;
                     this.setHistoryLoadBanner('events', 'done');
