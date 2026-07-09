@@ -75,6 +75,38 @@
         }
     }
 
+    function historyPermissionMessage(cfg, payload, status) {
+        const bodyMessage = String(payload?.message || '').trim();
+        if (status === 403 || status === 401) {
+            return bodyMessage
+                || cfg?.i18n?.historyPermissionDenied
+                || 'Access Denied. You do not have permission to view tracking history.';
+        }
+        return bodyMessage || `Request failed (${status})`;
+    }
+
+    function isHistoryPermissionError(err) {
+        return Boolean(err && (err.status === 401 || err.status === 403 || err.code === 'history_permission_denied'));
+    }
+
+    function popupPermissionDenied(cfg, message) {
+        const text = String(
+            message
+            || cfg?.i18n?.historyPermissionDenied
+            || 'Access Denied. You do not have permission to view tracking history.',
+        ).trim();
+        if (global.Swal) {
+            global.Swal.fire({
+                icon: 'error',
+                title: cfg?.i18n?.accessDeniedTitle || 'Access Denied',
+                text,
+                confirmButtonText: cfg?.i18n?.ok || 'OK',
+            });
+            return;
+        }
+        alert(text);
+    }
+
     class GlobalTrackingHistory {
         constructor(cfg) {
             this.cfg = cfg;
@@ -247,6 +279,9 @@
                         fetch(`${analyticsUrl}?${qs}`, { credentials: 'same-origin', cache: 'no-store' }),
                     ]);
 
+                    this.throwIfHistoryPermissionDenied(pointsResult);
+                    this.throwIfHistoryPermissionDenied(analyticsResult);
+
                     const pointsVehicle = await this.parseHistoryVehicle(pointsResult);
                     const analyticsVehicle = await this.parseHistoryVehicle(analyticsResult);
 
@@ -265,9 +300,14 @@
                         credentials: 'same-origin',
                         cache: 'no-store',
                     });
-                    const data = await res.json();
+                    const data = await res.json().catch(() => ({}));
                     if (!res.ok) {
-                        throw new Error(data.message || 'Request failed');
+                        const err = new Error(historyPermissionMessage(this.cfg, data, res.status));
+                        err.status = res.status;
+                        if (res.status === 401 || res.status === 403) {
+                            err.code = 'history_permission_denied';
+                        }
+                        throw err;
                     }
                     vehicle = (data.vehicles || [])[0] || null;
                 }
@@ -275,10 +315,29 @@
                 this.drawHistory(vehicle);
             } catch (err) {
                 console.error('[global-tracking-history]', err);
-                notify(err.message || this.cfg.i18n?.loadFailed || 'Failed to load history.', 'error');
+                if (isHistoryPermissionError(err)) {
+                    popupPermissionDenied(this.cfg, err.message);
+                } else {
+                    notify(err.message || this.cfg.i18n?.loadFailed || 'Failed to load history.', 'error');
+                }
             } finally {
                 btn?.removeAttribute('disabled');
             }
+        }
+
+        async throwIfHistoryPermissionDenied(result) {
+            if (result.status !== 'fulfilled' || !result.value) {
+                return;
+            }
+            const res = result.value;
+            if (res.ok || (res.status !== 401 && res.status !== 403)) {
+                return;
+            }
+            const data = await res.clone().json().catch(() => ({}));
+            const err = new Error(historyPermissionMessage(this.cfg, data, res.status));
+            err.status = res.status;
+            err.code = 'history_permission_denied';
+            throw err;
         }
 
         async parseHistoryVehicle(result) {

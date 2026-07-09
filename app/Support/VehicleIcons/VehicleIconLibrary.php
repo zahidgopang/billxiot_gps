@@ -62,6 +62,7 @@ final class VehicleIconLibrary
                 'id' => $id,
                 'label_key' => $labelKey,
                 'label' => $translated !== 'app.map.'.$labelKey ? $translated : ucfirst(str_replace('_', ' ', $id)),
+                'emoji' => (string) ($meta['emoji'] ?? ''),
                 'order' => (int) ($meta['order'] ?? 999),
             ];
         })->sortBy('order')->values()->all();
@@ -72,24 +73,42 @@ final class VehicleIconLibrary
      *
      * @return array{categories: list<array<string, mixed>>, icons: array<string, array<string, mixed>>, aliases: array<string, string>, marker_colors: list<string>}
      */
+    /**
+     * Icon picker registry: Super Admin uploaded icons only (no built-in library).
+     *
+     * @return array{categories: list<array<string, mixed>>, icons: array<string, array<string, mixed>>, aliases: array<string, string>, marker_colors: list<string>}
+     */
     public static function clientRegistry(): array
     {
-        $icons = [];
-        foreach (self::iconDefinitions() as $id => $meta) {
-            $icons[$id] = [
-                'id' => $id,
-                'category' => (string) ($meta['category'] ?? 'generic'),
-                'shape' => (string) ($meta['shape'] ?? 'sedan'),
-                'label' => self::labelFor($id, $meta),
-                'tags' => array_values($meta['tags'] ?? []),
-            ];
+        $sharedService = null;
+        $sharedEntries = [];
+        try {
+            $sharedService = app(\App\Services\Tracking\SharedMapIconService::class);
+            $sharedEntries = $sharedService->registryEntries();
+        } catch (\Throwable) {
+            $sharedEntries = [];
         }
 
+        $icons = [];
+        foreach ($sharedEntries as $entry) {
+            $icons[$entry['id']] = $entry;
+        }
+
+        $categories = $sharedService
+            ? $sharedService->uploadCategories()
+            : array_values(array_filter(
+                self::categories(),
+                fn (array $cat) => ($cat['id'] ?? '') !== 'shared'
+            ));
+
         return [
-            'categories' => self::categories(),
+            'categories' => $categories,
             'icons' => $icons,
-            'aliases' => config('vehicle_icons.aliases', []),
+            'aliases' => [],
             'marker_colors' => config('vehicle_icons.marker_colors', []),
+            'builtin_root' => BuiltinMapIconStorage::publicRoot(),
+            'shared_root' => SharedMapIconStorage::publicRoot(),
+            'shared_only' => true,
         ];
     }
 
@@ -162,6 +181,10 @@ final class VehicleIconLibrary
             return 'car';
         }
 
+        if (SharedMapIconStorage::isSharedType($type) && SharedMapIconStorage::findByType($type)) {
+            return $type;
+        }
+
         $aliases = config('vehicle_icons.aliases', []);
         if (isset($aliases[$type])) {
             $type = (string) $aliases[$type];
@@ -172,15 +195,56 @@ final class VehicleIconLibrary
 
     public static function isValidDefaultType(?string $type): bool
     {
-        return is_string($type) && $type !== '' && isset(self::iconDefinitions()[$type]);
+        if (! is_string($type) || $type === '') {
+            return false;
+        }
+
+        if (isset(self::iconDefinitions()[$type])) {
+            return true;
+        }
+
+        return SharedMapIconStorage::isSharedType($type)
+            && SharedMapIconStorage::findByType($type) !== null;
+    }
+
+    public static function isValidIconPath(?string $path): bool
+    {
+        return BuiltinMapIconStorage::isValidRelativePath($path)
+            || SharedMapIconStorage::isValidRelativePath($path);
+    }
+
+    public static function urlForIconPath(string $path): string
+    {
+        if (SharedMapIconStorage::isValidRelativePath($path)) {
+            return SharedMapIconStorage::urlForRelativePath($path);
+        }
+
+        if (BuiltinMapIconStorage::isValidRelativePath($path)) {
+            return BuiltinMapIconStorage::urlForRelativePath($path);
+        }
+
+        // Missing shared/custom path must never produce a broken map URL.
+        return BuiltinMapIconStorage::urlForType('car');
     }
 
     public static function shapeFor(?string $type): string
     {
-        $resolved = self::resolveType($type);
-        $meta = self::iconDefinitions()[$resolved] ?? [];
+        return self::resolveType($type);
+    }
 
-        return (string) ($meta['shape'] ?? 'sedan');
+    public static function builtinPathFor(?string $type): string
+    {
+        return BuiltinMapIconStorage::relativePathForType(self::resolveType($type));
+    }
+
+    public static function builtinUrlFor(?string $type): string
+    {
+        return BuiltinMapIconStorage::urlForType($type);
+    }
+
+    public static function isValidBuiltinPath(?string $path): bool
+    {
+        return BuiltinMapIconStorage::isValidRelativePath($path);
     }
 
     /**

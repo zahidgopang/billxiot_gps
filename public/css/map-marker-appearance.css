@@ -192,3 +192,176 @@
 .map-marker-appearance--upload-only .map-marker-appearance__upload {
     margin-top: 4px;
 }
+
+.map-live-panel .map-marker-appearance {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(148, 163, 184, 0.25);
+}
+
+.vehicle-icon-picker {
+    display: grid;
+    gap: 12px;
+    border: 1px solid rgba(15, 23, 42, 0.1);
+    border-radius: 16px;
+    padding: 14px;
+    background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+}
+
+.vehicle-icon-picker__search {
+    position: relative;
+}
+
+.vehicle-icon-picker__search i {
+    position: absolute;
+    inset-inline-start: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #94a3b8;
+    font-size: 0.82rem;
+}
+
+.vehicle-icon-picker__search input {
+    padding-inline-start: 34px;
+    border-radius: 10px;
+    border-color: #e2e8f0;
+    min-height: 40px;
+}
+
+.vehicle-icon-picker__cats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.vehicle-icon-picker__cat {
+    border: 1px solid #e2e8f0;
+    background: #fff;
+    border-radius: 999px;
+    padding: 6px 12px;
+    font-size: 0.76rem;
+    font-weight: 600;
+    color: #475569;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s, color 0.15s, transform 0.12s;
+}
+
+.vehicle-icon-picker__cat:hover {
+    border-color: #93c5fd;
+    transform: translateY(-1px);
+}
+
+.vehicle-icon-picker__cat.is-active {
+    border-color: #2563eb;
+    background: #eff6ff;
+    color: #1d4ed8;
+    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.12);
+}
+
+.vehicle-icon-picker__meta-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.vehicle-icon-picker__chip {
+    border: 1px solid transparent;
+    background: rgba(148, 163, 184, 0.12);
+    border-radius: 8px;
+    padding: 4px 10px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: #64748b;
+    cursor: pointer;
+}
+
+.vehicle-icon-picker__chip.is-active {
+    background: #1e293b;
+    color: #fff;
+}
+
+.vehicle-icon-picker__grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+    gap: 12px;
+    max-height: 320px;
+    overflow: auto;
+    padding: 4px 2px 8px;
+}
+
+.vehicle-icon-picker__btn {
+    position: relative;
+    display: grid;
+    gap: 6px;
+    justify-items: center;
+    padding: 12px 8px 10px;
+    border: 1.5px solid #e2e8f0;
+    border-radius: 14px;
+    background: #fff;
+    cursor: pointer;
+    transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s, background 0.15s;
+}
+
+.vehicle-icon-picker__btn:hover {
+    border-color: #93c5fd;
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(37, 99, 235, 0.12);
+}
+
+.vehicle-icon-picker__btn.is-active {
+    border-color: #2563eb;
+    background: #eff6ff;
+    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.22), 0 8px 18px rgba(37, 99, 235, 0.12);
+}
+
+.vehicle-icon-picker__thumb {
+    width: 60px;
+    height: 60px;
+    display: block;
+    object-fit: contain;
+    filter: drop-shadow(0 2px 4px rgba(15, 23, 42, 0.12));
+}
+
+.vehicle-icon-picker__name {
+    font-size: 0.68rem;
+    line-height: 1.2;
+    text-align: center;
+    color: #334155;
+    font-weight: 600;
+}
+
+.vehicle-icon-picker__fav {
+    position: absolute;
+    top: 6px;
+    inset-inline-end: 6px;
+    width: 24px;
+    height: 24px;
+    border: 0;
+    border-radius: 999px;
+    background: rgba(248, 250, 252, 0.95);
+    color: #cbd5e1;
+    font-size: 0.72rem;
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+    padding: 0;
+}
+
+.vehicle-icon-picker__fav.is-on {
+    color: #f59e0b;
+}
+
+.vehicle-icon-picker__fav:hover {
+    color: #f59e0b;
+    background: #fff;
+}
+
+.map-marker-appearance__live-map-scene {
+    min-height: 180px;
+}
+
+.map-marker-appearance__live-map-pin--default,
+.map-marker-appearance__live-map-pin--custom {
+    transition: width 0.15s ease, height 0.15s ease, transform 0.15s ease;
+}
+

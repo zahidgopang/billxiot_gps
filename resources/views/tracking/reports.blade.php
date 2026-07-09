@@ -196,6 +196,7 @@ window.TRACKING_REPORTS_CONFIG = {
 };
 </script>
 @include('partials.google-maps-platform')
+<script src="{{ protected_js('builtin-map-icons.js') }}"></script>
 <script src="{{ protected_js('vehicle-marker.js') }}"></script>
 <script src="{{ protected_js('fleet-map-renderer.js') }}"></script>
 <script src="{{ protected_js('tracking-reports.js') }}"></script>

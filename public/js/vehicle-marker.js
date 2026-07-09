@@ -5,8 +5,8 @@
 (function (global) {
     'use strict';
 
-    const SVG_CENTER = 26;
-    const VIEWBOX = 52;
+    const SVG_CENTER = (global.VehicleIconShapes && global.VehicleIconShapes.CENTER) || 32;
+    const VIEWBOX = (global.VehicleIconShapes && global.VehicleIconShapes.VIEWBOX) || 64;
 
     const STATE_COLORS = {
         running: '#22c55e',
@@ -26,8 +26,95 @@
         labelGap: 8,
         displayScale: 1.2,
         maxIconWidth: 200,
-        headingStepDeg: 4,
+        // Fine buckets keep baked SVG cache small while staying visually smooth.
+        headingStepDeg: 2,
     };
+
+    function normalizeHeading(deg) {
+        const n = Number(deg);
+        if (!Number.isFinite(n)) {
+            return 0;
+        }
+        return ((n % 360) + 360) % 360;
+    }
+
+    function shortestPathHeading(from, to) {
+        const a = normalizeHeading(from);
+        const b = normalizeHeading(to);
+        let delta = ((b - a + 540) % 360) - 180;
+        return a + delta;
+    }
+
+    function lerpHeading(from, to, t) {
+        const start = normalizeHeading(from);
+        const end = shortestPathHeading(start, to);
+        return normalizeHeading(start + (end - start) * Math.max(0, Math.min(1, t)));
+    }
+
+    /**
+     * Final map rotation = GPS heading + per-icon artwork offset.
+     * Offset examples: north-up=0, east-facing=-90, south-up=180, west-facing=90.
+     */
+    function finalRotation(heading, offset, enabled) {
+        if (enabled === false) {
+            return 0;
+        }
+        return normalizeHeading((Number(heading) || 0) + (Number(offset) || 0));
+    }
+
+    function resolveIconRotationOffset(source) {
+        if (!source) {
+            return 0;
+        }
+        const direct = source.map_icon_rotation_offset ?? source.mapIconRotationOffset
+            ?? source.rotation_offset ?? source.rotationOffset;
+        if (direct != null && direct !== '') {
+            return Number(direct) || 0;
+        }
+        const type = String(source.vehicle_type || source.vehicleType || '').toLowerCase();
+        const path = source.map_builtin_icon_path || source.mapBuiltinIconPath || '';
+        const reg = global.VehicleIconRegistry || global.__vehicleIconRegistry || null;
+        if (reg?.icons?.[type]?.rotation_offset != null) {
+            return Number(reg.icons[type].rotation_offset) || 0;
+        }
+        if (path && reg?.icons) {
+            const hit = Object.values(reg.icons).find((icon) => icon?.path === path);
+            if (hit?.rotation_offset != null) {
+                return Number(hit.rotation_offset) || 0;
+            }
+        }
+        return 0;
+    }
+
+    /**
+     * Flat image marker for AdvancedMarkerElement.
+     * Uses the real image URL (not a data-URL SVG wrapping an external <image>),
+     * because browsers block external resources inside SVG data URLs — that made
+     * zoomed-in vehicle icons invisible while cluster bubbles still worked.
+     * Rotation = heading + offset, applied via CSS transform-origin: center.
+     */
+    function flatRotatedImageIcon(url, heading, offset, google, sizeScale, enabled) {
+        if (!url || !google?.maps) {
+            return null;
+        }
+        const rotation = finalRotation(heading, offset, enabled !== false);
+        const base = Math.max(24, Math.round(64 * (Number(sizeScale) || 1)));
+        const fallback = global.BuiltinMapIcons?.fallbackUrl?.()
+            || '/icons/builtin/Vehicles/car.svg';
+        return {
+            url,
+            scaledSize: new google.maps.Size(base, base),
+            anchor: new google.maps.Point(base / 2, base / 2),
+            meta: {
+                flat: true,
+                rotation,
+                baked: false,
+                heading: rotation,
+                sourceUrl: url,
+                fallbackUrl: fallback,
+            },
+        };
+    }
 
     function shadeColor(hex, percent) {
         const raw = String(hex || '#22c55e').replace('#', '');
@@ -83,131 +170,18 @@
     }
 
     function vehicleBodySvgInner(vehicleType, color) {
-        const bodies = {
-            car: modernBodyShell(color, 'car', `
-                M26 7.2 C21.2 7.2 17.4 10.2 16.2 14.8 L14.8 20.8 C14.2 23 14.2 25.8 14.8 28 L16.2 37.2
-                C17.4 41.4 21.2 44.2 26 44.2 C30.8 44.2 34.6 41.4 35.8 37.2 L37.2 28 C37.8 25.8 37.8 23 37.2 20.8
-                L35.8 14.8 C34.6 10.2 30.8 7.2 26 7.2 Z`, `
-                ${vehicleGlassSvg(19.5, 13.5, 13, 8.5, 2.2)}
-                ${wheelSvg(18.2, 19.5)}${wheelSvg(33.8, 19.5)}
-                ${wheelSvg(18.2, 35.5)}${wheelSvg(33.8, 35.5)}`),
-            suv: modernBodyShell(color, 'suv', `
-                M26 6.5 C20.5 6.5 16 10 14.8 15.2 L13.5 21.5 C12.8 24 12.8 27 13.5 29.5 L14.8 37.5
-                C16 42.2 20.5 45.5 26 45.5 C31.5 45.5 36 42.2 37.2 37.5 L38.5 29.5 C39.2 27 39.2 24 38.5 21.5
-                L37.2 15.2 C36 10 31.5 6.5 26 6.5 Z`, `
-                ${vehicleGlassSvg(18, 11.5, 16, 10, 2.4)}
-                ${wheelSvg(16.5, 17)}${wheelSvg(35.5, 17)}
-                ${wheelSvg(16.5, 38)}${wheelSvg(35.5, 38)}`),
-            truck: modernBodyShell(color, 'truck', `
-                M26 7 C21.5 7 18.5 9.8 17.8 13.8 L17.2 18.5 L14.5 20.5 C13.5 21.2 13 22.5 13 24.2 L13.5 36.5
-                C14.2 40.5 17.5 43.5 21.5 43.5 L30.5 43.5 C34.5 43.5 37.8 40.5 38.5 36.5 L39 24.2 C39 22.5 38.5 21.2 37.5 20.5
-                L34.8 18.5 L34.2 13.8 C33.5 9.8 30.5 7 26 7 Z
-                M21 20.5 L31 20.5 L31 38.5 L21 38.5 Z`, `
-                ${vehicleGlassSvg(20.5, 9.5, 11, 7.5, 1.8)}
-                ${wheelSvg(17.5, 20)}${wheelSvg(34.5, 20)}
-                ${wheelSvg(17.5, 37)}${wheelSvg(34.5, 37)}`),
-            van: modernBodyShell(color, 'van', `
-                M26 6.2 C20.8 6.2 16.8 9.5 15.8 14.5 L14.5 21 C13.8 23.5 13.8 26.5 14.5 29 L15.8 37.5
-                C16.8 42.2 20.8 45.5 26 45.5 C31.2 45.5 35.2 42.2 36.2 37.5 L37.5 29 C38.2 26.5 38.2 23.5 37.5 21
-                L36.2 14.5 C35.2 9.5 31.2 6.2 26 6.2 Z`, `
-                ${vehicleGlassSvg(18.5, 10.5, 15, 9, 2.2)}
-                <line x1="15" y1="24" x2="37" y2="24" stroke="#ffffff" stroke-opacity="0.28" stroke-width="1"/>
-                ${wheelSvg(17, 18)}${wheelSvg(35, 18)}
-                ${wheelSvg(17, 38.5)}${wheelSvg(35, 38.5)}`),
-            bus: modernBodyShell(color, 'bus', `
-                M26 5.5 C20 5.5 15.5 9 14.5 14.5 L13.5 21.5 C12.8 24 12.8 27.5 13.5 30 L14.5 38
-                C15.5 43 20 46.5 26 46.5 C32 46.5 36.5 43 37.5 38 L38.5 30 C39.2 27.5 39.2 24 38.5 21.5
-                L37.5 14.5 C36.5 9 32 5.5 26 5.5 Z`, `
-                ${vehicleGlassSvg(17.5, 9, 17, 5.5, 1.2)}
-                ${vehicleGlassSvg(17.5, 16.5, 17, 5.5, 1.2)}
-                ${vehicleGlassSvg(17.5, 24, 17, 5.5, 1.2)}
-                ${wheelSvg(16, 15, 2.4)}${wheelSvg(36, 15, 2.4)}
-                ${wheelSvg(16, 40, 2.4)}${wheelSvg(36, 40, 2.4)}`),
-            pickup: modernBodyShell(color, 'pickup', `
-                M26 7 C21.5 7 18.5 9.5 17.8 13.5 L17.2 18 L14.8 19.5 C13.8 20.2 13.2 21.5 13.2 23.2 L14 35.5
-                C14.8 39.5 18 42.2 22 42.2 L30 42.2 C34 42.2 37.2 39.5 38 35.5 L38.8 23.2 C38.8 21.5 38.2 20.2 37.2 19.5
-                L34.8 18 L34.2 13.5 C33.5 9.5 30.5 7 26 7 Z
-                M15.5 24.5 L36.5 24.5 L36.5 37.5 L15.5 37.5 Z`, `
-                ${vehicleGlassSvg(20, 9.5, 12, 7, 1.8)}
-                ${wheelSvg(17.5, 20)}${wheelSvg(34.5, 20)}
-                ${wheelSvg(17.5, 36.5)}${wheelSvg(34.5, 36.5)}`),
-            motorcycle: modernBodyShell(color, 'moto', `
-                M26 9.5 C24 9.5 22.5 11 22.2 13 L21.5 24 L21.2 32 C21 35 22.5 37 26 37 C29.5 37 31 35 30.8 32
-                L30.5 24 L29.8 13 C29.5 11 28 9.5 26 9.5 Z`, `
-                ${vehicleGlassSvg(22.5, 12.5, 7, 5.5, 1.5)}
-                <circle cx="26" cy="14.5" r="4.8" fill="none" stroke="#0f172a" stroke-width="2.2" opacity="0.85"/>
-                <circle cx="26" cy="36.5" r="4.8" fill="none" stroke="#0f172a" stroke-width="2.2" opacity="0.85"/>`),
-            trailer: modernBodyShell(color, 'trailer', `
-                M26 12 C21.5 12 18 14.5 17.2 18.5 L16.5 24.5 C16 27 16 29.5 16.5 32 L17.2 38.5
-                C18 42.2 21.5 44.5 26 44.5 C30.5 44.5 34 42.2 34.8 38.5 L35.5 32 C36 29.5 36 27 35.5 24.5
-                L34.8 18.5 C34 14.5 30.5 12 26 12 Z`, `
-                ${vehicleGlassSvg(20, 17, 12, 7, 1.5)}
-                ${wheelSvg(18, 38, 2.5)}${wheelSvg(34, 38, 2.5)}`),
-            other: modernBodyShell(color, 'other', `
-                M26 10 C21.5 10 18 12.8 17.2 16.8 L16.2 25.5 C15.8 27.5 15.8 29.5 16.2 31.5 L17.2 38.2
-                C18 41.8 21.5 44.5 26 44.5 C30.5 44.5 34 41.8 34.8 38.2 L35.8 31.5 C36.2 29.5 36.2 27.5 35.8 25.5
-                L34.8 16.8 C34 12.8 30.5 10 26 10 Z`, `
-                <rect x="18.5" y="15.5" width="15" height="11" rx="2.5" fill="#ffffff" opacity="0.22"/>
-                ${wheelSvg(18, 34, 2.3)}${wheelSvg(34, 34, 2.3)}`),
-            taxi: modernBodyShell(color, 'taxi', `
-                M26 7.2 C21.2 7.2 17.4 10.2 16.2 14.8 L14.8 20.8 C14.2 23 14.2 25.8 14.8 28 L16.2 37.2
-                C17.4 41.4 21.2 44.2 26 44.2 C30.8 44.2 34.6 41.4 35.8 37.2 L37.2 28 C37.8 25.8 37.8 23 37.2 20.8
-                L35.8 14.8 C34.6 10.2 30.8 7.2 26 7.2 Z`, `
-                ${vehicleGlassSvg(19.5, 13.5, 13, 8.5, 2.2)}
-                <rect x="18.5" y="24.5" width="15" height="5" rx="1.2" fill="#fbbf24" opacity="0.95"/>
-                ${wheelSvg(18.2, 19.5)}${wheelSvg(33.8, 19.5)}
-                ${wheelSvg(18.2, 35.5)}${wheelSvg(33.8, 35.5)}`),
-            ambulance: modernBodyShell(color, 'ambulance', `
-                M26 7.5 C21 7.5 17 10.5 16 15 L14.8 21.5 C14.2 24 14.2 27 14.8 29.5 L16 37.5
-                C17 41.5 21 44.5 26 44.5 C31 44.5 35 41.5 36 37.5 L37.2 29.5 C37.8 27 37.8 24 37.2 21.5
-                L36 15 C35 10.5 31 7.5 26 7.5 Z`, `
-                ${vehicleGlassSvg(18.5, 11, 15, 8, 2)}
-                <rect x="24" y="18" width="4" height="12" rx="0.8" fill="#ffffff" opacity="0.95"/>
-                <rect x="20" y="22" width="12" height="4" rx="0.8" fill="#ffffff" opacity="0.95"/>
-                ${wheelSvg(17.5, 18)}${wheelSvg(34.5, 18)}
-                ${wheelSvg(17.5, 37)}${wheelSvg(34.5, 37)}`),
-            police: modernBodyShell(color, 'police', `
-                M26 7.2 C21.2 7.2 17.4 10.2 16.2 14.8 L14.8 20.8 C14.2 23 14.2 25.8 14.8 28 L16.2 37.2
-                C17.4 41.4 21.2 44.2 26 44.2 C30.8 44.2 34.6 41.4 35.8 37.2 L37.2 28 C37.8 25.8 37.8 23 37.2 20.8
-                L35.8 14.8 C34.6 10.2 30.8 7.2 26 7.2 Z`, `
-                <rect x="17" y="8.5" width="18" height="4.5" rx="1.2" fill="#3b82f6" opacity="0.95"/>
-                ${vehicleGlassSvg(19.5, 13.5, 13, 8.5, 2.2)}
-                ${wheelSvg(18.2, 19.5)}${wheelSvg(33.8, 19.5)}
-                ${wheelSvg(18.2, 35.5)}${wheelSvg(33.8, 35.5)}`),
-            fire_truck: modernBodyShell(color, 'fire', `
-                M26 7 C21 7 17.5 9.8 16.8 13.8 L16.2 18 L13.8 19.8 C12.8 20.5 12.2 22 12.2 24 L13 36.5
-                C13.8 40.5 17.2 43.5 21.5 43.5 L30.5 43.5 C34.8 43.5 38.2 40.5 39 36.5 L39.8 24
-                C39.8 22 39.2 20.5 38.2 19.8 L35.8 18 L35.2 13.8 C34.5 9.8 31 7 26 7 Z`, `
-                ${vehicleGlassSvg(20, 9.5, 12, 7, 1.8)}
-                <rect x="14" y="22" width="24" height="12" rx="1.5" fill="#ffffff" opacity="0.18"/>
-                ${wheelSvg(17, 20)}${wheelSvg(35, 20)}
-                ${wheelSvg(17, 37)}${wheelSvg(35, 37)}`),
-            tractor: modernBodyShell(color, 'tractor', `
-                M26 8 C22 8 19 10.5 18.2 14 L17.5 20 C17 22.5 17 25 17.5 27.5 L18.5 34
-                C19.2 37.5 22 40 26 40 C30 40 32.8 37.5 33.5 34 L34.5 27.5 C35 25 35 22.5 34.5 20
-                L33.8 14 C33 10.5 30 8 26 8 Z`, `
-                ${vehicleGlassSvg(20.5, 10.5, 11, 6.5, 1.6)}
-                <circle cx="18.5" cy="33.5" r="6.5" fill="none" stroke="#0f172a" stroke-width="2.4" opacity="0.82"/>
-                <circle cx="33.5" cy="35.5" r="4.8" fill="none" stroke="#0f172a" stroke-width="2.2" opacity="0.82"/>`),
-            crane: modernBodyShell(color, 'crane', `
-                M18 24.5 L34 24.5 L34 40.5 L18 40.5 Z
-                M24.5 8 L27.5 8 L27.5 24.5 L24.5 24.5 Z`, `
-                <line x1="27.5" y1="10" x2="39" y2="18" stroke="${shadeColor(color, -18)}" stroke-width="2.8" stroke-linecap="round"/>
-                <circle cx="16.5" cy="37.5" r="2.4" fill="#0f172a"/>
-                <circle cx="35.5" cy="37.5" r="2.4" fill="#0f172a"/>`),
-            boat: modernBodyShell(color, 'boat', `
-                M11 28.5 C11 28.5 16 26.5 26 26.5 C36 26.5 41 28.5 41 28.5 L36.5 38.5 C34.5 40.5 30.5 41.5 26 41.5
-                C21.5 41.5 17.5 40.5 15.5 38.5 Z`, `
-                <rect x="24.5" y="14" width="3" height="14" rx="1" fill="#ffffff" opacity="0.75"/>
-                <path d="M26 14 L33 21 L26 21 Z" fill="#ffffff" opacity="0.55"/>`),
-            bicycle: modernBodyShell(color, 'bicycle', `
-                M26 12.5 C24.5 12.5 23.5 13.5 23.2 15 L22.5 22 L26 28.5 L29.5 22 L29.2 15
-                C28.9 13.5 27.5 12.5 26 12.5 Z`, `
-                <circle cx="18" cy="31.5" r="7.2" fill="none" stroke="#0f172a" stroke-width="2.2" opacity="0.85"/>
-                <circle cx="34" cy="31.5" r="7.2" fill="none" stroke="#0f172a" stroke-width="2.2" opacity="0.85"/>
-                <path d="M18 31.5 L26 14 L34 31.5" fill="none" stroke="${shadeColor(color, -10)}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>`),
-        };
-        return bodies[vehicleType] || bodies.car;
+        const shapes = global.VehicleIconShapes;
+        if (shapes?.renderInner) {
+            return shapes.renderInner(vehicleType, color);
+        }
+        // Fallback if shapes script not loaded
+        return modernBodyShell(color, 'car', `
+            M26 7.2 C21.2 7.2 17.4 10.2 16.2 14.8 L14.8 20.8 C14.2 23 14.2 25.8 14.8 28 L16.2 37.2
+            C17.4 41.4 21.2 44.2 26 44.2 C30.8 44.2 34.6 41.4 35.8 37.2 L37.2 28 C37.8 25.8 37.8 23 37.2 20.8
+            L35.8 14.8 C34.6 10.2 30.8 7.2 26 7.2 Z`, `
+            ${vehicleGlassSvg(19.5, 13.5, 13, 8.5, 2.2)}
+            ${wheelSvg(18.2, 19.5)}${wheelSvg(33.8, 19.5)}
+            ${wheelSvg(18.2, 35.5)}${wheelSvg(33.8, 35.5)}`);
     }
 
     function vehicleBodyTransform(rotation, cx, cy, scale) {
@@ -272,7 +246,8 @@
         const totalH = vehicleSize + pad * 2;
         const cx = totalW / 2;
         const cy = totalH / 2;
-        const rotation = showDirection ? parseFloat(heading || 0) : 0;
+        const offset = Number(opts.rotationOffset || 0) || 0;
+        const rotation = showDirection ? finalRotation(heading, offset, true) : 0;
         const bodyScale = vehicleSize / VIEWBOX;
         const bodyTransform = vehicleBodyTransform(rotation, cx, cy, bodyScale);
         const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${totalW}" height="${totalH}" viewBox="0 0 ${totalW} ${totalH}">
@@ -315,7 +290,8 @@
         const pillX = (totalW - pillW) / 2;
         const titleY = pillPadY + titleLineH - 3;
         const plateY = titleY + innerGap + plateLineH;
-        const rotation = showDirection ? parseFloat(heading || 0) : 0;
+        const offset = Number(opts.rotationOffset || 0) || 0;
+        const rotation = showDirection ? finalRotation(heading, offset, true) : 0;
         const bodyScale = vehicleSize / VIEWBOX;
         const bodyTransform = vehicleBodyTransform(rotation, cx, vehicleCenterY, bodyScale);
         const liveBadge = opts.showLiveBadge
@@ -347,24 +323,92 @@
         };
     }
 
+    function flatImageIconFor(url, point, opts, google, sizeScale) {
+        const fallback = opts.getFallbackIconUrl?.(point)
+            || global.VehicleMarker?.resolveFallbackIconUrl?.(point)
+            || global.BuiltinMapIcons?.fallbackUrl?.()
+            || '/icons/builtin/Vehicles/car.svg';
+        const resolvedUrl = url || fallback;
+        if (!resolvedUrl) {
+            return null;
+        }
+        const rotationEnabled = opts.getRotationEnabled?.(point) !== false;
+        const heading = parseFloat(point?.heading || 0);
+        const offset = opts.getRotationOffset?.(point)
+            ?? resolveIconRotationOffset(point)
+            ?? 0;
+        return flatRotatedImageIcon(resolvedUrl, heading, offset, google, sizeScale, rotationEnabled);
+    }
+
+    function labeledFlatIconSvg(identity, iconUrl, heading, showDirection, options) {
+        const opts = { ...DEFAULTS, ...options };
+        const title = identity.title || 'Vehicle';
+        const plate = identity.plate || '';
+        const esc = (s) => String(s)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/"/g, '&quot;');
+        const escUrl = esc(iconUrl);
+
+        const titleLen = title.length * 7.2;
+        const plateLen = plate ? plate.length * 6 : 0;
+        const pillW = Math.max(56, Math.min(168, Math.max(titleLen, plateLen) + 22));
+        const titleLineH = 14;
+        const plateLineH = plate ? 12 : 0;
+        const innerGap = plate ? 3 : 0;
+        const pillPadY = 7;
+        const pillH = pillPadY + titleLineH + innerGap + plateLineH + pillPadY;
+        const vehicleSize = opts.vehicleBodyPx;
+        const vehicleTop = pillH + opts.labelGap;
+        const vehicleCenterY = vehicleTop + vehicleSize / 2;
+        const totalW = Math.max(pillW + 12, vehicleSize + 16);
+        const totalH = vehicleTop + vehicleSize + 4;
+        const cx = totalW / 2;
+        const pillX = (totalW - pillW) / 2;
+        const titleY = pillPadY + titleLineH - 3;
+        const plateY = titleY + innerGap + plateLineH;
+        const offset = Number(opts.rotationOffset || 0) || 0;
+        const rotation = showDirection ? finalRotation(heading, offset, true) : 0;
+        const imgX = cx - vehicleSize / 2;
+        const imgY = vehicleTop;
+        const liveBadge = opts.showLiveBadge
+            ? `<circle cx="${pillX + 14}" cy="12" r="5" fill="#22c55e" stroke="#fff" stroke-width="1.5"/>
+               <circle cx="${pillX + 14}" cy="12" r="5" fill="#22c55e" opacity="0.5"><animate attributeName="r" values="5;8;5" dur="1.2s" repeatCount="indefinite"/></circle>`
+            : '';
+        const imageTransform = showDirection
+            ? `rotate(${rotation} ${cx} ${vehicleCenterY})`
+            : '';
+
+        const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${totalW}" height="${totalH}" viewBox="0 0 ${totalW} ${totalH}">
+            <defs>
+                <filter id="vmBadgeShadow" x="-30%" y="-30%" width="160%" height="160%">
+                    <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#000000" flood-opacity="0.55"/>
+                </filter>
+            </defs>
+            <g filter="url(#vmBadgeShadow)">
+                <rect x="${pillX}" y="0" width="${pillW}" height="${pillH}" rx="${Math.min(14, pillH / 2)}" fill="rgba(15,23,42,0.97)" stroke="rgba(255,255,255,0.22)" stroke-width="1.4"/>
+            </g>
+            ${liveBadge}
+            <text x="${cx}" y="${titleY}" text-anchor="middle" fill="#ffffff" font-family="system-ui,-apple-system,sans-serif" font-size="12.5" font-weight="700">${esc(title)}</text>
+            ${plate ? `<text x="${cx}" y="${plateY}" text-anchor="middle" fill="rgba(255,255,255,0.85)" font-family="system-ui,-apple-system,sans-serif" font-size="10.5" font-weight="500">${esc(plate)}</text>` : ''}
+            <image href="${escUrl}" xlink:href="${escUrl}" x="${imgX}" y="${imgY}" width="${vehicleSize}" height="${vehicleSize}" preserveAspectRatio="xMidYMid meet" transform="${imageTransform}"/>
+        </svg>`;
+
+        return {
+            url: svgDataUrl(svg),
+            width: totalW,
+            height: totalH,
+            anchorX: cx,
+            anchorY: vehicleCenterY,
+        };
+    }
+
     function customIconFor(point, opts, google, sizeScale, style) {
         const url = opts.getCustomIconUrl?.(point);
         if (!url || style === 'pin') {
             return null;
         }
-        const showDirection = opts.shouldShowDirection?.(point, opts.getState?.(point)) ?? true;
-        const rotationEnabled = opts.getRotationEnabled?.(point) !== false;
-        const heading = parseFloat(point?.heading || 0);
-        const base = Math.round(64 * sizeScale);
-        const icon = {
-            url,
-            scaledSize: new google.maps.Size(base, base),
-            anchor: new google.maps.Point(base / 2, base / 2),
-        };
-        if (rotationEnabled && showDirection) {
-            icon.meta = { flat: true, rotation: heading };
-        }
-        return icon;
+        return flatImageIconFor(url, point, opts, google, sizeScale);
     }
 
     function createIconBuilder(options) {
@@ -385,15 +429,34 @@
             const showLiveBadge = extra?.showLiveBadge ?? opts.getShowLiveBadge?.(point) ?? false;
             const heading = parseFloat(point?.heading || 0);
             const step = opts.headingStepDeg || DEFAULTS.headingStepDeg;
-            const style = opts.getMarkerStyle?.(point) || 'pin';
             const sizeScale = Number(opts.getMarkerSizeScale?.(point) ?? 1) || 1;
+            const fallbackIconUrl = opts.getFallbackIconUrl?.(point)
+                ?? global.VehicleMarker?.resolveFallbackIconUrl?.(point)
+                ?? global.BuiltinMapIcons?.fallbackUrl?.()
+                ?? '/icons/builtin/Vehicles/car.svg';
+            const mapIconUrl = opts.getMapIconUrl?.(point)
+                ?? global.VehicleMarker?.resolveMapIconUrl?.(point)
+                ?? fallbackIconUrl;
             const customUrl = opts.getCustomIconUrl?.(point);
+            const rotationOffset = opts.getRotationOffset?.(point)
+                ?? resolveIconRotationOffset(point)
+                ?? 0;
+            const rotationEnabled = opts.getRotationEnabled?.(point) !== false;
+            let style = opts.getMarkerStyle?.(point) || 'pin';
+            // Selected library/custom icons always win over legacy status pins.
+            if ((mapIconUrl || customUrl) && style === 'pin' && String(vehicleType || '').toLowerCase() !== 'pin_marker') {
+                style = 'body';
+            }
             const sizedOpts = {
                 ...opts,
                 vehicleBodyPx: (opts.vehicleBodyPx || DEFAULTS.vehicleBodyPx) * sizeScale,
                 displayScale: (opts.displayScale || DEFAULTS.displayScale) * sizeScale,
                 maxIconWidth: (opts.maxIconWidth || DEFAULTS.maxIconWidth) * sizeScale,
+                rotationOffset,
             };
+            const finalHeading = showDirection && rotationEnabled
+                ? finalRotation(heading, rotationOffset, true)
+                : 0;
             const cacheKey = [
                 identity.title,
                 identity.plate || '',
@@ -402,10 +465,12 @@
                 style,
                 sizeScale,
                 customUrl || '',
-                Math.round(heading / step),
+                mapIconUrl || '',
+                Math.round(finalHeading / step),
+                rotationOffset,
                 showDirection ? 1 : 0,
                 showLiveBadge ? 1 : 0,
-                opts.getRotationEnabled?.(point) === false ? 0 : 1,
+                rotationEnabled ? 1 : 0,
             ].join('|');
 
             if (cache[cacheKey]) {
@@ -420,7 +485,31 @@
                 }
             }
 
-            if (style === 'pin') {
+            // Never leave the map blank — prefer library/fallback URL over empty pin.
+            if (!mapIconUrl && style !== 'pin') {
+                const flatFallback = flatImageIconFor(fallbackIconUrl, point, {
+                    ...opts,
+                    getFallbackIconUrl: () => fallbackIconUrl,
+                }, google, sizeScale);
+                if (flatFallback) {
+                    cache[cacheKey] = flatFallback;
+                    return flatFallback;
+                }
+            }
+
+            if (mapIconUrl && style !== 'pin') {
+                // Always use the real image URL + CSS rotation. Do NOT wrap external
+                // icons in SVG data-URLs (browsers block those <image> loads → blank markers).
+                const flat = flatImageIconFor(mapIconUrl, point, opts, google, sizeScale);
+                if (flat) {
+                    cache[cacheKey] = flat;
+                    return flat;
+                }
+            }
+
+            // Only the explicit pin_marker type may use the status teardrop.
+            // Everything else (including missing uploads) uses the builtin map icon.
+            if (style === 'pin' && String(vehicleType || '').toLowerCase() === 'pin_marker') {
                 const pin = pinIconFor(color, google);
                 if (pin && sizeScale !== 1) {
                     const pw = Math.round(36 * sizeScale);
@@ -434,6 +523,14 @@
                 }
                 cache[cacheKey] = pin;
                 return pin;
+            }
+
+            if (mapIconUrl) {
+                const flat = flatImageIconFor(mapIconUrl, point, opts, google, sizeScale);
+                if (flat) {
+                    cache[cacheKey] = flat;
+                    return flat;
+                }
             }
 
             const sized = style === 'body'
@@ -662,19 +759,84 @@
         if (typeof marker.setIcon === 'function') {
             marker.setIcon(icon);
         }
-        if (typeof marker.setFlat !== 'function') {
+        if (typeof marker.setFlat === 'function') {
+            if (icon.meta) {
+                marker.setFlat(!!icon.meta.flat);
+                if (typeof marker.setRotation === 'function') {
+                    marker.setRotation(Number(icon.meta.rotation) || 0);
+                }
+            } else {
+                marker.setFlat(false);
+                if (typeof marker.setRotation === 'function') {
+                    marker.setRotation(0);
+                }
+            }
+        }
+        ensureExternalIconLoads(marker, icon);
+    }
+
+    const iconLoadCache = Object.create(null);
+
+    function clearIconLoadCache() {
+        Object.keys(iconLoadCache).forEach((key) => {
+            delete iconLoadCache[key];
+        });
+    }
+
+    function ensureExternalIconLoads(marker, icon) {
+        const sourceUrl = icon?.meta?.sourceUrl || (!String(icon?.url || '').startsWith('data:') ? icon?.url : null);
+        const fallbackUrl = icon?.meta?.fallbackUrl
+            || global.BuiltinMapIcons?.fallbackUrl?.()
+            || '/icons/builtin/Vehicles/car.svg';
+        if (!marker || !sourceUrl || !fallbackUrl || sourceUrl === fallbackUrl) {
             return;
         }
-        if (icon.meta) {
-            marker.setFlat(!!icon.meta.flat);
-            if (typeof marker.setRotation === 'function') {
-                marker.setRotation(Number(icon.meta.rotation) || 0);
-            }
-        } else {
-            marker.setFlat(false);
-            if (typeof marker.setRotation === 'function') {
-                marker.setRotation(0);
-            }
+        if (iconLoadCache[sourceUrl] === true) {
+            return;
+        }
+        if (iconLoadCache[sourceUrl] === false) {
+            swapMarkerToFallback(marker, icon, fallbackUrl);
+            return;
+        }
+        const probe = new Image();
+        probe.onload = () => {
+            iconLoadCache[sourceUrl] = true;
+        };
+        probe.onerror = () => {
+            iconLoadCache[sourceUrl] = false;
+            swapMarkerToFallback(marker, icon, fallbackUrl);
+        };
+        probe.src = sourceUrl;
+    }
+
+    function swapMarkerToFallback(marker, icon, fallbackUrl) {
+        if (!marker || !fallbackUrl || !global.google?.maps) {
+            return;
+        }
+        const heading = Number(icon?.meta?.heading || 0) || 0;
+        const size = icon?.scaledSize?.width || 64;
+        const sizeScale = Math.max(0.5, size / 64);
+        const replacement = flatRotatedImageIcon(
+            fallbackUrl,
+            heading,
+            0,
+            global.google,
+            sizeScale,
+            true,
+        );
+        if (!replacement) {
+            return;
+        }
+        // Mark fallback as known-good so we don't recurse on probe failure.
+        iconLoadCache[fallbackUrl] = true;
+        if (typeof marker.setIcon === 'function') {
+            marker.setIcon(replacement);
+        }
+        if (typeof marker.setFlat === 'function') {
+            marker.setFlat(true);
+        }
+        if (typeof marker.setRotation === 'function') {
+            marker.setRotation(Number(replacement.meta?.rotation) || 0);
         }
     }
 
@@ -692,7 +854,21 @@
             if (this.resolveCustomIconUrl(source)) {
                 return 'body';
             }
-            return 'pin';
+            const style = String(source?.map_marker_style || source?.mapMarkerStyle || '').toLowerCase();
+            const type = String(source?.vehicle_type || source?.vehicleType || '').toLowerCase();
+            // Status teardrop only for explicit pin_marker type.
+            if (type === 'pin_marker' || style === 'pin') {
+                // If a library/custom icon URL exists, prefer the selected icon over the pin.
+                if (style === 'pin' && this.resolveMapIconUrl(source) && type !== 'pin_marker') {
+                    return 'body';
+                }
+                return 'pin';
+            }
+            if (style === 'labeled') {
+                return 'labeled';
+            }
+            // Built-in library icons render as body markers centered on GPS.
+            return 'body';
         },
         resolveMarkerSizeScale(source, mapRendering) {
             const size = String(source?.map_marker_size || source?.mapMarkerSize || '100').toLowerCase();
@@ -707,42 +883,104 @@
             }
             return true;
         },
+        resolveIconRotationOffset,
+        finalRotation,
+        normalizeHeading,
+        lerpHeading,
+        shortestPathHeading,
         resolveCustomIconUrl(source) {
             const url = source?.map_custom_icon_url || source?.mapCustomIconUrl || null;
             const src = String(source?.map_icon_source || source?.mapIconSource || 'default').toLowerCase();
             return src === 'custom' && url ? url : null;
         },
+        resolveFallbackIconUrl(source) {
+            return source?.map_fallback_icon_url
+                || source?.mapFallbackIconUrl
+                || global.BuiltinMapIcons?.fallbackUrl?.()
+                || global.BuiltinMapIcons?.urlForType?.('car')
+                || '/icons/builtin/Vehicles/car.svg';
+        },
+        resolveMapIconUrl(source) {
+            const fallback = this.resolveFallbackIconUrl(source);
+            const custom = this.resolveCustomIconUrl(source);
+            if (custom) {
+                return custom;
+            }
+            // Prefer path/type over a possibly-stale map_builtin_icon_url left from a prior selection.
+            const path = source?.map_builtin_icon_path || source?.mapBuiltinIconPath || null;
+            if (path && global.BuiltinMapIcons?.urlForPath) {
+                const fromPath = global.BuiltinMapIcons.urlForPath(path);
+                if (fromPath) {
+                    return fromPath;
+                }
+            }
+            const type = source?.vehicle_type || source?.vehicleType || 'car';
+            if (type && global.BuiltinMapIcons?.urlForType) {
+                const fromType = global.BuiltinMapIcons.urlForType(type);
+                if (fromType) {
+                    return fromType;
+                }
+            }
+            const builtin = source?.map_builtin_icon_url || source?.mapBuiltinIconUrl || null;
+            if (builtin) {
+                return builtin;
+            }
+            // Shared types without a registry entry must not invent a missing Shared/*.svg URL.
+            if (String(type).toLowerCase().startsWith('shared_')) {
+                return fallback;
+            }
+            return fallback;
+        },
         previewSvg(options) {
             const opts = { ...DEFAULTS, ...(options || {}) };
-            const color = opts.color || STATE_COLORS.moving;
             const vehicleType = opts.vehicleType || 'car';
             const heading = opts.heading ?? 0;
-            const style = opts.style || 'pin';
+            const style = opts.style || 'body';
             const sizeScale = Number(opts.sizeScale ?? 1) || 1;
             const showDirection = opts.rotationEnabled !== false;
+            const offset = Number(opts.rotationOffset ?? 0) || 0;
+            const iconUrl = opts.iconUrl
+                || global.BuiltinMapIcons?.urlForType?.(vehicleType)
+                || null;
             const sizedOpts = {
                 ...opts,
                 vehicleBodyPx: (opts.vehicleBodyPx || DEFAULTS.vehicleBodyPx) * sizeScale,
                 displayScale: (opts.displayScale || DEFAULTS.displayScale) * sizeScale,
+                rotationOffset: offset,
             };
             if (style === 'pin') {
+                const color = opts.color || STATE_COLORS.moving;
                 return pinIconFor(color, global.google)?.url || '';
             }
+            if (!iconUrl) {
+                return '';
+            }
             if (style === 'labeled') {
-                return labeledVehicleSvg(
+                return labeledFlatIconSvg(
                     { title: opts.title || 'Preview', plate: opts.plate || '' },
-                    color,
+                    iconUrl,
                     heading,
                     showDirection,
-                    vehicleType,
                     sizedOpts,
                 ).url;
             }
-            return bodyOnlyVehicleSvg(color, heading, showDirection, vehicleType, sizedOpts).url;
+            const base = Math.round(64 * sizeScale);
+            const pad = 8;
+            const total = base + pad * 2;
+            const cx = total / 2;
+            const rotation = showDirection ? finalRotation(heading, offset, true) : 0;
+            const escUrl = String(iconUrl).replace(/"/g, '&quot;');
+            const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${total}" height="${total}" viewBox="0 0 ${total} ${total}">
+                <g transform="rotate(${rotation} ${cx} ${cx})">
+                    <image href="${escUrl}" xlink:href="${escUrl}" x="${pad}" y="${pad}" width="${base}" height="${base}" preserveAspectRatio="xMidYMid meet"/>
+                </g>
+            </svg>`;
+            return svgDataUrl(svg);
         },
         createIconBuilder,
         createMarker,
         applyMarkerIcon,
+        clearIconLoadCache,
         getPulseOverlayClass,
         createPulseController,
         stateColor(state) {

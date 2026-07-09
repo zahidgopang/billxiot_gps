@@ -172,10 +172,16 @@
                 getState: (p) => p.status_key || 'offline',
                 getColor: (state) => STATE_COLORS[state] || STATE_COLORS.offline,
                 getVehicleType: (p) => p.vehicle_type || 'car',
-                getMarkerStyle: (p) => VM.resolveMarkerStyle(p),
+                getMarkerStyle: (p) => {
+                    if (VM.resolveMapIconUrl(p)) return 'body';
+                    return VM.resolveMarkerStyle(p);
+                },
                 getMarkerSizeScale: (p) => VM.resolveMarkerSizeScale(p, this.config.mapSpec),
+                getMapIconUrl: (p) => VM.resolveMapIconUrl(p) || VM.resolveFallbackIconUrl(p),
+                getFallbackIconUrl: (p) => VM.resolveFallbackIconUrl(p),
                 getCustomIconUrl: (p) => VM.resolveCustomIconUrl(p),
                 getRotationEnabled: (p) => VM.resolveRotationEnabled(p),
+                getRotationOffset: (p) => VM.resolveIconRotationOffset(p),
                 shouldShowDirection: (p, state) => state === 'moving' || state === 'running',
                 getShowLiveBadge: () => true,
                 vehicleBodyPx: this.config.mapSpec?.vehicle_body_px,
@@ -276,7 +282,11 @@
                 map_marker_size_scale: device.map_marker_size_scale || 1,
                 map_icon_source: device.map_icon_source || 'default',
                 map_custom_icon_url: device.map_custom_icon_url || null,
+                map_builtin_icon_url: device.map_builtin_icon_url || null,
+                map_builtin_icon_path: device.map_builtin_icon_path || null,
+                map_fallback_icon_url: device.map_fallback_icon_url || '/icons/builtin/Vehicles/car.svg',
                 map_icon_rotation_enabled: device.map_icon_rotation_enabled !== false,
+                map_icon_rotation_offset: device.map_icon_rotation_offset ?? 0,
                 status_key: device.status_key || 'offline',
                 status_label: device.status_label,
                 status_duration_seconds: device.status_duration_seconds,
@@ -300,10 +310,16 @@
                 getState: (p) => p.status_key || 'offline',
                 getColor: (state) => STATE_COLORS[state] || STATE_COLORS.offline,
                 getVehicleType: (p) => p.vehicle_type || 'car',
-                getMarkerStyle: (p) => VM.resolveMarkerStyle(p),
+                getMarkerStyle: (p) => {
+                    if (VM.resolveMapIconUrl(p)) return 'body';
+                    return VM.resolveMarkerStyle(p);
+                },
                 getMarkerSizeScale: (p) => VM.resolveMarkerSizeScale(p, this.config.mapSpec),
+                getMapIconUrl: (p) => VM.resolveMapIconUrl(p) || VM.resolveFallbackIconUrl(p),
+                getFallbackIconUrl: (p) => VM.resolveFallbackIconUrl(p),
                 getCustomIconUrl: (p) => VM.resolveCustomIconUrl(p),
                 getRotationEnabled: (p) => VM.resolveRotationEnabled(p),
+                getRotationOffset: (p) => VM.resolveIconRotationOffset(p),
                 shouldShowDirection: (p, state) => state === 'moving' || state === 'running',
                 getShowLiveBadge: () => true,
                 vehicleBodyPx: this.config.mapSpec?.vehicle_body_px,
@@ -400,6 +416,9 @@
                     zIndex: 1000,
                     title: device.title,
                 });
+                if (icon && global.VehicleMarker?.applyMarkerIcon) {
+                    global.VehicleMarker.applyMarkerIcon(marker, icon);
+                }
                 marker.addListener('click', () => {
                     global.GoogleMapsPlatform?.runAfterMarkerClick?.(() => {
                         const point = this.devicePoint(device);

@@ -1,0 +1,899 @@
+/* Apple HIG-inspired Super Admin panel shell.
+   Scoped entirely under body.admin-panel.apple-hig so legacy admin styling
+   (and any page that does not opt in) is completely unaffected. */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+:root {
+    --apple-bg: #F5F5F7;
+    --apple-card: #FFFFFF;
+    --apple-blue: #007AFF;
+    --apple-green: #34C759;
+    --apple-orange: #FF9F0A;
+    --apple-red: #FF3B30;
+    --apple-purple: #AF52DE;
+    --apple-text: #1D1D1F;
+    --apple-muted: #6E6E73;
+    --apple-border: #E5E5EA;
+    --apple-hover: #F2F2F7;
+    --apple-radius: 20px;
+    --apple-radius-sm: 14px;
+    --apple-shadow: 0 8px 30px rgba(0, 0, 0, 0.05);
+    --ad-topbar-h: 64px;
+    --ad-sidebar-w: 260px;
+}
+
+/* =============================================================
+   Base tokens — re-map the existing --admin-* variables so every
+   pre-existing component (cards, tables, buttons, badges, forms)
+   automatically inherits the Apple palette without needing a
+   per-component override.
+   ============================================================= */
+body.admin-panel.apple-hig {
+    --admin-primary: #007AFF;
+    --admin-dark: #1D1D1F;
+    --admin-sidebar: #FFFFFF;
+    --admin-card: #FFFFFF;
+    --admin-border: #E5E5EA;
+    --admin-text: #1D1D1F;
+    --admin-text-light: #6E6E73;
+    --admin-success: #34C759;
+    --admin-warning: #FF9F0A;
+    --admin-danger: #FF3B30;
+    --admin-info: #0A84FF;
+    --admin-bg: #F5F5F7;
+
+    background: var(--admin-bg);
+    color: var(--admin-text);
+    font-family: Inter, -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif;
+}
+
+body.admin-panel.apple-hig * {
+    scrollbar-width: thin;
+}
+
+/* =============================================================
+   Topbar — light, blurred, sticky (replaces dark-navbar feel)
+   ============================================================= */
+body.admin-panel.apple-hig .admin-navbar {
+    background: rgba(255, 255, 255, 0.86) !important;
+    -webkit-backdrop-filter: blur(20px);
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--apple-border) !important;
+    box-shadow: none !important;
+    padding: 0 20px !important;
+    height: var(--ad-topbar-h);
+    display: flex;
+    align-items: center;
+}
+
+body.admin-panel.apple-hig .admin-navbar .navbar-content {
+    width: 100%;
+}
+
+body.admin-panel.apple-hig .sidebar-toggle {
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    background: var(--apple-hover);
+    color: var(--apple-text);
+    border: 1px solid var(--apple-border);
+    box-shadow: none;
+}
+
+body.admin-panel.apple-hig .sidebar-toggle:hover {
+    background: var(--apple-border);
+    transform: none;
+}
+
+body.admin-panel.apple-hig .page-title h5 {
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    color: var(--apple-text);
+}
+
+body.admin-panel.apple-hig .page-title h5 i {
+    color: var(--apple-blue) !important;
+}
+
+body.admin-panel.apple-hig .page-title h5::after {
+    display: none;
+}
+
+body.admin-panel.apple-hig .page-title small {
+    color: var(--apple-muted);
+}
+
+/* Quick-stat chips (online / users / devices) */
+body.admin-panel.apple-hig .ad-stat-chips {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+body.admin-panel.apple-hig .ad-stat-chip {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border-radius: 999px;
+    background: var(--apple-hover);
+    border: 1px solid var(--apple-border);
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--apple-muted);
+    white-space: nowrap;
+}
+
+body.admin-panel.apple-hig .ad-stat-chip strong {
+    color: var(--apple-text);
+    font-weight: 700;
+}
+
+body.admin-panel.apple-hig .ad-stat-chip .ad-stat-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--apple-green);
+    flex-shrink: 0;
+}
+
+body.admin-panel.apple-hig .ad-role-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 9px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    background: rgba(0, 122, 255, 0.12);
+    color: var(--apple-blue);
+}
+
+body.admin-panel.apple-hig .ad-role-badge--super {
+    background: rgba(175, 82, 222, 0.12);
+    color: var(--apple-purple);
+}
+
+/* User menu */
+body.admin-panel.apple-hig .user-avatar {
+    background: var(--apple-blue) !important;
+    box-shadow: none !important;
+}
+
+body.admin-panel.apple-hig .user-name {
+    color: var(--apple-text);
+}
+
+body.admin-panel.apple-hig .user-role {
+    color: var(--apple-muted);
+}
+
+body.admin-panel.apple-hig .dropdown-menu {
+    border: 1px solid var(--apple-border);
+    box-shadow: var(--apple-shadow);
+    border-radius: 16px;
+}
+
+body.admin-panel.apple-hig .dropdown-item:hover {
+    background: var(--apple-hover);
+    color: var(--apple-blue);
+}
+
+body.admin-panel.apple-hig .dropdown-item.text-danger:hover {
+    color: var(--apple-red);
+}
+
+/* Language toggle on the light topbar */
+body.admin-panel.apple-hig .admin-navbar .lang-toggle {
+    border: 1px solid var(--apple-border) !important;
+    background: #FFFFFF !important;
+    border-radius: 10px !important;
+}
+
+body.admin-panel.apple-hig .admin-navbar .lang-toggle__btn {
+    color: var(--apple-muted) !important;
+    font-weight: 700 !important;
+}
+
+body.admin-panel.apple-hig .admin-navbar .lang-toggle__btn--active {
+    background: var(--apple-blue) !important;
+    color: #fff !important;
+}
+
+/* =============================================================
+   Sidebar — light / soft gray (replaces dark #1A1F3C)
+   ============================================================= */
+body.admin-panel.apple-hig .admin-sidebar {
+    background: var(--apple-card);
+    border-inline-end: 1px solid var(--apple-border);
+    border-inline-start: none;
+    box-shadow: var(--apple-shadow);
+}
+
+html[dir="rtl"] body.admin-panel.apple-hig .admin-sidebar {
+    border-inline-end: none;
+    border-inline-start: 1px solid var(--apple-border);
+}
+
+body.admin-panel.apple-hig .sidebar-header {
+    border-bottom: 1px solid var(--apple-border);
+    padding: 1.25rem 1.25rem 1rem;
+}
+
+body.admin-panel.apple-hig .sidebar-brand {
+    color: var(--apple-text);
+}
+
+body.admin-panel.apple-hig .sidebar-nav {
+    padding: 0.75rem 0.6rem;
+}
+
+body.admin-panel.apple-hig .nav-group {
+    margin-bottom: 0.85rem;
+}
+
+body.admin-panel.apple-hig .nav-group-title {
+    color: var(--apple-muted);
+    padding: 0.4rem 0.75rem;
+    font-size: 11px;
+    letter-spacing: 0.06em;
+}
+
+/* Nav links — soft rounded rows, no left border indicator */
+body.admin-panel.apple-hig .nav-link-premium {
+    color: var(--apple-muted);
+    border-inline-start: none;
+    border-radius: var(--apple-radius-sm);
+    padding: 0.6rem 0.75rem;
+    margin: 2px 0;
+    font-weight: 500;
+    font-size: 14px;
+}
+
+body.admin-panel.apple-hig .nav-link-premium:hover {
+    background: var(--apple-hover);
+    color: var(--apple-text);
+    padding-inline-start: 0.75rem;
+}
+
+body.admin-panel.apple-hig .nav-link-premium.active {
+    background: var(--apple-blue);
+    color: #fff;
+    box-shadow: 0 4px 14px rgba(0, 122, 255, 0.28);
+}
+
+body.admin-panel.apple-hig .nav-link-premium.active i {
+    color: #fff;
+}
+
+body.admin-panel.apple-hig .nav-badge {
+    background: var(--apple-red);
+}
+
+/* Workflow stepper (Management group) — light rail */
+body.admin-panel.apple-hig .nav-group--flow .nav-flow-stepper::before {
+    background: var(--apple-border);
+}
+
+body.admin-panel.apple-hig .nav-group--flow .nav-flow-dot {
+    border-color: var(--apple-border);
+}
+
+body.admin-panel.apple-hig .nav-group--flow .nav-flow-step:not(.is-done):not(.active) .nav-flow-dot {
+    background: var(--apple-card);
+}
+
+body.admin-panel.apple-hig .nav-group--flow .nav-flow-step.is-done .nav-flow-dot {
+    background: #C7C7CC;
+    border-color: #C7C7CC;
+}
+
+body.admin-panel.apple-hig .nav-group--flow .nav-flow-step.active .nav-flow-dot {
+    background: var(--apple-blue);
+    border-color: rgba(0, 122, 255, 0.35);
+    box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.16);
+}
+
+body.admin-panel.apple-hig .nav-group--flow .nav-flow-step:hover .nav-flow-dot,
+body.admin-panel.apple-hig .nav-group--flow .nav-flow-step:focus-visible .nav-flow-dot {
+    border-color: #C7C7CC;
+}
+
+body.admin-panel.apple-hig .nav-group--flow .nav-flow-step:hover .nav-flow-body,
+body.admin-panel.apple-hig .nav-group--flow .nav-flow-step:focus-visible .nav-flow-body {
+    background: var(--apple-hover);
+    color: var(--apple-text);
+    border-radius: var(--apple-radius-sm);
+}
+
+body.admin-panel.apple-hig .nav-group--flow .nav-flow-step:hover {
+    border-inline-start-color: transparent;
+}
+
+body.admin-panel.apple-hig .nav-group--flow .nav-flow-step.active .nav-flow-body {
+    color: var(--apple-text);
+    font-weight: 600;
+}
+
+/* Sidebar footer */
+body.admin-panel.apple-hig .sidebar-footer {
+    border-top: 1px solid var(--apple-border);
+}
+
+body.admin-panel.apple-hig .sidebar-footer .text-muted {
+    color: var(--apple-muted) !important;
+}
+
+/* Overlay + drawer (mobile) */
+body.admin-panel.apple-hig .sidebar-overlay.show {
+    background: rgba(0, 0, 0, 0.32);
+    -webkit-backdrop-filter: blur(2px);
+    backdrop-filter: blur(2px);
+}
+
+@media (max-width: 768px) {
+    body.admin-panel.apple-hig .admin-sidebar.is-open {
+        box-shadow: var(--apple-shadow);
+        border-radius: 0 20px 20px 0;
+    }
+
+    html[dir="rtl"] body.admin-panel.apple-hig .admin-sidebar.is-open {
+        border-radius: 20px 0 0 20px;
+    }
+}
+
+/* =============================================================
+   Content area
+   ============================================================= */
+body.admin-panel.apple-hig .content-wrap {
+    padding: 24px;
+}
+
+@media (max-width: 768px) {
+    body.admin-panel.apple-hig .content-wrap {
+        padding: 16px;
+    }
+}
+
+body.admin-panel.apple-hig .footer-premium {
+    border-top: 1px solid var(--apple-border);
+    color: var(--apple-muted);
+}
+
+/* =============================================================
+   Card / stats overrides (apply everywhere, incl. non-dashboard
+   admin pages — forms, listings, etc. keep their layout, just
+   pick up the lighter Apple treatment)
+   ============================================================= */
+body.admin-panel.apple-hig .premium-card {
+    border-radius: var(--apple-radius);
+    border: 1px solid var(--apple-border);
+    box-shadow: var(--apple-shadow);
+}
+
+body.admin-panel.apple-hig .premium-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.08);
+    border-color: var(--apple-border);
+}
+
+body.admin-panel.apple-hig .premium-card .card-title {
+    font-weight: 700;
+    color: var(--apple-text);
+}
+
+body.admin-panel.apple-hig .stats-icon {
+    border-radius: 16px;
+    box-shadow: none !important;
+}
+
+body.admin-panel.apple-hig .stats-value {
+    font-size: 1.9rem;
+    letter-spacing: -0.02em;
+}
+
+body.admin-panel.apple-hig .table-premium thead th {
+    background-color: var(--apple-hover);
+    border-bottom: 1px solid var(--apple-border);
+    text-transform: uppercase;
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    color: var(--apple-muted);
+}
+
+body.admin-panel.apple-hig .btn-primary {
+    background: var(--apple-blue);
+    border-color: var(--apple-blue);
+}
+
+body.admin-panel.apple-hig .btn-primary:hover,
+body.admin-panel.apple-hig .btn-primary:focus {
+    background: #0062CC;
+    border-color: #0062CC;
+}
+
+body.admin-panel.apple-hig .btn-outline-primary {
+    color: var(--apple-blue);
+    border-color: var(--apple-blue);
+}
+
+body.admin-panel.apple-hig .btn-outline-primary:hover {
+    background: var(--apple-blue);
+    border-color: var(--apple-blue);
+}
+
+/* =============================================================
+   Dashboard helpers (Apple HIG dashboard layout)
+   ============================================================= */
+body.admin-panel.apple-hig .ad-dashboard {
+    max-width: 1440px;
+    margin: 0 auto;
+}
+
+body.admin-panel.apple-hig .ad-dashboard-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 16px;
+    margin-bottom: 24px;
+}
+
+body.admin-panel.apple-hig .ad-page-title {
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    margin: 0 0 6px;
+    color: var(--apple-text);
+}
+
+body.admin-panel.apple-hig .ad-page-sub {
+    font-size: 14px;
+    color: var(--apple-muted);
+    margin: 0;
+}
+
+body.admin-panel.apple-hig .ad-header-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+body.admin-panel.apple-hig .ad-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    border-radius: 12px;
+    font-size: 14px;
+    font-weight: 600;
+    border: 1px solid transparent;
+    text-decoration: none;
+    transition: background 0.2s, transform 0.2s, box-shadow 0.2s;
+}
+
+body.admin-panel.apple-hig .ad-btn--primary {
+    background: var(--apple-blue);
+    color: #fff;
+}
+
+body.admin-panel.apple-hig .ad-btn--primary:hover {
+    background: #0062CC;
+    color: #fff;
+    transform: translateY(-1px);
+}
+
+body.admin-panel.apple-hig .ad-btn--secondary {
+    background: #fff;
+    border-color: var(--apple-border);
+    color: var(--apple-text);
+}
+
+body.admin-panel.apple-hig .ad-btn--secondary:hover {
+    background: var(--apple-hover);
+    color: var(--apple-text);
+    transform: translateY(-1px);
+}
+
+/* Health row */
+body.admin-panel.apple-hig .ad-health-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px;
+    margin-bottom: 24px;
+}
+
+@media (max-width: 991px) {
+    body.admin-panel.apple-hig .ad-health-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 480px) {
+    body.admin-panel.apple-hig .ad-health-grid { grid-template-columns: 1fr; }
+}
+
+body.admin-panel.apple-hig .ad-health-item {
+    display: block;
+    background: var(--apple-card);
+    border: 1px solid var(--apple-border);
+    border-radius: var(--apple-radius-sm);
+    padding: 14px 16px;
+    text-decoration: none;
+    transition: border-color 0.2s, transform 0.2s;
+}
+
+body.admin-panel.apple-hig .ad-health-item--link:hover {
+    border-color: var(--apple-blue);
+    transform: translateY(-1px);
+}
+
+body.admin-panel.apple-hig .ad-health-top {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+}
+
+body.admin-panel.apple-hig .ad-health-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--apple-muted);
+    flex-shrink: 0;
+}
+
+body.admin-panel.apple-hig .ad-health-item.is-ok .ad-health-dot { background: var(--apple-green); }
+body.admin-panel.apple-hig .ad-health-item.is-down .ad-health-dot { background: var(--apple-red); }
+
+body.admin-panel.apple-hig .ad-health-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--apple-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+body.admin-panel.apple-hig .ad-health-value {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--apple-text);
+}
+
+/* KPI grid */
+body.admin-panel.apple-hig .ad-kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 20px;
+    margin-bottom: 24px;
+}
+
+@media (max-width: 1200px) {
+    body.admin-panel.apple-hig .ad-kpi-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 576px) {
+    body.admin-panel.apple-hig .ad-kpi-grid { grid-template-columns: 1fr; }
+}
+
+body.admin-panel.apple-hig .ad-card {
+    background: var(--apple-card);
+    border: 1px solid var(--apple-border);
+    border-radius: var(--apple-radius);
+    padding: 22px;
+    box-shadow: var(--apple-shadow);
+    height: 100%;
+}
+
+body.admin-panel.apple-hig .ad-kpi-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+body.admin-panel.apple-hig .ad-kpi-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--apple-muted);
+    margin: 0;
+}
+
+body.admin-panel.apple-hig .ad-kpi-icon {
+    width: 38px;
+    height: 38px;
+    border-radius: 11px;
+    background: var(--apple-hover);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--apple-blue);
+    flex-shrink: 0;
+}
+
+body.admin-panel.apple-hig .ad-kpi-value {
+    font-size: 32px;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    line-height: 1.1;
+    color: var(--apple-text);
+}
+
+body.admin-panel.apple-hig .ad-kpi-sub {
+    font-size: 12px;
+    color: var(--apple-muted);
+    margin-top: 6px;
+}
+
+body.admin-panel.apple-hig .ad-kpi-meta {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--apple-muted);
+    margin-top: 8px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+body.admin-panel.apple-hig .ad-kpi-meta.up { color: var(--apple-green); }
+body.admin-panel.apple-hig .ad-kpi-meta.down { color: var(--apple-red); }
+
+/* Mini chip grid */
+body.admin-panel.apple-hig .ad-chip-grid {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 12px;
+    margin-bottom: 24px;
+}
+
+@media (max-width: 991px) {
+    body.admin-panel.apple-hig .ad-chip-grid { grid-template-columns: repeat(3, 1fr); }
+}
+
+@media (max-width: 480px) {
+    body.admin-panel.apple-hig .ad-chip-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+body.admin-panel.apple-hig .ad-chip {
+    background: var(--apple-card);
+    border: 1px solid var(--apple-border);
+    border-radius: var(--apple-radius-sm);
+    padding: 14px 10px;
+    text-align: center;
+}
+
+body.admin-panel.apple-hig .ad-chip-value {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--apple-text);
+    line-height: 1.15;
+}
+
+body.admin-panel.apple-hig .ad-chip-value--danger { color: var(--apple-red); }
+body.admin-panel.apple-hig .ad-chip-value--warning { color: var(--apple-orange); }
+
+body.admin-panel.apple-hig .ad-chip-label {
+    font-size: 11.5px;
+    color: var(--apple-muted);
+    font-weight: 500;
+    margin-top: 4px;
+    display: block;
+}
+
+/* 2-column dashboard grids */
+body.admin-panel.apple-hig .ad-grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin-bottom: 24px;
+    align-items: stretch;
+}
+
+body.admin-panel.apple-hig .ad-grid-2.ad-grid-2--wide {
+    grid-template-columns: 1.4fr 0.6fr;
+}
+
+@media (max-width: 991px) {
+    body.admin-panel.apple-hig .ad-grid-2,
+    body.admin-panel.apple-hig .ad-grid-2.ad-grid-2--wide {
+        grid-template-columns: 1fr;
+    }
+}
+
+body.admin-panel.apple-hig .ad-card-title {
+    font-size: 15px;
+    font-weight: 700;
+    margin: 0 0 16px;
+    color: var(--apple-text);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+body.admin-panel.apple-hig .ad-card-title i {
+    color: var(--apple-blue);
+}
+
+body.admin-panel.apple-hig .ad-card-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 14px;
+}
+
+body.admin-panel.apple-hig .ad-chart-wrap {
+    height: 280px;
+    position: relative;
+}
+
+/* Timeline (recent activity) */
+body.admin-panel.apple-hig .ad-timeline {
+    max-height: 360px;
+    overflow-y: auto;
+    padding-inline-end: 4px;
+}
+
+body.admin-panel.apple-hig .ad-timeline-item {
+    display: grid;
+    grid-template-columns: 62px 14px 1fr;
+    gap: 10px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--apple-border);
+    align-items: start;
+}
+
+body.admin-panel.apple-hig .ad-timeline-item:last-child {
+    border-bottom: none;
+}
+
+body.admin-panel.apple-hig .ad-timeline-time {
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--apple-muted);
+    padding-top: 2px;
+}
+
+body.admin-panel.apple-hig .ad-timeline-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    margin-top: 4px;
+}
+
+body.admin-panel.apple-hig .ad-timeline-title {
+    font-size: 13.5px;
+    font-weight: 600;
+    margin: 0 0 2px;
+    color: var(--apple-text);
+}
+
+body.admin-panel.apple-hig .ad-timeline-desc {
+    font-size: 12px;
+    color: var(--apple-muted);
+    margin: 0;
+}
+
+body.admin-panel.apple-hig .ad-empty {
+    color: var(--apple-muted);
+    text-align: center;
+    padding: 32px 0;
+    font-size: 13.5px;
+}
+
+/* Apple table */
+body.admin-panel.apple-hig .ad-table-wrap {
+    overflow: auto;
+    border-radius: var(--apple-radius-sm);
+    border: 1px solid var(--apple-border);
+}
+
+body.admin-panel.apple-hig .ad-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13.5px;
+    margin: 0;
+}
+
+body.admin-panel.apple-hig .ad-table thead th {
+    text-align: start;
+    padding: 12px 14px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--apple-muted);
+    background: var(--apple-hover);
+    border-bottom: 1px solid var(--apple-border);
+    white-space: nowrap;
+}
+
+body.admin-panel.apple-hig .ad-table td {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--apple-border);
+    vertical-align: middle;
+}
+
+body.admin-panel.apple-hig .ad-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+body.admin-panel.apple-hig .ad-table tbody tr:hover {
+    background: var(--apple-hover);
+}
+
+body.admin-panel.apple-hig .ad-mini-avatar {
+    width: 26px;
+    height: 26px;
+    font-size: 11px;
+}
+
+/* Fleet snapshot preview */
+body.admin-panel.apple-hig .ad-map-preview {
+    height: 190px;
+    border-radius: var(--apple-radius-sm);
+    background: linear-gradient(135deg, #0A2540 0%, #06121F 100%);
+    position: relative;
+    overflow: hidden;
+}
+
+body.admin-panel.apple-hig .ad-map-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.22);
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    padding: 1rem;
+    color: #fff;
+}
+
+body.admin-panel.apple-hig .ad-row-between {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 0;
+}
+
+body.admin-panel.apple-hig .ad-row-between + .ad-row-between {
+    border-top: 1px solid var(--apple-border);
+}
+
+body.admin-panel.apple-hig .ad-event-pill {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--apple-border);
+    font-size: 13px;
+}
+
+body.admin-panel.apple-hig .ad-event-pill:last-child {
+    border-bottom: none;
+}
+
+body.admin-panel.apple-hig .ad-badge-count {
+    background: var(--apple-hover);
+    color: var(--apple-text);
+    font-weight: 700;
+    font-size: 12px;
+    padding: 2px 10px;
+    border-radius: 999px;
+}
+
+/* =============================================================
+   Empty-state helpers reused from user badges (skeleton loader)
+   ============================================================= */
+body.admin-panel.apple-hig .ad-skel {
+    background: linear-gradient(90deg, #eee 25%, #f5f5f5 50%, #eee 75%);
+    background-size: 200% 100%;
+    animation: adShimmer 1.2s infinite;
+    border-radius: 8px;
+    height: 260px;
+}
+
+@keyframes adShimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}

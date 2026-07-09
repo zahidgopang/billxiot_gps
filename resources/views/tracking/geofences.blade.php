@@ -95,6 +95,10 @@
     i18n: {
         saved: @json(__('app.tracking.geofence_saved')),
         saveFailed: @json(__('app.tracking.geofence_save_failed')),
+        loadFailed: @json(__('app.tracking.geofence_load_failed')),
+        geofencePermissionDenied: @json(__('app.tracking.geofence_permission_denied')),
+        accessDeniedTitle: @json(__('app.errors.403_title')),
+        ok: @json(__('app.common.ok')),
         drawFirst: @json(__('app.tracking.geofence_draw_first')),
         pickVehicle: @json(__('app.tracking.geofence_pick_vehicle')),
         deleteConfirm: @json(__('app.tracking.geofence_delete_confirm')),

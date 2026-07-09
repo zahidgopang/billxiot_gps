@@ -29,6 +29,18 @@
 </div>
 @endsection
 @push('scripts')
-<script>window.TRACKING_EVENTS_CONFIG = { jsonUrl: @json($jsonUrl), panel: @json($panel) };</script>
+<script>
+    window.TRACKING_EVENTS_CONFIG = {
+        jsonUrl: @json($jsonUrl),
+        panel: @json($panel),
+        i18n: {
+            loadFailed: @json(__('app.tracking.events_load_failed')),
+            eventsPermissionDenied: @json(__('app.tracking.events_permission_denied')),
+            accessDeniedTitle: @json(__('app.errors.403_title')),
+            ok: @json(__('app.common.ok')),
+            noData: @json(__('app.tracking.no_data')),
+        },
+    };
+</script>
 <script src="{{ protected_js('tracking-events.js') }}"></script>
 @endpush

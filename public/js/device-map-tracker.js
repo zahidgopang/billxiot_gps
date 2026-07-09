@@ -167,46 +167,135 @@
     const mediumSpeedKmh = cfg.mediumSpeedKmh ?? 60;
     const ANIM_DURATION_MS = cfg.markerAnimMs ?? 1200;
 
+    const mapAppearance = {
+        vehicle_type: cfg.vehicleType || 'car',
+        map_builtin_icon_path: cfg.mapBuiltinIconPath || null,
+        map_builtin_icon_url: cfg.mapBuiltinIconUrl || null,
+        map_marker_style: cfg.mapMarkerStyle || 'body',
+        map_marker_size: cfg.mapMarkerSize || '100',
+        map_marker_size_scale: cfg.mapMarkerSizeScale || 1,
+        // Orphaned DB "custom" without a resolvable file must not block library icons.
+        map_icon_source: (cfg.mapIconSource === 'custom' && cfg.mapCustomIconUrl) ? 'custom' : 'default',
+        map_custom_icon_url: (cfg.mapIconSource === 'custom' && cfg.mapCustomIconUrl) ? cfg.mapCustomIconUrl : null,
+        map_icon_rotation_enabled: cfg.mapIconRotationEnabled !== false,
+        map_icon_rotation_offset: cfg.mapIconRotationOffset ?? 0,
+        map_fallback_icon_url: cfg.mapFallbackIconUrl || '/icons/builtin/Vehicles/car.svg',
+    };
+
+    /**
+     * Live GPS points do not carry icon fields. Overlay the saved appearance so
+     * uploads / library picks stay visible after poll/Pusher updates.
+     */
+    function withMapAppearance(source) {
+        return {
+            ...(source || {}),
+            vehicle_type: mapAppearance.vehicle_type,
+            map_builtin_icon_path: mapAppearance.map_builtin_icon_path,
+            map_builtin_icon_url: mapAppearance.map_builtin_icon_url,
+            map_marker_style: mapAppearance.map_marker_style,
+            map_marker_size: mapAppearance.map_marker_size,
+            map_marker_size_scale: mapAppearance.map_marker_size_scale,
+            map_icon_source: mapAppearance.map_icon_source,
+            map_custom_icon_url: mapAppearance.map_custom_icon_url,
+            map_icon_rotation_enabled: mapAppearance.map_icon_rotation_enabled,
+            map_icon_rotation_offset: mapAppearance.map_icon_rotation_offset,
+            map_fallback_icon_url: mapAppearance.map_fallback_icon_url,
+        };
+    }
+
     function resolveMarkerStyle(source) {
-        return window.VehicleMarker?.resolveMarkerStyle?.(source || mapAppearance)
-            || 'labeled';
+        const appearance = withMapAppearance(source);
+        if (window.VehicleMarker?.resolveMapIconUrl?.(appearance)) {
+            return 'body';
+        }
+        return window.VehicleMarker?.resolveMarkerStyle?.(appearance) || 'body';
     }
 
     function resolveMarkerSizeScale(source) {
         return window.VehicleMarker?.resolveMarkerSizeScale?.(
-            source || mapAppearance,
+            withMapAppearance(source),
             cfg.mapRendering
         ) || 1;
     }
 
+    function resolveMapIconUrl(source) {
+        const VM = window.VehicleMarker;
+        const appearance = withMapAppearance(source);
+        return VM?.resolveMapIconUrl?.(appearance)
+            || VM?.resolveFallbackIconUrl?.(appearance)
+            || null;
+    }
+
+    function resolveFallbackIconUrl(source) {
+        return window.VehicleMarker?.resolveFallbackIconUrl?.(withMapAppearance(source))
+            || '/icons/builtin/Vehicles/car.svg';
+    }
+
     function resolveCustomIconUrl(source) {
-        return window.VehicleMarker?.resolveCustomIconUrl?.(source || mapAppearance) || null;
+        return window.VehicleMarker?.resolveCustomIconUrl?.(withMapAppearance(source)) || null;
     }
 
     function resolveRotationEnabled(source) {
-        return window.VehicleMarker?.resolveRotationEnabled?.(source || mapAppearance) !== false;
+        return window.VehicleMarker?.resolveRotationEnabled?.(withMapAppearance(source)) !== false;
     }
 
-    const mapAppearance = {
-        vehicle_type: cfg.vehicleType || 'car',
-        map_marker_style: cfg.mapMarkerStyle || 'labeled',
-        map_marker_size: cfg.mapMarkerSize || '100',
-        map_marker_size_scale: cfg.mapMarkerSizeScale || 1,
-        map_icon_source: cfg.mapIconSource || 'default',
-        map_custom_icon_url: cfg.mapCustomIconUrl || null,
-        map_icon_rotation_enabled: cfg.mapIconRotationEnabled !== false,
-    };
+    function resolveRotationOffset(source) {
+        return window.VehicleMarker?.resolveIconRotationOffset?.(withMapAppearance(source)) || 0;
+    }
 
     function applyMapAppearance(next) {
         Object.assign(mapAppearance, next || {});
+        if (mapAppearance.map_icon_source !== 'custom' || !mapAppearance.map_custom_icon_url) {
+            mapAppearance.map_icon_source = mapAppearance.map_custom_icon_url ? 'custom' : 'default';
+            if (mapAppearance.map_icon_source !== 'custom') {
+                mapAppearance.map_custom_icon_url = null;
+            }
+        }
+        // Refresh builtin URL from path/type so a prior selection cannot stick on the map.
+        if (mapAppearance.map_icon_source !== 'custom') {
+            const fromPath = mapAppearance.map_builtin_icon_path
+                && window.BuiltinMapIcons?.urlForPath?.(mapAppearance.map_builtin_icon_path);
+            const fromType = mapAppearance.vehicle_type
+                && window.BuiltinMapIcons?.urlForType?.(mapAppearance.vehicle_type);
+            mapAppearance.map_builtin_icon_url = fromPath || fromType || mapAppearance.map_builtin_icon_url || null;
+        }
+        // Always cache-bust custom URLs so a re-upload never reuses a cached image.
+        if (mapAppearance.map_custom_icon_url) {
+            const url = String(mapAppearance.map_custom_icon_url);
+            if (/([?&])_=\d+/.test(url)) {
+                mapAppearance.map_custom_icon_url = url.replace(/([?&])_=\d+/, `$1_=${Date.now()}`);
+            } else {
+                mapAppearance.map_custom_icon_url = `${url}${url.includes('?') ? '&' : '?'}_=${Date.now()}`;
+            }
+        }
         cfg.vehicleType = mapAppearance.vehicle_type;
+        cfg.mapBuiltinIconPath = mapAppearance.map_builtin_icon_path;
+        cfg.mapBuiltinIconUrl = mapAppearance.map_builtin_icon_url;
         cfg.mapIconSource = mapAppearance.map_icon_source;
         cfg.mapCustomIconUrl = mapAppearance.map_custom_icon_url;
         cfg.mapIconRotationEnabled = mapAppearance.map_icon_rotation_enabled;
+        cfg.mapIconRotationOffset = mapAppearance.map_icon_rotation_offset ?? 0;
+        if (lastTelemetry) {
+            Object.assign(lastTelemetry, {
+                vehicle_type: mapAppearance.vehicle_type,
+                map_builtin_icon_path: mapAppearance.map_builtin_icon_path,
+                map_builtin_icon_url: mapAppearance.map_builtin_icon_url,
+                map_marker_style: mapAppearance.map_marker_style,
+                map_marker_size: mapAppearance.map_marker_size,
+                map_marker_size_scale: mapAppearance.map_marker_size_scale,
+                map_icon_source: mapAppearance.map_icon_source,
+                map_custom_icon_url: mapAppearance.map_custom_icon_url,
+                map_icon_rotation_enabled: mapAppearance.map_icon_rotation_enabled,
+                map_icon_rotation_offset: mapAppearance.map_icon_rotation_offset,
+                map_fallback_icon_url: mapAppearance.map_fallback_icon_url,
+            });
+        }
+        window.VehicleMarker?.clearIconLoadCache?.();
         if (fleetRenderer) {
             fleetRenderer.refreshIconKit();
             if (lastTelemetry) {
                 fleetRenderer.setCurrentVehicle(lastTelemetry, { animate: false });
+                fleetRenderer.updateVehicleIcon(lastTelemetry);
             }
         }
     }
@@ -226,8 +315,11 @@
                 getVehicleType: resolveVehicleType,
                 getMarkerStyle: resolveMarkerStyle,
                 getMarkerSizeScale: resolveMarkerSizeScale,
+                getMapIconUrl: resolveMapIconUrl,
+                getFallbackIconUrl: resolveFallbackIconUrl,
                 getCustomIconUrl: resolveCustomIconUrl,
                 getRotationEnabled: resolveRotationEnabled,
+                getRotationOffset: resolveRotationOffset,
                 mapRendering: cfg.mapRendering,
                 shouldShowDirection: shouldShowVehicleDirection,
                 isHidden: hasNoGpsData,
@@ -374,7 +466,57 @@
             plate: raw.plate ?? raw.map_marker_plate ?? raw.vehicle_number ?? null,
             name: raw.name ?? raw.map_marker_title ?? null,
             is_online: raw.is_online,
+            // Keep map appearance on live/history points so uploads are not lost after poll.
+            vehicle_type: raw.vehicle_type ?? raw.vehicleType ?? null,
+            map_builtin_icon_path: raw.map_builtin_icon_path ?? raw.mapBuiltinIconPath ?? null,
+            map_builtin_icon_url: raw.map_builtin_icon_url ?? raw.mapBuiltinIconUrl ?? null,
+            map_marker_style: raw.map_marker_style ?? raw.mapMarkerStyle ?? null,
+            map_marker_size: raw.map_marker_size ?? raw.mapMarkerSize ?? null,
+            map_marker_size_scale: raw.map_marker_size_scale ?? raw.mapMarkerSizeScale ?? null,
+            map_icon_source: raw.map_icon_source ?? raw.mapIconSource ?? null,
+            map_custom_icon_url: raw.map_custom_icon_url ?? raw.mapCustomIconUrl ?? null,
+            map_icon_rotation_enabled: raw.map_icon_rotation_enabled ?? raw.mapIconRotationEnabled ?? null,
+            map_icon_rotation_offset: raw.map_icon_rotation_offset ?? raw.mapIconRotationOffset ?? null,
+            map_fallback_icon_url: raw.map_fallback_icon_url ?? raw.mapFallbackIconUrl ?? null,
         };
+    }
+
+    function syncAppearanceFromPoint(point) {
+        if (!point) return;
+        const next = {};
+        if (point.vehicle_type != null) next.vehicle_type = point.vehicle_type;
+        if (point.map_builtin_icon_path != null) next.map_builtin_icon_path = point.map_builtin_icon_path;
+        if (point.map_builtin_icon_url != null) next.map_builtin_icon_url = point.map_builtin_icon_url;
+        if (point.map_marker_style != null) next.map_marker_style = point.map_marker_style;
+        if (point.map_marker_size != null) next.map_marker_size = point.map_marker_size;
+        if (point.map_marker_size_scale != null) next.map_marker_size_scale = point.map_marker_size_scale;
+        if (point.map_custom_icon_url != null) next.map_custom_icon_url = point.map_custom_icon_url;
+        if (point.map_icon_source != null) {
+            // Ignore orphaned custom flags that have no file URL.
+            next.map_icon_source = (point.map_icon_source === 'custom' && !point.map_custom_icon_url)
+                ? 'default'
+                : point.map_icon_source;
+            if (next.map_icon_source !== 'custom') {
+                next.map_custom_icon_url = null;
+            }
+        }
+        if (point.map_icon_rotation_enabled != null) {
+            next.map_icon_rotation_enabled = point.map_icon_rotation_enabled;
+        }
+        if (point.map_icon_rotation_offset != null) {
+            next.map_icon_rotation_offset = point.map_icon_rotation_offset;
+        }
+        if (point.map_fallback_icon_url != null) next.map_fallback_icon_url = point.map_fallback_icon_url;
+        if (Object.keys(next).length) {
+            Object.assign(mapAppearance, next);
+            cfg.vehicleType = mapAppearance.vehicle_type;
+            cfg.mapBuiltinIconPath = mapAppearance.map_builtin_icon_path;
+            cfg.mapBuiltinIconUrl = mapAppearance.map_builtin_icon_url;
+            cfg.mapIconSource = mapAppearance.map_icon_source;
+            cfg.mapCustomIconUrl = mapAppearance.map_custom_icon_url;
+            cfg.mapIconRotationEnabled = mapAppearance.map_icon_rotation_enabled;
+            cfg.mapIconRotationOffset = mapAppearance.map_icon_rotation_offset ?? 0;
+        }
     }
 
     function sortHistoryPoints(data) {
@@ -895,9 +1037,14 @@
     }
 
     function resolveVehicleType(source) {
+        const appearance = withMapAppearance(source);
         const raw = String(
-            source?.vehicle_type || source?.vehicleType || cfg.vehicleType || 'car'
+            appearance.vehicle_type || appearance.vehicleType || cfg.vehicleType || 'car'
         ).toLowerCase().trim();
+        // Shared / library ids (e.g. shared_car_svgrepo_com) must pass through unchanged.
+        if (raw.startsWith('shared_') || raw.includes('_')) {
+            return raw;
+        }
         const known = ['car', 'suv', 'truck', 'van', 'bus', 'pickup', 'motorcycle', 'trailer', 'other'];
         if (known.includes(raw)) {
             return raw;
@@ -2324,6 +2471,11 @@ ${pts}
         let point = normalizePoint(raw);
         if (!point) return;
 
+        // Live JSON now carries appearance; keep local overlay in sync after uploads.
+        if (raw?.map_icon_source != null || raw?.map_custom_icon_url != null || raw?.map_builtin_icon_url != null) {
+            syncAppearanceFromPoint(point);
+        }
+        point = withMapAppearance(point);
         point = enrichPointWithMotion(point, lastTelemetry);
         debugGpsLog('live point', {
             gsm: point.gsm_signal,

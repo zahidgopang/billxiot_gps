@@ -1,4 +1,4 @@
-﻿@php
+@php
     use App\Models\Device;
 
     $device = $device ?? null;
@@ -20,6 +20,8 @@
     $driverName = old('driver_name', optional($device)->driver_name ?? '');
     $driverContact = old('driver_contact', optional($device)->driverContactNumber() ?? '');
     $plateType = old('plate_type', optional($device)->plate_type ?? '');
+    $odometerBaseKm = old('odometer_base_km', optional($device)->odometerBaselineKm());
+    $odometerDisplayKm = isset($device) ? $device->odometerDisplayKm() : null;
     $allowedDeviceTypes = $allowedDeviceTypes ?? array_keys(Device::DEVICE_TYPES);
     $formClientId = $formClientId ?? ($panel === 'client' ? $selectedClient : ($selectedClient ?: null));
     $needsClient = $panel === 'admin' && ! $formClientId;
@@ -195,12 +197,28 @@
             <option value="">{{ __('app.routes.no_route') }}</option>
             @foreach($activeRoutes as $routeOption)
                 <option value="{{ $routeOption->id }}" @selected((string) $assignedRouteId === (string) $routeOption->id)>
-                    {{ $routeOption->name }} ({{ $routeOption->start_city }} → {{ $routeOption->destination_city }})
+                    {{ $routeOption->name }} ({{ $routeOption->start_city }} ? {{ $routeOption->destination_city }})
                 </option>
             @endforeach
         </select>
         <p class="admin-hint">{{ __('app.routes.assigned_route_hint') }}</p>
         @error('route_id') <p class="admin-field__error text-danger">{{ $message }}</p> @enderror
+    </x-admin.form-col>
+
+    <x-admin.form-col>
+        <label class="admin-label" for="odometer-base-km">{{ __('app.odometer.current_reading') }}</label>
+        <input type="number" name="odometer_base_km" id="odometer-base-km" step="0.1" min="0"
+               value="{{ $odometerBaseKm !== null ? $odometerBaseKm : '' }}"
+               class="form-control form-control-sm admin-ltr" dir="ltr"
+               placeholder="{{ __('app.odometer.placeholder') }}">
+        <p class="admin-hint">{{ __('app.odometer.hint') }}</p>
+        @if($odometerDisplayKm !== null)
+            <p class="admin-hint mb-0">
+                {{ __('app.odometer.live_reading') }}:
+                <strong>{{ number_format($odometerDisplayKm, 1) }} km</strong>
+            </p>
+        @endif
+        @error('odometer_base_km') <p class="admin-field__error text-danger">{{ $message }}</p> @enderror
     </x-admin.form-col>
 
     <x-admin.form-col>

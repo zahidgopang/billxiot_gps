@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Http\Concerns\ResolvesHistoryDateRange;
 use App\Http\Concerns\ResolvesTrackingPanel;
+use App\Services\Authorization\RbacService;
 use App\Services\Mobile\VehicleStatusSpec;
 use App\Services\Tracking\GlobalTrackingService;
 use App\Services\Tracking\TrackingUiPermissions;
@@ -21,6 +22,7 @@ class GlobalTrackingController extends Controller
 
     public function __construct(
         private GlobalTrackingService $tracking,
+        private RbacService $rbac,
     ) {}
 
     public function index(Request $request): View
@@ -35,7 +37,9 @@ class GlobalTrackingController extends Controller
             'stateColors' => VehicleStatusSpec::STATE_COLORS,
             'hubRoutes' => $this->trackingHubRoutes($panel),
             'routes' => $this->liveRouteNames($panel),
-            'deviceEditUrlTemplate' => $this->deviceEditUrlTemplate($panel),
+            'deviceEditUrlTemplate' => $this->canOpenVehicleDetails($request->user())
+                ? $this->deviceEditUrlTemplate($panel)
+                : null,
             'manageRoutesUrl' => Route::has("{$panel}.routes.index")
                 ? route("{$panel}.routes.index")
                 : null,
@@ -599,5 +603,15 @@ class GlobalTrackingController extends Controller
             '/__DEVICE_ID__/',
             route($routeName, ['device' => 0]),
         );
+    }
+
+    private function canOpenVehicleDetails(?\App\Models\User $user): bool
+    {
+        if (! $user) {
+            return false;
+        }
+
+        return $this->rbac->hasPermission($user, 'devices.manage')
+            || $this->rbac->hasPermission($user, 'web.vehicles.view_details');
     }
 }

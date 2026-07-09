@@ -50,5 +50,8 @@ class AuthServiceProvider extends ServiceProvider
         Gate::define('manage-client', fn (User $actor, Client $client) => $rbac()->isSuperAdmin($actor)
             || ($rbac()->hasPermission($actor, 'clients.manage')
                 && in_array((int) $client->id, $tenant()->visibleClientIds($actor), true)));
+
+        Gate::define('manage-sub-account', fn (User $actor, User $target) => app(\App\Services\Authorization\SubAccountService::class)
+            ->canManageSubAccount($actor, $target));
     }
 }

@@ -72,6 +72,7 @@ return function (): void {
         Route::get('/', [MaintenanceController::class, 'index'])->name('index');
         Route::get('/json', [MaintenanceController::class, 'json'])->name('json');
         Route::post('/', [MaintenanceController::class, 'store'])->name('store');
+        Route::post('/{maintenance}/complete', [MaintenanceController::class, 'complete'])->name('complete');
         Route::post('/{maintenance}', [MaintenanceController::class, 'update'])->name('update');
         Route::delete('/{maintenance}', [MaintenanceController::class, 'destroy'])->name('destroy');
     });

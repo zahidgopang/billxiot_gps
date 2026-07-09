@@ -104,15 +104,17 @@ class PushNotificationDispatcher
 
     /**
      * Maintenance reminders — not gated by PUSH_EVENT_NOTIFICATIONS_ENABLED.
+     *
+     * @param  list<int>|null  $recipientUserIds  When set, overrides default device-user resolution.
      */
-    public function forMaintenance(Device $device, VehicleEvent $event): void
+    public function forMaintenance(Device $device, VehicleEvent $event, ?array $recipientUserIds = null): void
     {
         $this->send($device, PushNotificationType::MAINTENANCE_DUE, $event->title, $event->message, [
             'event_id' => (string) $event->id,
             'event_type' => VehicleEvent::TYPE_MAINTENANCE,
             'occurred_at' => $event->occurred_at?->toIso8601String() ?? '',
             'severity' => $event->severity(),
-        ], pushGate: 'always');
+        ], pushGate: 'always', recipientUserIds: $recipientUserIds);
     }
 
     public function dispatchRouteTripCompleted(
@@ -209,6 +211,7 @@ class PushNotificationDispatcher
     /**
      * @param  array<string, string>  $extra
      * @param  'event'|'geofence'|'always'  $pushGate
+     * @param  list<int>|null  $recipientUserIds
      */
     private function send(
         Device $device,
@@ -217,9 +220,10 @@ class PushNotificationDispatcher
         string $body,
         array $extra = [],
         string $pushGate = 'event',
+        ?array $recipientUserIds = null,
     ): void {
         try {
-            $this->dispatchSend($device, $pushType, $title, $body, $extra, $pushGate);
+            $this->dispatchSend($device, $pushType, $title, $body, $extra, $pushGate, $recipientUserIds);
         } catch (\Throwable $e) {
             report($e);
         }
@@ -228,6 +232,7 @@ class PushNotificationDispatcher
     /**
      * @param  array<string, string>  $extra
      * @param  'event'|'geofence'|'always'  $pushGate
+     * @param  list<int>|null  $recipientUserIds
      */
     private function dispatchSend(
         Device $device,
@@ -236,8 +241,11 @@ class PushNotificationDispatcher
         string $body,
         array $extra = [],
         string $pushGate = 'event',
+        ?array $recipientUserIds = null,
     ): void {
-        $userIds = $this->resolveUserIds($device);
+        $userIds = $recipientUserIds !== null
+            ? array_values(array_unique(array_filter(array_map('intval', $recipientUserIds))))
+            : $this->resolveUserIds($device);
         if ($userIds === []) {
             return;
         }

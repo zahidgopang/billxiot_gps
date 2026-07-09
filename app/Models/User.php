@@ -241,8 +241,13 @@ class User extends Authenticatable
         });
 
         static::saving(function (User $user) {
-            if (! isset($user->attributes['login']) && ! empty($user->attributes['email'])) {
-                $user->attributes['login'] = strtolower((string) $user->attributes['email']);
+            if (TraccarSchema::hasColumn($user->getTable(), 'login')) {
+                $email = (string) $user->getAttribute('email');
+                $login = $user->getAttribute('login');
+
+                if ($email !== '' && ($login === null || $login === '')) {
+                    $user->setAttribute('login', strtolower($email));
+                }
             }
 
             TraccarUserPermissions::applyToModel($user);
@@ -387,6 +392,96 @@ class User extends Authenticatable
     {
         return $this->belongsToMany(Client::class, 'client_members', 'user_id', 'client_id')
             ->withTimestamps();
+    }
+
+    public function subAccountLink()
+    {
+        return $this->hasOne(SubAccount::class, 'user_id');
+    }
+
+    public function subAccounts()
+    {
+        return $this->hasMany(SubAccount::class, 'parent_user_id');
+    }
+
+    public function subAccountUsers()
+    {
+        return $this->belongsToMany(User::class, 'sub_accounts', 'parent_user_id', 'user_id')
+            ->withTimestamps();
+    }
+
+    public function parentSubAccountLink()
+    {
+        return $this->hasOne(SubAccount::class, 'user_id');
+    }
+
+    public function parentAccount(): ?User
+    {
+        if ($this->relationLoaded('parentSubAccountLink')) {
+            return $this->parentSubAccountLink?->parent;
+        }
+
+        $parentId = $this->parentUserId();
+
+        return $parentId ? static::query()->find($parentId) : null;
+    }
+
+    public function parentUserId(): ?int
+    {
+        $fromLink = $this->relationLoaded('subAccountLink')
+            ? $this->subAccountLink?->parent_user_id
+            : null;
+
+        if ($fromLink) {
+            return (int) $fromLink;
+        }
+
+        $stored = TraccarAppFields::get(
+            $this->getTraccarAttributesJson(),
+            TraccarAppFields::KEY_PARENT_USER_ID
+        );
+
+        return is_numeric($stored) ? (int) $stored : null;
+    }
+
+    public function isSubAccount(): bool
+    {
+        if ($this->relationLoaded('subAccountLink')) {
+            return $this->subAccountLink !== null;
+        }
+
+        $flag = TraccarAppFields::get(
+            $this->getTraccarAttributesJson(),
+            TraccarAppFields::KEY_IS_SUB_ACCOUNT
+        );
+
+        if ($flag === true || $flag === 1 || $flag === '1') {
+            return true;
+        }
+
+        return SubAccount::query()->where('user_id', $this->id)->exists();
+    }
+
+    public function canViewSubAccounts(): bool
+    {
+        $rbac = app(RbacService::class);
+
+        return $rbac->hasPermission($this, 'sub_accounts.view')
+            || $this->canCreateSubAccounts()
+            || $this->canManageSubAccounts();
+    }
+
+    public function canCreateSubAccounts(): bool
+    {
+        $rbac = app(RbacService::class);
+
+        return $rbac->hasPermission($this, 'sub_accounts.create')
+            || $rbac->hasPermission($this, 'sub_accounts.manage');
+    }
+
+    public function canManageSubAccounts(): bool
+    {
+        return app(RbacService::class)->hasPermission($this, 'sub_accounts.manage');
     }
 
     public const NEW_REGISTRATION_HOURS = 24;

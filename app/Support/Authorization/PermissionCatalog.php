@@ -170,6 +170,9 @@ final class PermissionCatalog
         $add('stock.view', 'admin', 'Device Stock', 'View Device Stock', 'View GPS device inventory.', 'web', null, null, 'fa-boxes-stacked', 1);
         $add('stock.manage', 'admin', 'Device Stock', 'Manage Device Stock', 'Add, sell, and repair stock devices.', 'web', null, null, 'fa-warehouse', 2);
         $add('activity.view', 'admin', 'Audit Logs', 'View Audit Logs', 'View system activity and audit trail.', 'web', null, null, 'fa-clipboard-list', 1);
+        $add('sub_accounts.view', 'admin', 'Sub Accounts', 'View Sub Accounts', 'View sub accounts created under your account.', 'web', null, null, 'fa-user-group', 3);
+        $add('sub_accounts.create', 'admin', 'Sub Accounts', 'Create Sub Accounts', 'Create sub accounts under your account with selected vehicles and permissions.', 'web', null, null, 'fa-user-plus', 4);
+        $add('sub_accounts.manage', 'admin', 'Sub Accounts', 'Manage Sub Accounts', 'Edit, deactivate, and delete sub accounts you created.', 'web', null, null, 'fa-users-gear', 5);
 
         // ── User preferences (not RBAC gates — informational grouping) ──
         $add('pref.auto_open_live_map', 'general', 'User Preferences', 'Auto Open Live Map After Login', 'Automatically open the live map after signing in.', 'both', 'preferences', 'User Preferences', 'fa-map', 50);
@@ -192,8 +195,10 @@ final class PermissionCatalog
 
         $adminKeys = array_filter($allKeys, fn ($k) => ! str_starts_with($k, 'permissions.manage'));
 
+        // Clients keep fleet/geofence keys (so they can assign them to users & sub-accounts).
         $clientKeys = array_values(array_filter($adminKeys, fn ($k) => ! in_array($k, [
             'clients.view', 'clients.manage', 'stock.view', 'stock.manage', 'billing.manage', 'permissions.manage',
+            'sub_accounts.view', 'sub_accounts.create', 'sub_accounts.manage',
         ], true)));
 
         $endUserKeys = self::essentialFleetPermissionKeys();
@@ -310,7 +315,14 @@ final class PermissionCatalog
                     $webMap('web.map.'),
                     $webMap('mobile.map.'),
                     $webMap('mobile.nav.'),
-                    ['web.history.view', 'web.events.view', 'general.dashboard.view', 'general.profile.view'],
+                    [
+                        'web.history.view',
+                        'web.events.view',
+                        'web.geofence.view',
+                        'web.geofence.manage',
+                        'general.dashboard.view',
+                        'general.profile.view',
+                    ],
                 ),
                 'sort_order' => 3,
             ],

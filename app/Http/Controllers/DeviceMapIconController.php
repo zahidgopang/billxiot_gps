@@ -32,9 +32,14 @@ class DeviceMapIconController extends Controller
             default => 'image/png',
         };
 
+        $mtime = $disk->lastModified($path) ?: time();
+
         return response($disk->get($path), 200, [
             'Content-Type' => $mime,
-            'Cache-Control' => 'public, max-age=86400',
+            // Versioned via ?v=mtime on the URL; keep cache short so replacements show quickly.
+            'Cache-Control' => 'public, max-age=300, must-revalidate',
+            'ETag' => '"'.md5($path.'|'.$mtime).'"',
+            'Last-Modified' => gmdate('D, d M Y H:i:s', $mtime).' GMT',
         ]);
     }
 }

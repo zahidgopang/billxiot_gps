@@ -129,6 +129,7 @@ class MapController extends Controller
 
         return array_merge(
             \App\Support\Tracking\DeviceLocationPayload::fromDeviceLocation($location, $device),
+            $device->mapAppearancePayload(),
             [
                 'gps_fix' => $location->gps_fix,
                 'time' => AppDateTime::toApi($location->recorded_at),

@@ -1,0 +1,29 @@
+---
+description: Lock /tracking page files — do not edit unless user explicitly asks
+globs: public/js/tracking-traccar.js,public/js/vehicle-map-popup.js,public/css/vehicle-map-popup.css,public/js/vehicle-marker.js,public/js/google-maps-platform.js,public/js/builtin-map-icons.js,resources/views/tracking/traccar.blade.php,resources/views/tracking/**/*.blade.php,routes/tracking-modules.php
+alwaysApply: false
+---
+
+# Locked: /tracking (tracker UI)
+
+These files power `/tracking` and were stabilized (popup GPS anchor, missing-icon arrow fallback, command select/send).
+
+## Do not change unless the user explicitly asks
+
+- Do **not** refactor, “improve”, restyle, or drive-by edit these files.
+- Do **not** regenerate/overwrite `public/assets/protected/js/*` copies of these files unless the user asks to rebuild protection.
+- If a task seems to require edits here, **stop and ask** first, or solve it elsewhere.
+
+## When the user does ask to change /tracking
+
+- Keep popup positioning GPS-anchored on the map container (`fromLatLngToContainerPixel`).
+- Keep command `<select>` state across live updates (patch fields; do not rebuild full HTML every tick).
+- Missing/broken custom icons on `/tracking` use the status arrow pin, not a forced builtin car unless requested.
+- Prefer minimal, targeted diffs.
+
+## Primary locked sources
+
+- `public/js/tracking-traccar.js`
+- `public/js/vehicle-map-popup.js`
+- `public/css/vehicle-map-popup.css`
+- `resources/views/tracking/traccar.blade.php`

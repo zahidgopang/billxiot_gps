@@ -96,14 +96,61 @@
         return `<a class="vmp-pos-link" href="${mapsUrl}" target="_blank" rel="noopener">${escHtml(text)}</a>`;
     }
 
-    function commandOptions(commandTypes) {
+    function commandOptions(commandTypes, selectedValue = '') {
         if (!commandTypes) return '';
         const entries = Array.isArray(commandTypes)
             ? commandTypes.map((t) => [t, t])
             : Object.entries(commandTypes);
-        return entries.map(([value, label]) =>
-            `<option value="${escHtml(value)}">${escHtml(label)}</option>`,
-        ).join('');
+        const selected = String(selectedValue || '');
+        return entries.map(([value, label]) => {
+            const val = String(value);
+            const isSelected = selected !== '' && val === selected ? ' selected' : '';
+            return `<option value="${escHtml(val)}"${isSelected}>${escHtml(label)}</option>`;
+        }).join('');
+    }
+
+    function htmlToText(html) {
+        const tmp = document.createElement('div');
+        tmp.innerHTML = String(html ?? '');
+        return tmp.textContent || tmp.innerText || '';
+    }
+
+    /** Update live fields without rebuilding the popup (keeps select/button state). */
+    function patchLiveFields(root, point, opts = {}) {
+        if (!root || !point) return;
+        const i18n = opts.i18n || {};
+        const color = statusColor(point, opts.stateColors);
+        const statusEl = root.querySelector('.vehicle-map-popup__status');
+        if (statusEl) {
+            statusEl.style.color = color;
+            statusEl.textContent = htmlToText(statusText(point, i18n));
+        }
+        const durEl = root.querySelector('.vehicle-map-popup__dur');
+        if (durEl) {
+            durEl.textContent = htmlToText(durationText(point, i18n));
+        }
+        const titleEl = root.querySelector('.vehicle-map-popup__title');
+        if (titleEl) {
+            titleEl.textContent = point.title || point.name || point.vehicle_name || `Vehicle #${point.id || ''}`;
+        }
+        // Refresh odometer / angle / altitude / engine / position rows by label order is fragile;
+        // patch known data attributes when present.
+        root.querySelectorAll('[data-vmp-field]').forEach((el) => {
+            const field = el.getAttribute('data-vmp-field');
+            if (field === 'odometer') el.innerHTML = odometerText(point, i18n);
+            if (field === 'altitude') {
+                el.textContent = point.altitude != null
+                    ? `${Math.round(parseFloat(point.altitude) || 0)} m`
+                    : (i18n.dash || '—');
+            }
+            if (field === 'angle') {
+                el.textContent = point.heading != null
+                    ? `${Math.round(parseFloat(point.heading) || 0)}°`
+                    : (i18n.dash || '—');
+            }
+            if (field === 'position') el.innerHTML = positionText(point, i18n);
+            if (field === 'engine') el.innerHTML = ignitionText(point, i18n);
+        });
     }
 
     function buildHtml(point, opts = {}) {
@@ -115,10 +162,11 @@
         const alt = point.altitude != null ? `${Math.round(parseFloat(point.altitude) || 0)} m` : d;
         const color = statusColor(point, opts.stateColors);
 
+        const selectedCmd = opts.selectedCommandType || '';
         const cmdSection = opts.commandsSendUrl && opts.commandTypes
             ? `<div class="vehicle-map-popup__commands">
-                <select id="vehicleMapPopupCmdType">${commandOptions(opts.commandTypes)}</select>
-                <button type="button" id="vehicleMapPopupCmdSend">${escHtml(i18n.sendCommand || 'Send')}</button>
+                <select id="vehicleMapPopupCmdType" data-vehicle-map-cmd-type>${commandOptions(opts.commandTypes, selectedCmd)}</select>
+                <button type="button" id="vehicleMapPopupCmdSend" data-vehicle-map-cmd-send>${escHtml(i18n.sendCommand || 'Send')}</button>
                </div>`
             : '';
 
@@ -133,13 +181,13 @@
             </div>
             <div class="vehicle-map-popup__body">
                 ${plate ? row(i18n.plate || 'Plate', escHtml(plate)) : ''}
-                ${row(i18n.odometer || 'Odometer', odometerText(point, i18n))}
+                ${row(i18n.odometer || 'Odometer', `<span data-vmp-field="odometer">${odometerText(point, i18n)}</span>`)}
                 ${row(i18n.status || 'Status', `<span class="vehicle-map-popup__status" style="color:${escHtml(color)}">${statusText(point, i18n)}</span>`)}
                 ${row(i18n.statusDuration || 'Duration', `<span class="vehicle-map-popup__dur">${durationText(point, i18n)}</span>`)}
-                ${row(i18n.altitude || 'Altitude', escHtml(alt))}
-                ${row(i18n.angle || 'Angle', escHtml(angle))}
-                ${row(i18n.position || 'Position', positionText(point, i18n))}
-                ${row(i18n.engine || 'Engine', ignitionText(point, i18n))}
+                ${row(i18n.altitude || 'Altitude', `<span data-vmp-field="altitude">${escHtml(alt)}</span>`)}
+                ${row(i18n.angle || 'Angle', `<span data-vmp-field="angle">${escHtml(angle)}</span>`)}
+                ${row(i18n.position || 'Position', `<span data-vmp-field="position">${positionText(point, i18n)}</span>`)}
+                ${row(i18n.engine || 'Engine', `<span data-vmp-field="engine">${ignitionText(point, i18n)}</span>`)}
                 ${cmdSection}
                 ${detailLink}
             </div>
@@ -154,11 +202,32 @@
     }
 
     function markerLatLng(anchor) {
-        const resolved = resolveAnchor(anchor);
-        if (!resolved || typeof resolved.getPosition !== 'function') {
-            return null;
+        if (!anchor) return null;
+        // Compat wrapper first (has getPosition).
+        if (typeof anchor.getPosition === 'function') {
+            const pos = anchor.getPosition();
+            if (pos) {
+                const lat = typeof pos.lat === 'function' ? pos.lat() : Number(pos.lat);
+                const lng = typeof pos.lng === 'function' ? pos.lng() : Number(pos.lng);
+                if (Number.isFinite(lat) && Number.isFinite(lng)) {
+                    return { lat, lng };
+                }
+            }
         }
-        const pos = resolved.getPosition();
+        const resolved = resolveAnchor(anchor);
+        if (!resolved) return null;
+        if (typeof resolved.getPosition === 'function') {
+            const pos = resolved.getPosition();
+            if (pos) {
+                const lat = typeof pos.lat === 'function' ? pos.lat() : Number(pos.lat);
+                const lng = typeof pos.lng === 'function' ? pos.lng() : Number(pos.lng);
+                if (Number.isFinite(lat) && Number.isFinite(lng)) {
+                    return { lat, lng };
+                }
+            }
+        }
+        // Native AdvancedMarkerElement uses .position
+        const pos = resolved.position;
         if (!pos) return null;
         const lat = typeof pos.lat === 'function' ? pos.lat() : Number(pos.lat);
         const lng = typeof pos.lng === 'function' ? pos.lng() : Number(pos.lng);
@@ -169,24 +238,42 @@
     }
 
     function resolvePopupPosition(point, anchor) {
-        const fromMarker = markerLatLng(anchor);
-        if (fromMarker) {
-            return fromMarker;
-        }
+        // Prefer explicit point coords from the click handler (most accurate).
         const lat = parseFloat(point?.lat);
         const lng = parseFloat(point?.lng);
-        if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-            return null;
+        if (Number.isFinite(lat) && Number.isFinite(lng)) {
+            return { lat, lng };
         }
-        return { lat, lng };
+        return markerLatLng(anchor);
+    }
+
+    function isAdvancedMarkerAnchor(anchor) {
+        if (!anchor) {
+            return false;
+        }
+        if (anchor._advanced || anchor._native) {
+            return true;
+        }
+        const resolved = resolveAnchor(anchor);
+        if (!resolved) {
+            return false;
+        }
+        const Advanced = global.google?.maps?.marker?.AdvancedMarkerElement;
+        if (Advanced && resolved instanceof Advanced) {
+            return true;
+        }
+        // Native AdvancedMarkerElement exposes .content / .position, not classic getIcon().
+        return resolved.content !== undefined
+            && typeof resolved.getIcon !== 'function'
+            && (resolved.position !== undefined || typeof resolved.getPosition === 'function');
     }
 
     function isClassicMarkerAnchor(anchor) {
-        if (!anchor || anchor._advanced) {
+        if (!anchor || isAdvancedMarkerAnchor(anchor)) {
             return false;
         }
         const resolved = resolveAnchor(anchor);
-        return !!(resolved && typeof resolved.getPosition === 'function');
+        return !!(resolved && typeof resolved.getPosition === 'function' && typeof resolved.getIcon === 'function');
     }
 
     function unionClientRect(rects) {
@@ -240,14 +327,23 @@
         return null;
     }
 
-    /** Pixel position of marker visual top-center relative to map overlay pane. */
+    /**
+     * Pixel of the marker click/GPS pivot relative to the overlay pane.
+     * Prefer the icon/img center (AdvancedMarkers are center-anchored on lat/lng).
+     */
     function markerDomPixel(anchor, mapDiv, paneEl) {
         const el = markerVisualElement(anchor);
         if (!el || !mapDiv) return null;
 
         const origin = paneEl?.getBoundingClientRect() || mapDiv.getBoundingClientRect();
-        let rect = el.getBoundingClientRect();
-        if (rect.width < 2 || rect.height < 2) {
+        // Prefer the actual vehicle image — labels above the icon inflate the box and
+        // push the popup far away from the click point.
+        const iconEl = el.querySelector?.('img, svg') || null;
+        let rect = iconEl?.getBoundingClientRect?.() || null;
+        if (!rect || rect.width < 2 || rect.height < 2) {
+            rect = el.getBoundingClientRect();
+        }
+        if (!rect || rect.width < 2 || rect.height < 2) {
             const parts = [...el.querySelectorAll('img, svg, div, span')]
                 .map((node) => node.getBoundingClientRect())
                 .filter((r) => r.width > 0 && r.height > 0);
@@ -257,7 +353,8 @@
 
         return {
             x: rect.left + rect.width / 2 - origin.left,
-            y: rect.top - origin.top,
+            // Center Y matches the GPS/click pivot for body markers.
+            y: rect.top + rect.height / 2 - origin.top,
         };
     }
 
@@ -295,72 +392,91 @@
         return pt;
     }
 
-    function resolvePopupPixel({ anchor, position, projection, map, g, paneEl }) {
+    /**
+     * Pixel relative to the map container (getDiv), not OverlayView floatPane.
+     * floatPane/divPixel drifts vs AdvancedMarkers when zoomed in.
+     */
+    function resolvePopupPixel({ anchor, position, projection, map, g }) {
         const mapDiv = map?.getDiv?.();
-        const domPt = markerDomPixel(anchor, mapDiv, paneEl);
+        if (!mapDiv) return null;
+
+        // 1) Exact GPS/click lat-lng in container pixels (stable at every zoom).
+        if (position && projection) {
+            const gpsPt = latLngToPixel(projection, position.lat, position.lng, g);
+            if (gpsPt && Number.isFinite(gpsPt.x) && Number.isFinite(gpsPt.y)) {
+                return { x: gpsPt.x, y: gpsPt.y };
+            }
+        }
+
+        // 2) Visual marker center vs mapDiv (AdvancedMarker DOM).
+        const domPt = markerDomPixel(anchor, mapDiv, mapDiv);
         if (domPt) {
             return domPt;
         }
 
-        const classicPt = classicMarkerTopPixel(anchor, projection, g);
-        if (classicPt) {
-            return classicPt;
+        // 3) Marker lat/lng if point coords were missing.
+        const fromMarker = markerLatLng(anchor);
+        if (fromMarker && projection) {
+            const gpsPt = latLngToPixel(projection, fromMarker.lat, fromMarker.lng, g);
+            if (gpsPt) {
+                return { x: gpsPt.x, y: gpsPt.y };
+            }
         }
 
-        if (!position || !projection) {
-            return null;
-        }
-
-        const pt = latLngToPixel(projection, position.lat, position.lng, g);
-        if (!pt) return null;
-
-        return pt;
+        return null;
     }
 
     function latLngToPixel(projection, lat, lng, g) {
         const latLng = new g.maps.LatLng(lat, lng);
-        // Overlay panes are aligned to the map div — container pixels drift when the
-        // map sits inside offset shells (sidebar margin, padded nav, flex wrappers).
-        if (typeof projection.fromLatLngToDivPixel === 'function') {
-            return projection.fromLatLngToDivPixel(latLng);
-        }
         if (typeof projection.fromLatLngToContainerPixel === 'function') {
             return projection.fromLatLngToContainerPixel(latLng);
+        }
+        if (typeof projection.fromLatLngToDivPixel === 'function') {
+            return projection.fromLatLngToDivPixel(latLng);
         }
         return null;
     }
 
     function layoutPopupElement(el, pt, mapDiv) {
-        if (!el || !pt) return;
-        const mapW = mapDiv?.offsetWidth || 0;
-        const mapH = mapDiv?.offsetHeight || 0;
+        if (!el || !pt || !mapDiv) return;
+        const mapW = mapDiv.clientWidth || mapDiv.offsetWidth || 0;
+        const mapH = mapDiv.clientHeight || mapDiv.offsetHeight || 0;
         const popupW = el.offsetWidth || Math.min(340, mapW > 0 ? mapW - 24 : 340);
         const popupH = el.offsetHeight || 260;
-        const margin = 12;
-        const markerGap = 18;
+        const margin = 8;
+        const markerGap = 6;
 
         let x = pt.x;
         let y = pt.y;
+        // Bottom-center of the card sits on the GPS/click point.
         let transform = `translate(-50%, calc(-100% - ${markerGap}px))`;
 
-        if (mapH > 0 && pt.y < popupH + margin + markerGap) {
+        if (mapH > 0 && y < popupH + margin + markerGap) {
             transform = `translate(-50%, ${markerGap}px)`;
         }
 
+        // Soft edge clamp — keep tip near the marker; only shift when clipped.
         if (mapW > 0) {
-            const half = popupW / 2 + margin;
-            x = Math.max(half, Math.min(mapW - half, x));
+            const half = popupW / 2;
+            if (x < half + margin) x = half + margin;
+            else if (x > mapW - half - margin) x = mapW - half - margin;
+        }
+
+        if (getComputedStyle(mapDiv).position === 'static') {
+            mapDiv.style.position = 'relative';
         }
 
         el.style.position = 'absolute';
         el.style.display = 'block';
-        el.style.left = `${x}px`;
-        el.style.top = `${y}px`;
+        el.style.left = `${Math.round(x)}px`;
+        el.style.top = `${Math.round(y)}px`;
         el.style.transform = transform;
         el.style.margin = '0';
         el.style.right = 'auto';
         el.style.bottom = 'auto';
-        el.style.zIndex = '999999';
+        el.style.zIndex = '1000000';
+        el.style.pointerEvents = 'auto';
+        el.style.willChange = 'left, top, transform';
     }
 
     function schedulePopupRedraw(redraw) {
@@ -444,17 +560,16 @@
                     global.requestAnimationFrame(() => this.draw());
                     return;
                 }
-                const originEl = el.parentElement || map.getDiv?.();
+                const mapDiv = map.getDiv?.();
                 const pt = resolvePopupPixel({
                     anchor: state.anchor,
                     position: state.position,
                     projection,
                     map,
                     g,
-                    paneEl: originEl,
                 });
-                if (!pt) return;
-                layoutPopupElement(el, pt, map.getDiv?.());
+                if (!pt || !mapDiv) return;
+                layoutPopupElement(el, pt, mapDiv);
                 el.classList.add('is-open');
             }
 
@@ -530,6 +645,11 @@
             return null;
         }
 
+        const mapDiv = map.getDiv?.();
+        if (!mapDiv) {
+            return null;
+        }
+
         const host = {
             map,
             position: null,
@@ -543,17 +663,25 @@
 
         class PopupOverlay extends g.maps.OverlayView {
             onAdd() {
+                // Mount on the map container (not floatPane). AdvancedMarkers + zoom
+                // transform floatPane differently, which misplaces popups when zoomed in.
                 const div = document.createElement('div');
                 div.className = 'vehicle-map-popup-overlay';
                 div.setAttribute('role', 'dialog');
-                div.addEventListener('click', (e) => e.stopPropagation());
+                // Stop map close/drag, but never preventDefault — selects need native UI.
+                ['click', 'mousedown', 'mouseup', 'pointerdown', 'pointerup', 'dblclick', 'contextmenu', 'wheel', 'touchstart', 'touchend'].forEach((ev) => {
+                    div.addEventListener(ev, (e) => {
+                        e.stopPropagation();
+                    }, { passive: true });
+                });
                 host._el = div;
                 if (host._pendingHtml) {
                     host._el.innerHTML = host._pendingHtml;
                 }
-                const panes = this.getPanes();
-                const pane = panes?.floatPane || panes?.overlayMouseTarget || panes?.overlayLayer;
-                pane?.appendChild(div);
+                if (getComputedStyle(mapDiv).position === 'static') {
+                    mapDiv.style.position = 'relative';
+                }
+                mapDiv.appendChild(div);
                 if (host.visible) {
                     this.draw();
                 }
@@ -575,10 +703,9 @@
                     projection,
                     map: host.map,
                     g,
-                    paneEl: host._el?.parentElement,
                 });
                 if (!pt) return;
-                layoutPopupElement(host._el, pt, host.map?.getDiv?.());
+                layoutPopupElement(host._el, pt, mapDiv);
             }
 
             onRemove() {
@@ -599,7 +726,15 @@
         host._attachMapListeners = () => {
             host._detachMapListeners();
             const redraw = () => host._overlay?.draw();
-            ['bounds_changed', 'zoom_changed', 'center_changed', 'idle'].forEach((ev) => {
+            [
+                'bounds_changed',
+                'zoom_changed',
+                'center_changed',
+                'projection_changed',
+                'idle',
+                'drag',
+                'dragend',
+            ].forEach((ev) => {
                 host._listeners.push(g.maps.event.addListener(map, ev, redraw));
             });
         };
@@ -637,7 +772,7 @@
             if (host._el) host._el.style.display = 'none';
         };
 
-        host.isOpen = () => host.visible && !!host._el;
+        host.isOpen = () => host.visible && !!host._el && host._el.style.display !== 'none';
 
         host.destroy = () => {
             host.hide();
@@ -660,6 +795,8 @@
             this.currentPoint = null;
             this._anchor = null;
             this._tickTimer = null;
+            this._selectedCommandType = '';
+            this._lastOpenId = null;
             this._useHost = !!options.hostElement;
             this._useOverlay = !this._useHost
                 && options.mapOverlay !== false
@@ -710,7 +847,15 @@
 
             this.currentPoint = { ...point, lat: position.lat, lng: position.lng };
             this.openId = point.id ?? null;
-            const html = buildHtml(this.currentPoint, this.opts);
+            // New vehicle → clear remembered command; same vehicle keeps last choice.
+            if (this._lastOpenId != null && Number(this._lastOpenId) !== Number(this.openId)) {
+                this._selectedCommandType = '';
+            }
+            this._lastOpenId = this.openId;
+            const html = buildHtml(this.currentPoint, {
+                ...this.opts,
+                selectedCommandType: this._selectedCommandType || '',
+            });
 
             const host = this.ensureHost(map);
             if (host) {
@@ -726,9 +871,23 @@
                 return;
             }
 
-            if (isClassicMarkerAnchor(anchor)) {
+            // Prefer GPS-anchored overlay (exact click point). InfoWindow tip offsets drift
+            // when AdvancedMarkers / multiple vehicles are on the map.
+            const overlay = this.ensureOverlay(map);
+            if (overlay) {
+                this.infoWindow?.close();
+                overlay.setContent(html);
+                overlay.setAnchor(anchor);
+                overlay.setPosition(position);
+                overlay.show();
+                this._wireDom(overlay._el);
+                this.opts.onOpen?.(this.currentPoint);
+                this._startDurationTick();
+                return;
+            }
+
+            if (isClassicMarkerAnchor(anchor) && !isAdvancedMarkerAnchor(anchor)) {
                 const iw = this.ensureWindow();
-                this.overlayHost?.hide();
                 iw.setContent(html);
                 const tryOpen = () => {
                     if (!openInfoWindow(iw, map, this.currentPoint, anchor)) return false;
@@ -740,19 +899,6 @@
                 if (!tryOpen()) {
                     global.requestAnimationFrame(() => tryOpen());
                 }
-                return;
-            }
-
-            const overlay = this.ensureOverlay(map);
-            if (overlay) {
-                this.infoWindow?.close();
-                overlay.setContent(html);
-                overlay.setAnchor(anchor);
-                overlay.setPosition(position);
-                overlay.show();
-                this._wireDom(overlay._el);
-                this.opts.onOpen?.(this.currentPoint);
-                this._startDurationTick();
                 return;
             }
 
@@ -770,6 +916,33 @@
             }
         }
 
+        _popupRoot() {
+            if (this.hostAnchor?.isOpen()) return this.hostAnchor.getElement();
+            if (this.overlayHost?.isOpen()) return this.overlayHost._el;
+            return document.getElementById('vehicleMapPopupClose')?.closest('.vehicle-map-popup')
+                || document.querySelector('.vehicle-map-popup-overlay .vehicle-map-popup')
+                || null;
+        }
+
+        _readSelectedCommand(root = null) {
+            const el = (root || this._popupRoot())?.querySelector?.('[data-vehicle-map-cmd-type], #vehicleMapPopupCmdType');
+            return el?.value || this._selectedCommandType || '';
+        }
+
+        _rememberSelectedCommand(root = null) {
+            const value = this._readSelectedCommand(root);
+            if (value) this._selectedCommandType = value;
+            return value;
+        }
+
+        _refreshLiveContent(point) {
+            const root = this._popupRoot();
+            if (!root) return false;
+            this._rememberSelectedCommand(root);
+            patchLiveFields(root, point, this.opts);
+            return true;
+        }
+
         update(point) {
             if (this.openId != null && point.id != null && Number(this.openId) !== Number(point.id)) {
                 return;
@@ -781,39 +954,45 @@
                 lng: parseFloat(point.lng),
             };
             this.currentPoint = { ...point, lat: position.lat, lng: position.lng };
-            const html = buildHtml(this.currentPoint, this.opts);
 
-            if (this.hostAnchor?.isOpen()) {
-                this.hostAnchor.setContent(html);
-                this.hostAnchor.setAnchor?.(this._anchor);
-                if (Number.isFinite(position.lat) && Number.isFinite(position.lng)) {
-                    this.hostAnchor.setPosition(position);
+            // Patch in place — full HTML rebuild resets the command <select>.
+            if (this._refreshLiveContent(this.currentPoint)) {
+                if (this.hostAnchor?.isOpen()) {
+                    this.hostAnchor.setAnchor?.(this._anchor);
+                    if (Number.isFinite(position.lat) && Number.isFinite(position.lng)) {
+                        this.hostAnchor.setPosition(position);
+                    }
+                } else if (this.overlayHost?.isOpen()) {
+                    this.overlayHost.setAnchor?.(this._anchor);
+                    if (Number.isFinite(position.lat) && Number.isFinite(position.lng)) {
+                        this.overlayHost.setPosition(position);
+                    }
+                } else if (this.infoWindow?.getMap() && Number.isFinite(position.lat) && Number.isFinite(position.lng)) {
+                    this.infoWindow.setPosition(position);
                 }
-                this._wireDom(this.hostAnchor.getElement());
                 return;
             }
 
-            if (this.overlayHost?.isOpen()) {
-                this.overlayHost.setContent(html);
-                this.overlayHost.setAnchor?.(this._anchor);
-                if (Number.isFinite(position.lat) && Number.isFinite(position.lng)) {
-                    this.overlayHost.setPosition(position);
+            // Fallback rebuild (first paint / InfoWindow without root).
+            const html = buildHtml(this.currentPoint, {
+                ...this.opts,
+                selectedCommandType: this._selectedCommandType || '',
+            });
+            if (this.infoWindow?.getMap()) {
+                this.infoWindow.setContent(html);
+                if (isClassicMarkerAnchor(this._anchor) && !isAdvancedMarkerAnchor(this._anchor)) {
+                    const map = typeof this.opts.getMap === 'function' ? this.opts.getMap() : this.opts.map;
+                    openInfoWindow(this.infoWindow, map, this.currentPoint, this._anchor);
+                } else if (Number.isFinite(position.lat) && Number.isFinite(position.lng)) {
+                    this.infoWindow.setPosition(position);
                 }
-                this._wireDom(this.overlayHost._el);
-                return;
+                this._wireDom();
             }
-
-            if (!this.infoWindow?.getMap()) return;
-            this.infoWindow.setContent(html);
-            if (isClassicMarkerAnchor(this._anchor)) {
-                const map = typeof this.opts.getMap === 'function' ? this.opts.getMap() : this.opts.map;
-                openInfoWindow(this.infoWindow, map, this.currentPoint, this._anchor);
-            }
-            this._wireDom();
         }
 
         close() {
             this._stopDurationTick();
+            this._rememberSelectedCommand();
             this.openId = null;
             this.currentPoint = null;
             this._anchor = null;
@@ -838,15 +1017,8 @@
                     this._stopDurationTick();
                     return;
                 }
-                const html = buildHtml(this.currentPoint, this.opts);
-                if (this.hostAnchor?.isOpen()) {
-                    this.hostAnchor.setContent(html);
-                } else if (this.overlayHost?.isOpen()) {
-                    this.overlayHost.setContent(html);
-                } else if (this.infoWindow?.getMap()) {
-                    this.infoWindow.setContent(html);
-                }
-                this._wireDom();
+                // Never rebuild HTML here — that resets the command select to the first option.
+                this._refreshLiveContent(this.currentPoint);
             }, 1000);
         }
 
@@ -867,12 +1039,10 @@
         }
 
         _wireDom(rootEl) {
-            const root = rootEl
-                || (this.hostAnchor?.isOpen() ? this.hostAnchor.getElement() : null)
-                || (this.overlayHost?.isOpen() ? this.overlayHost._el : null);
-            const closeBtn = root
-                ? root.querySelector('#vehicleMapPopupClose')
-                : document.getElementById('vehicleMapPopupClose');
+            const root = rootEl || this._popupRoot();
+            if (!root) return;
+
+            const closeBtn = root.querySelector('#vehicleMapPopupClose');
             if (closeBtn) {
                 closeBtn.onclick = (e) => {
                     e.preventDefault();
@@ -880,14 +1050,30 @@
                     this.close();
                 };
             }
-            const sendBtn = root
-                ? root.querySelector('#vehicleMapPopupCmdSend')
-                : document.getElementById('vehicleMapPopupCmdSend');
+
+            const selectEl = root.querySelector('[data-vehicle-map-cmd-type], #vehicleMapPopupCmdType');
+            if (selectEl) {
+                if (this._selectedCommandType) {
+                    const has = [...selectEl.options].some((o) => o.value === this._selectedCommandType);
+                    if (has) selectEl.value = this._selectedCommandType;
+                }
+                selectEl.onchange = (e) => {
+                    e.stopPropagation();
+                    this._selectedCommandType = selectEl.value || '';
+                };
+                selectEl.onmousedown = (e) => e.stopPropagation();
+                selectEl.onpointerdown = (e) => e.stopPropagation();
+                selectEl.onclick = (e) => e.stopPropagation();
+            }
+
+            const sendBtn = root.querySelector('[data-vehicle-map-cmd-send], #vehicleMapPopupCmdSend');
             if (sendBtn) {
                 sendBtn.onclick = (e) => {
+                    e.preventDefault();
                     e.stopPropagation();
                     this._sendCommand();
                 };
+                sendBtn.onmousedown = (e) => e.stopPropagation();
             }
         }
 
@@ -895,14 +1081,24 @@
             const url = this.opts.commandsSendUrl;
             const point = this.currentPoint;
             const deviceId = point?.id;
-            const root = this.hostAnchor?.isOpen()
-                ? this.hostAnchor.getElement()
-                : (this.overlayHost?.isOpen() ? this.overlayHost._el : document);
-            const type = root.querySelector?.('#vehicleMapPopupCmdType')?.value
-                || document.getElementById('vehicleMapPopupCmdType')?.value;
-            const btn = root.querySelector?.('#vehicleMapPopupCmdSend')
+            const root = this._popupRoot() || document;
+            const selectEl = root.querySelector?.('[data-vehicle-map-cmd-type], #vehicleMapPopupCmdType')
+                || document.getElementById('vehicleMapPopupCmdType');
+            const type = selectEl?.value || this._selectedCommandType || '';
+            const btn = root.querySelector?.('[data-vehicle-map-cmd-send], #vehicleMapPopupCmdSend')
                 || document.getElementById('vehicleMapPopupCmdSend');
-            if (!url || !deviceId || !type) return;
+            if (!url || !deviceId || !type) {
+                if (global.Swal) {
+                    global.Swal.fire({
+                        icon: 'warning',
+                        title: this.opts.i18n?.cmdFailed || 'Select a command first',
+                        timer: 2000,
+                        showConfirmButton: false,
+                    });
+                }
+                return;
+            }
+            this._selectedCommandType = type;
 
             if (typeof this.opts.onSendCommand === 'function') {
                 this.opts.onSendCommand(deviceId, type, '', btn);

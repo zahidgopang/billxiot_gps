@@ -12,6 +12,7 @@ use App\Services\Mobile\MobileMapStatusResolver;
 use App\Services\Mobile\VehicleStatusSpec;
 use App\Services\Tracking\DevicePositionLoader;
 use App\Services\Tracking\GlobalTrackingService;
+use App\Services\Tracking\MaintenanceService;
 use App\Services\Tracking\TrackingMetricsService;
 use App\Services\Traccar\TraccarTrackingGate;
 use App\Services\Traccar\TraccarUserAccessService;
@@ -32,6 +33,7 @@ class UserDashboardService
         private MobileMapStatusResolver $mapStatus,
         private RbacService $rbac,
         private GlobalTrackingService $tracking,
+        private MaintenanceService $maintenance,
     ) {}
 
     public const MOVING_SPEED_KMH = VehicleStatusSpec::MOVING_SPEED_KMH;
@@ -79,6 +81,15 @@ class UserDashboardService
             $activities = collect();
         }
 
+        $maintenanceDue = ['overdue' => 0, 'soon' => 0, 'items' => []];
+        if ($this->rbac->hasPermission($user, 'web.tracking.hub.maintenance')) {
+            try {
+                $maintenanceDue = $this->maintenance->dueSummaryForActor($user);
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        }
+
         return array_merge($pageStats, [
             'devices' => $devices,
             'totalDistanceKm' => 0,
@@ -95,6 +106,7 @@ class UserDashboardService
             'distancePercent' => 0,
             'chartData' => null,
             'mapMarkers' => $this->buildMapMarkers($devices),
+            'maintenanceDue' => $maintenanceDue,
         ]);
     }
 
@@ -565,6 +577,7 @@ class UserDashboardService
                 'weeklyKm' => ['labels' => [], 'values' => []],
             ],
             'mapMarkers' => [],
+            'maintenanceDue' => ['overdue' => 0, 'soon' => 0, 'items' => []],
         ];
     }
 

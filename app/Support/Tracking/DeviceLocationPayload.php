@@ -8,6 +8,7 @@ use App\Services\Mobile\MobileMapStatusResolver;
 use App\Services\Mobile\VehicleStatusSpec;
 use App\Services\Tracking\StatusDurationResolver;
 use App\Support\Tracking\TelemetryFormatter;
+use App\Services\Tracking\DeviceOdometerService;
 
 final class DeviceLocationPayload
 {
@@ -26,7 +27,9 @@ final class DeviceLocationPayload
             'gps_signal' => $location->gps_signal,
             'satellites' => $location->satellites,
             'odometer' => $location->odometer,
-            'odometer_km' => TelemetryFormatter::odometerKm($location->odometer),
+            'odometer_km' => $device
+                ? app(DeviceOdometerService::class)->displayKm($device, $location->odometer)
+                : TelemetryFormatter::odometerKm($location->odometer),
             'altitude' => $location->altitude !== null ? round((float) $location->altitude) : null,
             'power_cut' => (bool) $location->power_cut,
             'panic' => (bool) $location->panic,

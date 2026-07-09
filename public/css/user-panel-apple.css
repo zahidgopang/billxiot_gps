@@ -337,6 +337,52 @@ body.user-panel.apple-hig .sidebar-overlay {
 }
 
 /* Dashboard */
+.ud-fleet-status {
+    margin-bottom: 1.25rem;
+}
+.ud-fleet-status__row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+}
+.ud-fleet-status__label {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--apple-muted, #64748b);
+    margin-inline-end: 0.25rem;
+}
+.ud-fleet-status__chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.35rem 0.75rem;
+    border-radius: 999px;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    border: 1px solid transparent;
+    background: #f8fafc;
+    color: #475569;
+}
+.ud-fleet-status__chip i {
+    font-size: 0.75rem;
+}
+.ud-fleet-status__chip--active {
+    background: rgba(34, 197, 94, 0.12);
+    color: #15803d;
+    border-color: rgba(34, 197, 94, 0.28);
+}
+.ud-fleet-status__chip--online {
+    background: rgba(37, 99, 235, 0.1);
+    color: #1d4ed8;
+    border-color: rgba(37, 99, 235, 0.25);
+}
+.ud-fleet-status__chip--offline {
+    background: #f1f5f9;
+    color: #64748b;
+    border-color: #e2e8f0;
+}
+
 .ud-dashboard {
     max-width: 1440px;
     margin: 0 auto;

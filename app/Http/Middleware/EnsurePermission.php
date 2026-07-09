@@ -22,7 +22,17 @@ class EnsurePermission
             ->contains(fn (string $permission) => $this->rbac->hasPermission($user, $permission));
 
         if (! $allowed) {
-            abort(403, 'You do not have permission to perform this action.');
+            $message = __('app.errors.403_detail');
+
+            if ($request->expectsJson() || $request->ajax() || $request->wantsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $message,
+                    'code' => 'permission_denied',
+                ], 403);
+            }
+
+            abort(403, $message);
         }
 
         return $next($request);

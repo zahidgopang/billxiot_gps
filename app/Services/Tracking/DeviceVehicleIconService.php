@@ -17,7 +17,9 @@ class DeviceVehicleIconService
             return null;
         }
 
-        if (! $device->usesCustomMapIcon()) {
+        // Source flag only — file existence is checked below so callers can
+        // detect orphaned custom icons without recursion.
+        if ($device->map_icon_source !== 'custom') {
             return null;
         }
 
@@ -27,8 +29,12 @@ class DeviceVehicleIconService
         }
 
         $version = Storage::disk($disk)->lastModified($path) ?: time();
+        $fileKey = pathinfo($path, PATHINFO_FILENAME);
 
-        return route('device-map-icons.show', ['device' => $device->id]).'?v='.$version;
+        // Include filename so browsers never reuse a previous upload at the same device URL.
+        return route('device-map-icons.show', ['device' => $device->id])
+            .'?v='.$version
+            .'&f='.rawurlencode((string) $fileKey);
     }
 
     /**
@@ -78,11 +84,30 @@ class DeviceVehicleIconService
             }
         }
 
-        $relativePath = $this->directory().'/'.$device->id.'/icon.'.$extension;
+        // Unique filename so browsers/CDN never keep serving a replaced icon.png.
+        $relativePath = $this->directory().'/'.$device->id.'/icon_'.time().'.'.$extension;
         Storage::disk($this->disk())->put($relativePath, $contents);
+
+        $thumbnailPath = null;
+        $thumbnailUrl = null;
+        if ($mime !== 'image/svg+xml' && extension_loaded('gd')) {
+            $thumb = $this->makeThumbnail($contents, (int) config('vehicle_icons.upload.thumbnail_size', 64));
+            if ($thumb !== null) {
+                $thumbnailPath = $this->directory().'/'.$device->id.'/thumb.png';
+                Storage::disk($this->disk())->put($thumbnailPath, $thumb);
+                $thumbnailUrl = Storage::disk($this->disk())->url($thumbnailPath);
+            }
+        }
+
+        $uploadMeta['anchor_x'] = 0.5;
+        $uploadMeta['anchor_y'] = 0.5;
+        $uploadMeta['rotation_center_x'] = 0.5;
+        $uploadMeta['rotation_center_y'] = 0.5;
 
         return [
             'path' => $relativePath,
+            'thumbnail_path' => $thumbnailPath,
+            'thumbnail_url' => $thumbnailUrl,
             'upload_meta' => $uploadMeta,
         ];
     }
@@ -108,14 +133,14 @@ class DeviceVehicleIconService
                     'required',
                     'file',
                     'max:'.$maxKb,
-                    'mimes:'.implode(',', config('vehicle_icons.upload.allowed_extensions', ['png'])),
+                    'mimes:png,svg',
                 ],
             ]
         )->validate();
 
         $mime = strtolower((string) $file->getMimeType());
-        $allowedMimes = config('vehicle_icons.upload.allowed_mimes', []);
-        if ($allowedMimes !== [] && ! in_array($mime, $allowedMimes, true)) {
+        $allowedMimes = ['image/png', 'image/svg+xml'];
+        if (! in_array($mime, $allowedMimes, true)) {
             throw ValidationException::withMessages([
                 'icon' => [__('app.map.custom_icon_invalid_type')],
             ]);
@@ -148,6 +173,16 @@ class DeviceVehicleIconService
     }
 
     /**
+     * Normalize a raster upload for shared or per-device icons.
+     *
+     * @return array{contents: string, extension: ?string, meta: array<string, mixed>}|null
+     */
+    public function normalizeRasterUpload(string $path, string $mime): ?array
+    {
+        return $this->normalizeRasterContents($path, $mime);
+    }
+
+    /**
      * @return array{contents: string, extension: ?string, meta: array<string, mixed>}|null
      */
     private function normalizeRasterContents(string $path, string $mime): ?array
@@ -174,7 +209,7 @@ class DeviceVehicleIconService
             'height' => $height,
         ];
 
-        if ($width <= $maxW && $height <= $maxH) {
+        if ($width <= $maxW && $height <= $maxH && ! config('vehicle_icons.upload.trim_transparent', true)) {
             return null;
         }
 
@@ -183,7 +218,21 @@ class DeviceVehicleIconService
             return null;
         }
 
-        $ratio = min($maxW / $width, $maxH / $height);
+        $trimEnabled = (bool) config('vehicle_icons.upload.trim_transparent', true);
+        $work = $trimEnabled ? ($this->trimTransparentPadding($src) ?? $src) : $src;
+        if ($work !== $src) {
+            imagedestroy($src);
+            $src = $work;
+            $width = imagesx($src);
+            $height = imagesy($src);
+            $meta['trimmed'] = true;
+            $meta['original_width'] = $dims['width'];
+            $meta['original_height'] = $dims['height'];
+        } else {
+            $meta['trimmed'] = false;
+        }
+
+        $ratio = min($maxW / max(1, $width), $maxH / max(1, $height), 1.0);
         $newW = max(1, (int) round($width * $ratio));
         $newH = max(1, (int) round($height * $ratio));
 
@@ -201,22 +250,118 @@ class DeviceVehicleIconService
         imagecopyresampled($dst, $src, 0, 0, 0, 0, $newW, $newH, $width, $height);
         imagedestroy($src);
 
-        $encoded = $this->encodeGdImage($dst, $mime);
+        $encoded = $this->encodeGdImage($dst, 'image/png');
         imagedestroy($dst);
 
         if ($encoded === null) {
             return null;
         }
 
-        $meta['resized'] = true;
+        $meta['resized'] = ($newW !== $dims['width'] || $newH !== $dims['height'] || ! empty($meta['trimmed']));
         $meta['width'] = $newW;
         $meta['height'] = $newH;
 
         return [
             'contents' => $encoded['contents'],
-            'extension' => $encoded['extension'],
+            'extension' => 'png',
             'meta' => $meta,
         ];
+    }
+
+    /**
+     * @param  \GdImage  $src
+     * @return \GdImage|null
+     */
+    private function trimTransparentPadding($src)
+    {
+        $width = imagesx($src);
+        $height = imagesy($src);
+        $minX = $width;
+        $minY = $height;
+        $maxX = -1;
+        $maxY = -1;
+
+        for ($y = 0; $y < $height; $y++) {
+            for ($x = 0; $x < $width; $x++) {
+                $rgba = imagecolorat($src, $x, $y);
+                $alpha = ($rgba & 0x7F000000) >> 24;
+                if ($alpha < 120) {
+                    if ($x < $minX) {
+                        $minX = $x;
+                    }
+                    if ($y < $minY) {
+                        $minY = $y;
+                    }
+                    if ($x > $maxX) {
+                        $maxX = $x;
+                    }
+                    if ($y > $maxY) {
+                        $maxY = $y;
+                    }
+                }
+            }
+        }
+
+        if ($maxX < $minX || $maxY < $minY) {
+            return null;
+        }
+
+        // Keep a 1px pad so edges aren't clipped.
+        $minX = max(0, $minX - 1);
+        $minY = max(0, $minY - 1);
+        $maxX = min($width - 1, $maxX + 1);
+        $maxY = min($height - 1, $maxY + 1);
+        $cropW = $maxX - $minX + 1;
+        $cropH = $maxY - $minY + 1;
+
+        if ($cropW >= $width && $cropH >= $height) {
+            return null;
+        }
+
+        $dst = imagecreatetruecolor($cropW, $cropH);
+        if ($dst === false) {
+            return null;
+        }
+        imagealphablending($dst, false);
+        imagesavealpha($dst, true);
+        $transparent = imagecolorallocatealpha($dst, 0, 0, 0, 127);
+        imagefill($dst, 0, 0, $transparent);
+        imagecopy($dst, $src, 0, 0, $minX, $minY, $cropW, $cropH);
+
+        return $dst;
+    }
+
+    private function makeThumbnail(string $pngContents, int $size): ?string
+    {
+        $src = @imagecreatefromstring($pngContents);
+        if ($src === false) {
+            return null;
+        }
+        $width = imagesx($src);
+        $height = imagesy($src);
+        $scale = min($size / max(1, $width), $size / max(1, $height), 1.0);
+        $newW = max(1, (int) round($width * $scale));
+        $newH = max(1, (int) round($height * $scale));
+        $dst = imagecreatetruecolor($size, $size);
+        if ($dst === false) {
+            imagedestroy($src);
+
+            return null;
+        }
+        imagealphablending($dst, false);
+        imagesavealpha($dst, true);
+        $transparent = imagecolorallocatealpha($dst, 0, 0, 0, 127);
+        imagefill($dst, 0, 0, $transparent);
+        $offsetX = (int) floor(($size - $newW) / 2);
+        $offsetY = (int) floor(($size - $newH) / 2);
+        imagecopyresampled($dst, $src, $offsetX, $offsetY, 0, 0, $newW, $newH, $width, $height);
+        imagedestroy($src);
+        ob_start();
+        imagepng($dst, null, 6);
+        $out = ob_get_clean();
+        imagedestroy($dst);
+
+        return is_string($out) ? $out : null;
     }
 
     /**

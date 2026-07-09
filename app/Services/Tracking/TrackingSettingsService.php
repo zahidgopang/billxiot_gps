@@ -22,6 +22,8 @@ class TrackingSettingsService
         'gsm_weak_percent',
         'gps_weak_percent',
         'gps_min_satellites',
+        // Account owner: also notify linked sub-accounts for maintenance due (default off).
+        'maintenance_notify_sub_accounts',
     ];
 
     public function __construct(
@@ -70,9 +72,14 @@ class TrackingSettingsService
     {
         $filtered = [];
         foreach (self::KEYS as $key) {
-            if (array_key_exists($key, $settings)) {
-                $filtered[$key] = is_numeric($settings[$key]) ? (float) $settings[$key] : $settings[$key];
+            if (! array_key_exists($key, $settings)) {
+                continue;
             }
+            if ($key === 'maintenance_notify_sub_accounts') {
+                $filtered[$key] = filter_var($settings[$key], FILTER_VALIDATE_BOOLEAN) ? 1 : 0;
+                continue;
+            }
+            $filtered[$key] = is_numeric($settings[$key]) ? (float) $settings[$key] : $settings[$key];
         }
 
         if ($filtered === []) {

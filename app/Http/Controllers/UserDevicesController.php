@@ -228,6 +228,7 @@ class UserDevicesController extends Controller
                 $device,
                 $request->only([
                     'vehicle_type',
+                    'map_builtin_icon_path',
                     'map_marker_style',
                     'map_marker_size',
                     'map_icon_rotation_enabled',
@@ -249,6 +250,89 @@ class UserDevicesController extends Controller
         ]);
     }
 
+    public function updateMapAppearanceBulk(Request $request): JsonResponse
+    {
+        $user = Auth::user();
+        $auth = app(\App\Services\Tracking\DeviceMapIconAuthorization::class);
+
+        if (! $auth->hasAnyAppearancePermission($user)) {
+            return response()->json(['success' => false, 'message' => __('app.map.icon_permission_denied')], 403);
+        }
+
+        $deviceIds = (array) $request->input('device_ids', []);
+        if ($deviceIds === []) {
+            return response()->json([
+                'success' => false,
+                'message' => __('app.user.devices.icon_select_vehicles'),
+            ], 422);
+        }
+
+        $result = app(DeviceMapAppearanceService::class)->updateMany(
+            $user,
+            $deviceIds,
+            $request->only([
+                'vehicle_type',
+                'map_builtin_icon_path',
+                'map_marker_style',
+                'map_marker_size',
+                'map_icon_rotation_enabled',
+                'map_icon_source',
+            ])
+        );
+
+        if ($result['updated'] === 0) {
+            return response()->json([
+                'success' => false,
+                'message' => $result['failed'][0]['message'] ?? __('app.map.marker_appearance_save_failed'),
+                'failed' => $result['failed'],
+            ], 422);
+        }
+
+        return response()->json([
+            'success' => true,
+            'updated' => $result['updated'],
+            'failed' => $result['failed'],
+            'message' => __('app.user.devices.icon_bulk_saved', ['count' => $result['updated']]),
+        ]);
+    }
+
+    public function uploadMapCustomIconBulk(Request $request): JsonResponse
+    {
+        $user = Auth::user();
+        $auth = app(\App\Services\Tracking\DeviceMapIconAuthorization::class);
+
+        if (! $auth->hasUploadCustomIconPermission($user)) {
+            return response()->json(['success' => false, 'message' => __('app.map.icon_upload_permission_denied')], 403);
+        }
+
+        $deviceIds = (array) $request->input('device_ids', []);
+        $file = $request->file('icon');
+
+        if ($deviceIds === [] || ! $file) {
+            return response()->json([
+                'success' => false,
+                'message' => __('app.user.devices.icon_select_vehicles'),
+            ], 422);
+        }
+
+        $result = app(DeviceMapAppearanceService::class)->uploadCustomIconMany($user, $deviceIds, $file);
+
+        if ($result['updated'] === 0) {
+            return response()->json([
+                'success' => false,
+                'message' => $result['failed'][0]['message'] ?? __('app.map.icon_upload_permission_denied'),
+                'failed' => $result['failed'],
+            ], 422);
+        }
+
+        return response()->json([
+            'success' => true,
+            'updated' => $result['updated'],
+            'failed' => $result['failed'],
+            'message' => __('app.user.devices.icon_bulk_uploaded', ['count' => $result['updated']]),
+        ]);
+    }
+
     public function uploadMapCustomIcon(Request $request, Device $device): JsonResponse
     {
         $user = Auth::user();
@@ -257,7 +341,8 @@ class UserDevicesController extends Controller
             $appearance = app(DeviceMapAppearanceService::class)->uploadCustomIcon(
                 $user,
                 $device,
-                $request->file('icon')
+                $request->file('icon'),
+                $request->input('rotation_offset', $request->input('map_icon_rotation_offset', 0))
             );
         } catch (\Illuminate\Validation\ValidationException $e) {
             return response()->json([

@@ -327,12 +327,15 @@
                 getColor: (state) => this.stateColors[state] || this.stateColors.offline || '#94a3b8',
                 getVehicleType: (p) => p.vehicle_type || 'car',
                 getMarkerStyle: (p) => {
-                    if (VM.resolveCustomIconUrl(p)) return 'body';
+                    if (VM.resolveMapIconUrl(p) || VM.resolveFallbackIconUrl(p)) return 'body';
                     return VM.resolveMarkerStyle(p);
                 },
                 getMarkerSizeScale: (p) => VM.resolveMarkerSizeScale(p),
+                getMapIconUrl: (p) => VM.resolveMapIconUrl(p) || VM.resolveFallbackIconUrl(p),
+                getFallbackIconUrl: (p) => VM.resolveFallbackIconUrl(p),
                 getCustomIconUrl: (p) => VM.resolveCustomIconUrl(p),
                 getRotationEnabled: (p) => VM.resolveRotationEnabled(p),
+                getRotationOffset: (p) => VM.resolveIconRotationOffset(p),
                 shouldShowDirection: (_, state) => MOVING_KEYS.has(state),
             });
 

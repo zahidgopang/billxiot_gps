@@ -1,4 +1,4 @@
-ï»¿<!-- Premium Map Sidebar -->
+<!-- Premium Map Sidebar -->
 <div class="filter-panel" id="filterPanel">
     <div class="sidebar-header">
         <a href="{{ ($isAdminMap ?? false) ? route(request()->routeIs('client.*') ? 'client.locations.index' : 'admin.locations.index') : route('user.devices.index') }}" class="sidebar-back-link" data-map-tour="sidebar-back">
@@ -347,7 +347,7 @@
         display: none;
     }
 
-    /* Flatpickr calendar â€” dark sidebar theme */
+    /* Flatpickr calendar — dark sidebar theme */
     #filterPanel .flatpickr-calendar {
         background: #1e293b;
         border: 1px solid rgba(255, 255, 255, 0.12);
@@ -699,7 +699,7 @@
         color: rgba(255, 255, 255, 0.45);
     }
 
-    /* Status chips â€” sidebar device hero */
+    /* Status chips — sidebar device hero */
     #filterPanel .map-status-chip {
         flex-shrink: 0;
         display: inline-flex;

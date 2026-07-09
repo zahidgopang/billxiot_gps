@@ -4,16 +4,20 @@ namespace App\Services\Tracking;
 
 use App\Models\Device;
 use App\Models\User;
+use App\Services\Tracking\DeviceOdometerService;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
 
 class UserDeviceLabelService
 {
-    public function __construct(private DeviceMapIconAuthorization $auth) {}
+    public function __construct(
+        private DeviceMapIconAuthorization $auth,
+        private DeviceOdometerService $odometer,
+    ) {}
 
     /**
      * @param  array<string, mixed>  $input
-     * @return array{vehicle_name: ?string, vehicle_number: ?string, primary_label: string, secondary_label: ?string}
+     * @return array{vehicle_name: ?string, vehicle_number: ?string, odometer_base_km: ?float, odometer_display_km: ?float, primary_label: string, secondary_label: ?string}
      */
     public function update(User $user, Device $device, array $input): array
     {
@@ -36,9 +40,19 @@ class UserDeviceLabelService
         $device->vehicle_number = Device::normalizeVehicleNumber($data['vehicle_number'] ?? null);
         $device->save();
 
+        if (array_key_exists('odometer_base_km', $data) && $data['odometer_base_km'] !== null && $data['odometer_base_km'] !== '') {
+            $km = round((float) $data['odometer_base_km'], 1);
+            $previous = $this->odometer->baselineKm($device);
+            if ($previous === null || abs($previous - $km) > 0.05) {
+                $this->odometer->setBaseline($device, $km);
+            }
+        }
+
         return [
             'vehicle_name' => $device->vehicle_name,
             'vehicle_number' => $device->vehicle_number,
+            'odometer_base_km' => $this->odometer->baselineKm($device),
+            'odometer_display_km' => $device->odometerDisplayKm(),
             'primary_label' => $device->listPrimaryLabel(),
             'secondary_label' => $device->listSecondaryLabel(),
         ];
@@ -65,6 +79,7 @@ class UserDeviceLabelService
                     }
                 },
             ],
+            'odometer_base_km' => 'nullable|numeric|min:0|max:9999999',
         ];
     }
 }

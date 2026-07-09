@@ -1,0 +1,128 @@
+billingyou.com //civil log private log use krte hen.
+
+test.billingyou.com //government
+zatka connected hey test billing you ke sath.
+
+ik user dono use krta hy.
+
+ffadmin
+12345678
+
+
+admin/users/9/fleet-map
+admin/device/ZXlKcGRpSTZJ...
+
+/tracking
+user/device/ZXlKcGRpSTZJbVJa...
+
+Quick checklist
+ Super Admin granted Hub: Maintenance to owner
+ Owner sees Maintenance in hub
+ Service created; list shows current / left / Expired
+ Dashboard widget appears when due
+ maintenance:check notifies owner
+ Optional: settings + sub-account also notified
+ Optional: sub-account has permission + vehicle and can open Maintenance
+ Green check completes and starts next cycle
+If you want, I can next walk through exact numbers for one of your real vehicles (current odometer → last/interval to force Expired in one save).
+
+
+------------
+
+SERVICE
+Field	Purpose
+Name
+Label for the service (e.g. Oil Change, Tires, Battery). Shown in the list, dashboard, and alerts.
+Objects
+Which vehicle(s) this service applies to. Pick at least one.
+Data list
+Reserved for showing the service in vehicle data lists (Phase 2 map/list badges). Safe to leave on.
+Popup
+Reserved for a due badge/popup on the live map later. Safe to leave on for now.
+Odometer interval (km)
+How many km between services. Enable the checkbox, then enter e.g. 5000.
+Last service (km)
+Odometer reading when this was last done. Next due = last + interval.
+Engine hours interval (h)
+Same idea for engine hours. UI only in v1 — no auto alerts from hours yet.
+Last service (h)
+Last engine-hours reading (manual for now).
+Days interval
+How many days between services (e.g. 180).
+Last service (date)
+Date of last service. Next due = that date + interval days.
+You can enable odometer, days, and/or hours together. For real alerts today, use odometer and/or days.
+
+TRIGGER EVENT
+Field	Purpose
+Odometer left / Engine hours left / Days left
+Extra “watch remaining” flags (GPS-Server style). Remaining/Expired still calculate from the intervals above.
+On complete, set last service from current counters
+When you click the green Complete check later, last service is filled from the vehicle’s current odometer/date (and hours advanced by one interval). Keep this on for normal use.
+Buttons
+Save — create/update the service
+Cancel — close without saving
+How the math works (odometer example)
+Current km = client baseline + distance traveled
+Next due = Last service (km) + Interval
+Left = Next due − Current
+If left ≤ 0 → list shows Expired (X km) and reminders keep firing until you mark Complete
+Quick create tip: Name → select vehicle → enable Odometer → set interval + last km near current reading → leave “On complete…” checked → Save.
+
+-------------------------
+
+1. You create a service
+Example: Oil Change on Vehicle A
+
+Interval: 5000 km
+Last service: 10000 km
+→ Next due at 15000 km
+2. System watches the vehicle
+Every GPS update updates the current odometer (what the client entered as baseline + distance traveled).
+
+On the Maintenance list you see:
+
+Current odometer — live reading
+Odometer left — km until due
+When overdue → Expired (X km) in red
+Same idea for days if you enabled that.
+
+3. When it becomes due
+Status → Due soon / Overdue
+Dashboard shows Maintenance due
+Hourly job (maintenance:check) creates an event + push:
+Owner always
+Sub-accounts only if the owner turned on that setting in Tracking → Settings
+It keeps reminding (about once per day) until someone marks it completed. It does not auto-reset.
+
+4. You mark it completed
+Click the green check on the list.
+
+If “On complete, set last service from current counters” is on:
+
+Last service km → current odometer
+Last service date → today (if days enabled)
+New next due = new last + interval
+Expired clears; reminders stop until the next cycle approaches.
+
+Simple timeline
+Create service
+    ↓
+Vehicle drives / days pass
+    ↓
+List: remaining → then Expired
+    ↓
+Notify owner (+ optional sub-accounts)
+    ↓
+Green check = Complete
+    ↓
+New cycle starts
+What each person does
+Who	Role
+Super Admin / Admin
+Can open Maintenance and create services for any vehicle they can see
+Vehicle owner
+Creates/manages services for their vehicles; always gets alerts
+Sub-account
+Only if given Maintenance permission + vehicle access; alerts only if owner enabled sub-account notify
+Tasks stay separate — this module only reminds; it does not create a job/task automatically.

@@ -53,6 +53,12 @@
         return `<span class="badge bg-${cls} gt-maint-status">${escHtml(label)}</span>`;
     }
 
+    function leftCell(label, exceeded) {
+        if (!label) return `<span class="text-muted">${escHtml(i18n.na || '—')}</span>`;
+        const cls = exceeded ? 'gt-maint-expired' : 'gt-maint-left';
+        return `<span class="${cls}">${escHtml(label)}</span>`;
+    }
+
     function setField(name, value) {
         const el = form.elements[name];
         if (!el) return;
@@ -104,7 +110,7 @@
         setField('trigger_odometer', trg.odometer_left);
         setField('trigger_hours', trg.hours_left);
         setField('trigger_days', trg.days_left);
-        setField('update_last_service', c.update_last_service);
+        setField('update_last_service', c.update_last_service !== false);
 
         setSelectedObjects(item.object_ids || []);
         syncToggles();
@@ -119,18 +125,24 @@
         } catch (e) { items = []; }
 
         if (!items.length) {
-            body.innerHTML = `<tr><td colspan="5" class="text-center text-muted py-3">${escHtml(i18n.noRecords || 'No records')}</td></tr>`;
+            body.innerHTML = `<tr><td colspan="8" class="text-center text-muted py-3">${escHtml(i18n.noRecords || 'No records')}</td></tr>`;
             return;
         }
 
         body.innerHTML = items.map((m) => {
             const objs = (m.objects || []).map((o) => escHtml(o.name)).join(', ');
+            const odoExceeded = m.odometer_exceeded_km != null && Number(m.odometer_exceeded_km) > 0;
+            const daysExceeded = m.days_left != null && Number(m.days_left) < 0;
             return `<tr data-id="${m.id}">
                 <td>${objs}</td>
                 <td>${escHtml(m.name)}</td>
-                <td class="text-muted small">${escHtml(m.summary || '')}</td>
+                <td class="text-nowrap">${escHtml(m.current_odometer_label || i18n.na || '—')}</td>
+                <td class="text-nowrap">${leftCell(m.odometer_left_label, odoExceeded)}</td>
+                <td class="text-nowrap text-muted">${escHtml(i18n.na || '—')}</td>
+                <td class="text-nowrap">${leftCell(m.days_left_label, daysExceeded)}</td>
                 <td>${statusBadge(m.status)}</td>
                 <td class="text-end text-nowrap">
+                    <button type="button" class="btn btn-sm btn-success" title="${escHtml(i18n.completeTitle || 'Complete')}" data-complete="${m.id}" data-device="${(m.object_ids && m.object_ids[0]) || ''}"><i class="fas fa-check"></i></button>
                     <button type="button" class="btn btn-sm btn-outline-secondary" data-edit='${encodeURIComponent(JSON.stringify(m))}'><i class="fas fa-pen"></i></button>
                     <button type="button" class="btn btn-sm btn-outline-danger" data-del="${m.id}">&times;</button>
                 </td>
@@ -149,6 +161,43 @@
     });
 
     body?.addEventListener('click', async (e) => {
+        const completeBtn = e.target.closest('[data-complete]');
+        if (completeBtn) {
+            const id = completeBtn.dataset.complete;
+            const deviceId = completeBtn.dataset.device;
+            if (global.Swal) {
+                const r = await global.Swal.fire({
+                    icon: 'question',
+                    title: i18n.confirmComplete || 'Mark service completed?',
+                    showCancelButton: true,
+                });
+                if (!r.isConfirmed) return;
+            } else if (!global.confirm(i18n.confirmComplete || 'Mark service completed?')) {
+                return;
+            }
+            completeBtn.setAttribute('disabled', 'disabled');
+            try {
+                const fd = new FormData();
+                if (deviceId) fd.set('device_id', deviceId);
+                const res = await fetch(`${cfg.baseUrl}/${id}/complete`, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { 'X-CSRF-TOKEN': csrf(), Accept: 'application/json' },
+                    body: fd,
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok || !data.success) throw new Error('failed');
+                if (global.Swal) {
+                    global.Swal.fire({ icon: 'success', title: data.message || i18n.completed || 'Completed', timer: 1600, showConfirmButton: false });
+                }
+                await load();
+            } catch (err) {
+                completeBtn.removeAttribute('disabled');
+                if (global.Swal) global.Swal.fire({ icon: 'error', title: i18n.failed || 'Failed' });
+            }
+            return;
+        }
+
         const editBtn = e.target.closest('[data-edit]');
         if (editBtn) {
             try { fillForm(JSON.parse(decodeURIComponent(editBtn.dataset.edit))); openModal(); } catch (err) {}

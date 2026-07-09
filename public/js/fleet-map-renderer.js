@@ -81,7 +81,18 @@
                     getMarkerStyle: (p) => this.opts.getMarkerStyle?.(p) || 'labeled',
                     getMarkerSizeScale: (p) => this.opts.getMarkerSizeScale?.(p) ?? 1,
                     getCustomIconUrl: (p) => this.opts.getCustomIconUrl?.(p) ?? null,
+                    getMapIconUrl: (p) => this.opts.getMapIconUrl?.(p)
+                        ?? global.VehicleMarker?.resolveMapIconUrl?.(p)
+                        ?? global.VehicleMarker?.resolveFallbackIconUrl?.(p)
+                        ?? null,
+                    getFallbackIconUrl: (p) => this.opts.getFallbackIconUrl?.(p)
+                        ?? global.VehicleMarker?.resolveFallbackIconUrl?.(p)
+                        ?? global.BuiltinMapIcons?.fallbackUrl?.()
+                        ?? '/icons/builtin/Vehicles/car.svg',
                     getRotationEnabled: (p) => this.opts.getRotationEnabled?.(p) !== false,
+                    getRotationOffset: (p) => this.opts.getRotationOffset?.(p)
+                        ?? global.VehicleMarker?.resolveIconRotationOffset?.(p)
+                        ?? 0,
                     shouldShowDirection: (p, s) => this.opts.shouldShowDirection(p, s),
                     getShowLiveBadge: () => this.showLiveBadge && !this.playbackActive,
                     vehicleBodyPx: this.opts.mapRendering?.vehicle_body_px,
@@ -255,7 +266,7 @@
 
             if (!startPos) {
                 this.vehicleMarker.setPosition(target);
-                this.vehicleMarker.setIcon(this._iconFor(point));
+                this._applyIconRotation(this._iconFor(point));
                 this._updatePulse(point);
                 options.onComplete?.();
                 return;
@@ -282,7 +293,7 @@
                 const framePoint = { ...point, lat, lng, heading };
 
                 this.vehicleMarker.setPosition({ lat, lng });
-                this.vehicleMarker.setIcon(this._iconFor(framePoint));
+                this._applyIconRotation(this._iconFor(framePoint));
                 this._updatePulse(framePoint);
 
                 if (this.followVehicle && t > 0.4) {
@@ -294,7 +305,7 @@
                 } else {
                     this._animFrame = null;
                     this.vehicleMarker.setPosition(target);
-                    this.vehicleMarker.setIcon(this._iconFor(point));
+                    this._applyIconRotation(this._iconFor(point));
                     this._updatePulse(point);
                     options.onComplete?.();
                 }
@@ -305,7 +316,12 @@
 
         updateVehicleIcon(point) {
             if (!this.vehicleMarker || !point) return;
-            this.vehicleMarker.setIcon(this._iconFor(point));
+            const icon = this._iconFor(point);
+            if (global.VehicleMarker?.applyMarkerIcon) {
+                global.VehicleMarker.applyMarkerIcon(this.vehicleMarker, icon);
+            } else {
+                this.vehicleMarker.setIcon(icon);
+            }
             this._updatePulse(point);
         }
 

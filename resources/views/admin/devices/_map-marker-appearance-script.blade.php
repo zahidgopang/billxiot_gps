@@ -5,6 +5,7 @@
     $appearance = $device->mapAppearancePayload();
     $sizeScales = VehicleIconLibrary::sizeScales();
 @endphp
+<script src="{{ protected_js('builtin-map-icons.js') }}"></script>
 <script src="{{ protected_js('vehicle-marker.js') }}"></script>
 <script src="{{ protected_js('map-marker-appearance.js') }}"></script>
 <script>
@@ -36,6 +37,7 @@ document.addEventListener('DOMContentLoaded', function () {
             uploaded: @json(__('app.map.custom_icon_uploaded')),
             resized: @json(__('app.map.custom_icon_resized_notice')),
             liveScale: @json(__('app.map.map_live_scale')),
+            noIcons: @json(__('app.map.no_icon_found')),
             sizes: i18nSizes,
         },
         onSaved(appearance) {

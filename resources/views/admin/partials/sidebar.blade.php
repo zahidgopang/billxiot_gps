@@ -7,7 +7,7 @@
     <!-- Sidebar Header -->
     <div class="sidebar-header">
         <a href="{{ route($navPanel . '.dashboard') }}" class="sidebar-brand" aria-label="{{ __('app.common.dashboard') }}">
-            @include('partials.brand-logo', ['onDark' => true])
+            @include('partials.brand-logo', ['onDark' => false])
         </a>
     </div>
 
@@ -52,6 +52,18 @@
                         <span>{{ __('app.common.users') }}</span>
                     </span>
                 </a>
+
+                @if(auth()->user()?->canViewSubAccounts() && Route::has($navPanel . '.sub-accounts.index'))
+                    <a href="{{ route($navPanel . '.sub-accounts.index') }}"
+                       role="listitem"
+                       class="nav-link-premium nav-flow-step {{ request()->routeIs($navPanel . '.sub-accounts.*') ? 'active' : '' }}">
+                        <span class="nav-flow-marker" aria-hidden="true"><span class="nav-flow-dot"></span></span>
+                        <span class="nav-flow-body">
+                            <i class="fas fa-user-group"></i>
+                            <span>{{ __('app.sub_accounts.nav') }}</span>
+                        </span>
+                    </a>
+                @endif
 
                 <a href="{{ route($navPanel . '.devices.index') }}"
                    role="listitem"
@@ -201,6 +213,13 @@
                         <span>{{ __('app.admin.nav.company_map') }}</span>
                     </a>
                 @endif
+                @if($navPanel === 'admin' && Route::has('admin.shared-map-icons.index'))
+                    <a href="{{ route('admin.shared-map-icons.index') }}"
+                       class="nav-link-premium {{ request()->routeIs('admin.shared-map-icons.*') ? 'active' : '' }}">
+                        <i class="fas fa-icons"></i>
+                        <span>{{ __('app.admin.nav.shared_map_icons') }}</span>
+                    </a>
+                @endif
                 @if($navPanel === 'admin' && Route::has('admin.permissions.index'))
                     <a href="{{ route('admin.permissions.index') }}"
                        class="nav-link-premium {{ request()->routeIs('admin.permissions.*') ? 'active' : '' }}">
@@ -232,12 +251,14 @@
 
     <!-- Sidebar Footer -->
     <div class="sidebar-footer p-3">
-        <div class="text-center text-muted small">
-            <div class="mb-1">{{ __('app.admin.nav.logged_in_as') }}</div>
-            <div class="fw-semibold">{{ auth()->user()->name }}</div>
-            <div class="mt-2">
-                <i class="fas fa-circle text-success me-1" style="font-size: 0.5rem;"></i>
-                <span>{{ __('app.admin.nav.system_online') }}</span>
+        <div class="d-flex align-items-center gap-2">
+            @include('partials.user-avatar', ['user' => auth()->user(), 'size' => 34, 'class' => 'user-avatar'])
+            <div class="text-truncate">
+                <div class="fw-semibold small text-truncate">{{ auth()->user()->name }}</div>
+                <div class="text-muted" style="font-size: 0.7rem;">
+                    <i class="fas fa-circle text-success me-1" style="font-size: 0.45rem;"></i>
+                    {{ __('app.admin.nav.system_online') }}
+                </div>
             </div>
         </div>
     </div>

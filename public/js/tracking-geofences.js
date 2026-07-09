@@ -43,6 +43,40 @@
         }
     }
 
+    function geofencePermissionMessage(payload, status) {
+        const bodyMessage = String(payload?.message || '').trim();
+        if (status === 403 || status === 401) {
+            return bodyMessage
+                || i18n.geofencePermissionDenied
+                || 'Access Denied. You do not have permission to view geofences.';
+        }
+        return bodyMessage || `Request failed (${status})`;
+    }
+
+    function popupPermissionDenied(message) {
+        const text = String(
+            message
+            || i18n.geofencePermissionDenied
+            || 'Access Denied. You do not have permission to view geofences.',
+        ).trim();
+
+        if (global.Swal) {
+            global.Swal.fire({
+                icon: 'error',
+                title: i18n.accessDeniedTitle || 'Access Denied',
+                text,
+                confirmButtonText: i18n.ok || 'OK',
+            });
+            return;
+        }
+
+        global.alert(text);
+    }
+
+    function isPermissionStatus(status) {
+        return status === 401 || status === 403;
+    }
+
     function colorForVehicle(v) {
         const key = v?.status_key || 'offline';
         return v?.color || (cfg.stateColors && cfg.stateColors[key]) || '#2563eb';
@@ -418,7 +452,14 @@
                 body: JSON.stringify(payload),
             });
             const json = await res.json().catch(() => ({}));
-            if (!res.ok || json.success === false) throw new Error(json.message || 'save failed');
+            if (!res.ok || json.success === false) {
+                if (btn) btn.disabled = false;
+                if (isPermissionStatus(res.status)) {
+                    popupPermissionDenied(geofencePermissionMessage(json, res.status));
+                    return;
+                }
+                throw new Error(json.message || 'save failed');
+            }
 
             currentDrawing?.setMap(null);
             currentDrawing = null;
@@ -442,10 +483,23 @@
         const listEl = $('gtGeofenceList');
         let data;
         try {
-            const res = await fetch(`${cfg.jsonUrl}?_=${Date.now()}`, { credentials: 'same-origin', cache: 'no-store' });
-            data = await res.json();
+            const res = await fetch(`${cfg.jsonUrl}?_=${Date.now()}`, {
+                credentials: 'same-origin',
+                cache: 'no-store',
+                headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            });
+            data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                if (isPermissionStatus(res.status)) {
+                    if (listEl) listEl.textContent = i18n.accessDeniedTitle || 'Access Denied';
+                    popupPermissionDenied(geofencePermissionMessage(data, res.status));
+                    return;
+                }
+                throw new Error(data.message || `Request failed (${res.status})`);
+            }
         } catch (err) {
-            if (listEl) listEl.textContent = i18n.saveFailed || 'Failed to load';
+            if (listEl) listEl.textContent = i18n.loadFailed || i18n.saveFailed || 'Failed to load';
+            notify(err.message || i18n.loadFailed || 'Failed to load geofences', 'error');
             return;
         }
 
@@ -526,7 +580,15 @@
                         credentials: 'same-origin',
                         headers: { 'X-CSRF-TOKEN': csrf(), Accept: 'application/json' },
                     });
-                    if (!res.ok) throw new Error('delete failed');
+                    const json = await res.json().catch(() => ({}));
+                    if (!res.ok) {
+                        btn.disabled = false;
+                        if (isPermissionStatus(res.status)) {
+                            popupPermissionDenied(geofencePermissionMessage(json, res.status));
+                            return;
+                        }
+                        throw new Error(json.message || 'delete failed');
+                    }
                     await loadList();
                 } catch (err) {
                     btn.disabled = false;

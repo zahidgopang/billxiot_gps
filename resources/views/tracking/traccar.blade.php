@@ -2472,6 +2472,11 @@
                 noVehicles: @json(__('app.tracking.no_vehicles')),
                 selectVehicle: @json(__('app.tracking.select_vehicle')),
                 loadFailed: @json(__('app.tracking.load_failed')),
+                historyPermissionDenied: @json(__('app.tracking.history_permission_denied')),
+                eventsPermissionDenied: @json(__('app.tracking.events_permission_denied')),
+                geofencePermissionDenied: @json(__('app.tracking.geofence_permission_denied')),
+                accessDeniedTitle: @json(__('app.errors.403_title')),
+                ok: @json(__('app.common.ok')),
                 panelLoadFailed: @json(__('app.tracking.panel_load_failed')),
                 loadingMapFailed: @json(__('app.map.loading_map_failed')),
                 mapApiKeyMissing: @json(__('app.map.map_api_key_missing')),
@@ -2646,6 +2651,7 @@
     </script>
     <script src="{{ protected_js('app-datetime.js') }}"></script>
     @include('partials.google-maps-platform')
+    <script src="{{ protected_js('builtin-map-icons.js') }}"></script>
     <script src="{{ protected_js('vehicle-marker.js') }}"></script>
     <script src="{{ protected_js('fleet-map-cluster.js') }}"></script>
     <script src="{{ protected_js('polyline-simplify.js') }}"></script>

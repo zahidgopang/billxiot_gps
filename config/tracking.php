@@ -43,6 +43,9 @@ return [
     /** Satellite count below this triggers a GPS weak warning. */
     'gps_min_satellites' => (int) env('TRACKING_GPS_MIN_SATELLITES', 4),
 
+    /** Account owner: also notify linked sub-accounts when maintenance is due (default off). */
+    'maintenance_notify_sub_accounts' => filter_var(env('TRACKING_MAINT_NOTIFY_SUBS', false), FILTER_VALIDATE_BOOL),
+
     /** Only push running / idle / parked / stopped — blocks GSM weak, online, delayed, etc. */
     'push_major_status_only' => filter_var(env('TRACKING_PUSH_MAJOR_STATUS_ONLY', true), FILTER_VALIDATE_BOOL),
 

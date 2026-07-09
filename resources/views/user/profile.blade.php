@@ -193,55 +193,6 @@
             font-size: 1.25rem;
         }
 
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-            gap: 1rem;
-            margin-bottom: 2rem;
-        }
-
-        .stat-card small {
-            font-size: 0.72rem;
-            line-height: 1.3;
-        }
-
-        .stat-card {
-            background: #fff;
-            border-radius: 16px;
-            padding: 1.5rem;
-            text-align: center;
-            border: 1px solid rgba(0, 0, 0, 0.05);
-            transition: all 0.3s ease;
-        }
-
-        .stat-card:hover {
-            border-color: rgba(25, 118, 210, 0.2);
-            transform: translateY(-2px);
-        }
-
-        .stat-icon {
-            width: 56px;
-            height: 56px;
-            border-radius: 14px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin: 0 auto 1rem;
-            font-size: 1.5rem;
-        }
-
-        .stat-value {
-            font-size: 2rem;
-            font-weight: 700;
-            color: var(--text-primary);
-            margin-bottom: 0.25rem;
-        }
-
-        .stat-label {
-            color: var(--text-secondary);
-            font-size: 0.875rem;
-        }
-
         /* Responsive */
         @media (max-width: 768px) {
             .profile-header {
@@ -254,30 +205,12 @@
                 margin-bottom: 1rem;
             }
 
-            .info-row {
-                flex-direction: column;
-                align-items: flex-start;
-            }
-
-            .info-label {
-                width: 100%;
-                margin-bottom: 0.25rem;
-            }
-
-            .stats-grid {
-                grid-template-columns: repeat(2, 1fr);
-            }
-
             .profile-card {
                 padding: 1.5rem;
             }
         }
 
         @media (max-width: 576px) {
-            .stats-grid {
-                grid-template-columns: 1fr;
-            }
-
             .profile-card {
                 padding: 1.25rem;
             }
@@ -320,9 +253,6 @@
                 @endif
             </div>
         </div>
-
-        @include('user.partials.profile-stats')
-        @include('user.partials.profile-fleet-status')
 
         <!-- Profile Update Form -->
         <div class="profile-card mb-4">
@@ -431,157 +361,6 @@
             </div>
         </div>
 
-        <!-- Account Information & Recent Activity -->
-        <div class="row">
-            <!-- Account Information -->
-            <div class="col-lg-6 mb-4">
-                <div class="profile-card h-100">
-                    <h5 class="mb-3"><i class="fas fa-info-circle"></i> Account Information</h5>
-
-                    <div class="info-row">
-                        <div class="info-label">Account Type</div>
-                        <div class="info-value">
-                            <span class="badge {{ ($user->role ?? 'user') === 'admin' ? 'bg-danger' : 'bg-primary' }}">{{ ucfirst($user->role ?? 'user') }}</span>
-                        </div>
-                    </div>
-
-                    <div class="info-row">
-                        <div class="info-label">Member Since</div>
-                        <div class="info-value">
-                            {{ $user->created_at?->format('M d, Y') ?? '—' }}
-                            @if($user->created_at)
-                            <small class="text-muted ms-2">({{ $user->created_at->diffForHumans() }})</small>
-                            @endif
-                        </div>
-                    </div>
-
-                    <div class="info-row">
-                        <div class="info-label">Registered Devices</div>
-                        <div class="info-value">
-                            {{ $totalDevices }} total &middot; {{ $activeDevices }} active
-                            @if(($inactiveDevices ?? 0) > 0)
-                                &middot; {{ $inactiveDevices }} inactive
-                            @endif
-                            @if(($blockedDevices ?? 0) > 0)
-                                &middot; {{ $blockedDevices }} blocked
-                            @endif
-                            &middot; {{ $onlineNow }} online &middot; {{ $offlineNow ?? max(0, $totalDevices - $onlineNow) }} offline
-                        </div>
-                    </div>
-
-                    <div class="info-row">
-                        <div class="info-label">Fleet activity</div>
-                        <div class="info-value">
-                            {{ $running }} moving &middot; {{ $parked }} parked
-                            @if(($alerts ?? 0) > 0)
-                                &middot; <span class="text-danger">{{ $alerts }} geofence alert{{ $alerts === 1 ? '' : 's' }} (24h)</span>
-                            @endif
-                        </div>
-                    </div>
-
-                    <div class="info-row">
-                        <div class="info-label">Profile Updated</div>
-                        <div class="info-value">
-                            {{ app_datetime_format($user->updated_at) ?? '—' }}
-                            @if($user->updated_at)
-                            <small class="text-muted ms-2">({{ $user->updated_at->diffForHumans() }})</small>
-                            @endif
-                        </div>
-                    </div>
-
-                    <div class="info-row">
-                        <div class="info-label">Email Verified</div>
-                        <div class="info-value">
-                            @if($user->email_verified_at)
-                                <span class="badge bg-success">
-                            <i class="fas fa-check-circle me-1"></i> Verified
-                        </span>
-                            @else
-                                <span class="badge bg-warning">
-                            <i class="fas fa-exclamation-circle me-1"></i> Pending
-                        </span>
-                            @endif
-                        </div>
-                    </div>
-
-                    <div class="info-row">
-                        <div class="info-label">Two-Factor Auth</div>
-                        <div class="info-value">
-                        <span class="badge bg-secondary">
-                            <i class="fas fa-times-circle me-1"></i> Disabled
-                        </span>
-                        </div>
-                    </div>
-
-                    <div class="mt-4 pt-3 border-top">
-                        <div class="row g-2">
-                            <div class="col-md-4 col-6">
-                                <a href="{{ route('user.dashboard') }}" class="btn btn-outline-premium w-100">
-                                    <i class="fas fa-chart-line me-2"></i> Dashboard
-                                </a>
-                            </div>
-                            <div class="col-md-4 col-6">
-                                <a href="{{ route('user.devices.index') }}" class="btn btn-outline-premium w-100">
-                                    <i class="fas fa-satellite me-2"></i> Devices
-                                </a>
-                            </div>
-                            <div class="col-md-4 col-12">
-                                <a href="{{ route('user.change.password') }}" class="btn btn-outline-premium w-100">
-                                    <i class="fas fa-key me-2"></i> Change Password
-                                </a>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Recent Activity -->
-            <div class="col-lg-6 mb-4">
-                <div class="profile-card h-100">
-                    <div class="d-flex justify-content-between align-items-center mb-3">
-                        <h5 class="mb-0"><i class="fas fa-history"></i> Recent Activity</h5>
-                        <a href="{{ route('user.dashboard') }}" class="btn btn-sm btn-outline-premium">Dashboard</a>
-                    </div>
-
-                    @include('user.partials.profile-activities')
-
-                </div>
-            </div>
-        </div>
-
-    </div>
-
-    <!-- 2FA Modal -->
-    <div class="modal fade" id="2FAModal" tabindex="-1" aria-labelledby="2FAModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="2FAModalLabel">
-                        <i class="fas fa-shield-alt me-2"></i> Two-Factor Authentication
-                    </h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <div class="text-center mb-4">
-                        <div class="mb-3">
-                            <i class="fas fa-shield-alt fa-3x text-primary"></i>
-                        </div>
-                        <h5>Enhanced Security</h5>
-                        <p class="text-muted">Add an extra layer of security to your account with two-factor authentication.</p>
-                    </div>
-                    <div class="alert alert-info">
-                        <i class="fas fa-info-circle me-2"></i>
-                        Two-factor authentication is coming soon to BillX GPS.
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-outline-premium" data-bs-dismiss="modal">Close</button>
-                    <button type="button" class="btn btn-premium" disabled>
-                        <i class="fas fa-cog me-2"></i> Enable 2FA
-                    </button>
-                </div>
-            </div>
-        </div>
     </div>
 
 @endsection

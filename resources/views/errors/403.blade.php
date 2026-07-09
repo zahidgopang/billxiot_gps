@@ -1,61 +1,61 @@
-<!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Forbidden - {{ config('app.name') }}</title>
-    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-</head>
-<body class="bg-gradient-to-br from-red-50 to-pink-100 min-h-screen flex items-center justify-center p-4">
-<div class="max-w-lg w-full bg-white rounded-xl shadow-xl p-8 md:p-10">
-    <div class="text-center">
-        <div class="inline-block bg-red-100 rounded-full p-4 mb-6">
-            <i class="fas fa-ban text-red-500 text-5xl"></i>
-        </div>
-        <h1 class="text-3xl font-bold text-gray-800 mb-2">403 - Forbidden</h1>
-        <p class="text-gray-600 mb-6">You don't have permission to access this resource.</p>
-    </div>
+@php
+    $theme = 'red';
+    $exceptionMessage = isset($exception) ? trim((string) $exception->getMessage()) : '';
+    $genericMessages = [
+        '',
+        'Forbidden',
+        'This action is unauthorized.',
+        'You do not have permission to perform this action.',
+    ];
+    $detail = in_array($exceptionMessage, $genericMessages, true)
+        ? __('app.errors.403_detail')
+        : $exceptionMessage;
+    $homeUrl = auth()->check() && Route::has('dashboard') ? route('dashboard') : url('/');
+@endphp
 
-    <div class="bg-red-50 border border-red-200 rounded-lg p-4 mb-8">
-        <h3 class="font-semibold text-red-800 mb-2 flex items-center">
-            <i class="fas fa-shield-alt mr-2"></i>
-            Access Denied:
-        </h3>
-        <ul class="text-sm text-red-700 space-y-1 pl-5">
-            <li>• Insufficient permissions</li>
-            <li>• IP restriction</li>
-            <li>• Geographical restriction</li>
-        </ul>
-    </div>
+@extends('errors.layout')
 
-    <div class="space-y-4">
-        <a href="{{ url('/') }}"
-           class="block w-full bg-red-500 hover:bg-red-600 text-white font-semibold py-3 px-4 rounded-lg transition duration-200 text-center">
-            <i class="fas fa-home mr-2"></i>
-            Return to Homepage
+@section('title', __('app.errors.403_title'))
+
+@section('content')
+    <div class="err-icon" aria-hidden="true">
+        <i class="fas fa-shield-halved"></i>
+    </div>
+    <div class="err-code">
+        <i class="fas fa-ban"></i>
+        403
+    </div>
+    <h1 class="err-title">{{ __('app.errors.403_title') }}</h1>
+    <p class="err-message">{{ __('app.errors.403_message') }}</p>
+    <div class="err-detail">
+        <strong>
+            <i class="fas fa-circle-info"></i>
+            {{ __('app.errors.why') }}
+        </strong>
+        {{ $detail }}
+    </div>
+@endsection
+
+@section('actions')
+    <a href="{{ $homeUrl }}" class="err-btn err-btn--primary">
+        <i class="fas fa-home"></i>
+        {{ auth()->check() ? __('app.errors.go_dashboard') : __('app.errors.go_home') }}
+    </a>
+    @if(auth()->check())
+        <button type="button" class="err-btn err-btn--secondary" onclick="history.back()">
+            <i class="fas fa-arrow-{{ app()->getLocale() === 'ar' ? 'right' : 'left' }}"></i>
+            {{ __('app.errors.go_back') }}
+        </button>
+    @elseif(Route::has('login'))
+        <a href="{{ route('login') }}" class="err-btn err-btn--secondary">
+            <i class="fas fa-right-to-bracket"></i>
+            {{ __('app.errors.sign_in') }}
         </a>
-
-        <div class="flex space-x-3">
-            <a href="{{ url('/help/permissions') }}"
-               class="flex-1 bg-blue-100 hover:bg-blue-200 text-blue-800 font-medium py-2 px-4 rounded-lg transition duration-200 text-center">
-                <i class="fas fa-question-circle mr-2"></i>
-                Permission Help
-            </a>
-
-            <a href="{{ route('login') }}"
-               class="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-800 font-medium py-2 px-4 rounded-lg transition duration-200 text-center">
-                <i class="fas fa-user mr-2"></i>
-                Try Different Account
-            </a>
-
-            <a href="mailto:support@example.com"
-               class="flex-1 bg-green-100 hover:bg-green-200 text-green-800 font-medium py-2 px-4 rounded-lg transition duration-200 text-center">
-                <i class="fas fa-envelope mr-2"></i>
-                Request Access
-            </a>
-        </div>
-    </div>
-</div>
-</body>
-</html>
+    @endif
+    @if(Route::has('contact'))
+        <a href="{{ route('contact') }}" class="err-btn err-btn--secondary">
+            <i class="fas fa-envelope"></i>
+            {{ __('app.errors.contact_support') }}
+        </a>
+    @endif
+@endsection

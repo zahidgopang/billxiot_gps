@@ -1,9 +1,27 @@
 @extends('user.layout_map')
 
+@php
+    use App\Services\Tracking\DeviceMapIconAuthorization;
+
+    $mapAppearanceAuth = app(DeviceMapIconAuthorization::class);
+    $mapViewer = auth()->user();
+    $canEditMapAppearance = $mapViewer && $mapAppearanceAuth->canEditAppearance($mapViewer, $device);
+    $deviceMapAppearance = $device->mapAppearancePayload();
+    $mapAppearancePanel = ($isAdminMap ?? false)
+        ? (request()->routeIs('client.*') ? 'client' : 'admin')
+        : 'user';
+    $mapAppearanceRoutePrefix = $mapAppearancePanel === 'user'
+        ? 'user.devices'
+        : "{$mapAppearancePanel}.devices";
+@endphp
+
 @push('styles')
     <link rel="stylesheet" href="{{ asset('css/fleet-map.css') }}?v={{ filemtime(public_path('css/fleet-map.css')) }}">
     <link rel="stylesheet" href="{{ asset('css/vehicle-map-popup.css') }}?v={{ filemtime(public_path('css/vehicle-map-popup.css')) }}">
     <link rel="stylesheet" href="{{ asset('css/route-trip-bar.css') }}?v={{ filemtime(public_path('css/route-trip-bar.css')) }}">
+    @if($canEditMapAppearance)
+        <link rel="stylesheet" href="{{ asset('css/map-marker-appearance.css') }}?v={{ @filemtime(public_path('css/map-marker-appearance.css')) ?: 1 }}">
+    @endif
     <style>
         :root {
             --map-ui-bg: rgba(255, 255, 255, 0.92);
@@ -1104,71 +1122,6 @@
             display: grid;
             grid-template-columns: repeat(4, minmax(0, 1fr));
             gap: 10px;
-        }
-        .map-marker-appearance {
-            margin-top: 12px;
-            padding-top: 12px;
-            border-top: 1px solid rgba(148, 163, 184, 0.25);
-            display: grid;
-            gap: 10px;
-        }
-        .map-marker-appearance__row { display: grid; gap: 4px; }
-        .map-marker-appearance__label { font-size: 0.72rem; color: #64748b; font-weight: 600; }
-        .map-marker-appearance__size-controls {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        .map-marker-appearance__size-controls span {
-            min-width: 4.5rem;
-            text-align: center;
-            font-weight: 600;
-            font-size: 0.82rem;
-        }
-        .map-marker-appearance__foot {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        .map-marker-appearance__preview-wrap { display: grid; gap: 6px; margin-bottom: 10px; }
-        .map-marker-appearance__preview {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            min-height: 120px;
-            border-radius: 12px;
-            background: linear-gradient(180deg, #e2e8f0 0%, #cbd5e1 100%);
-            border: 1px solid rgba(15, 23, 42, 0.08);
-        }
-        .map-marker-appearance__preview img { max-width: 96px; max-height: 96px; object-fit: contain; }
-        .map-marker-appearance__icon-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
-            gap: 6px;
-            max-height: 180px;
-            overflow: auto;
-            padding: 2px;
-        }
-        .map-marker-appearance__icon-btn {
-            display: grid;
-            gap: 4px;
-            justify-items: center;
-            padding: 6px;
-            border: 1px solid rgba(15, 23, 42, 0.12);
-            border-radius: 10px;
-            background: #fff;
-            cursor: pointer;
-        }
-        .map-marker-appearance__icon-btn.is-active {
-            border-color: #2563eb;
-            box-shadow: 0 0 0 1px #2563eb;
-        }
-        .map-marker-appearance__icon-thumb { width: 40px; height: 40px; display: block; }
-        .map-marker-appearance__icon-name {
-            font-size: 0.62rem;
-            line-height: 1.1;
-            text-align: center;
-            color: #475569;
         }
         .map-info-chip {
             background: rgba(255,255,255,0.88);
@@ -2615,7 +2568,14 @@
                             <span class="map-info-chip__value" id="livePanelUpdated">{{ __('app.map.dash') }}</span>
                         </div>
                     </div>
-                    @include('user.partials.map-marker-appearance-form', ['device' => $device])
+                    @if($canEditMapAppearance)
+                        @include('user.partials.map-marker-appearance-form', [
+                            'device' => $device,
+                            'mapAppearanceSaveUrl' => route("{$mapAppearanceRoutePrefix}.map-appearance", $device),
+                            'mapCustomIconUploadUrl' => route("{$mapAppearanceRoutePrefix}.map-custom-icon", $device),
+                            'mapCustomIconDeleteUrl' => route("{$mapAppearanceRoutePrefix}.map-custom-icon.delete", $device),
+                        ])
+                    @endif
                 </div>
                 <div class="map-live-panel__footer">
                     <button type="button"
@@ -3018,16 +2978,20 @@
             markerPlate: @json($device->mapMarkerPlateLine()),
             vehicleName: @json($device->vehicle_name),
             vehicleNumber: @json($device->vehicle_number),
-            vehicleType: @json($device->vehicle_type),
-            mapMarkerStyle: @json($device->map_marker_style),
-            mapMarkerSize: @json($device->map_marker_size),
-            mapMarkerSizeScale: @json($device->mapMarkerSizeScale()),
-            mapIconSource: @json($device->map_icon_source),
-            mapCustomIconUrl: @json($device->usesCustomMapIcon() ? app(\App\Services\Tracking\DeviceVehicleIconService::class)->url($device) : null),
-            mapIconRotationEnabled: @json($device->map_icon_rotation_enabled),
-            mapAppearanceSaveUrl: @json(route('user.devices.map-appearance', $device)),
-            mapCustomIconUploadUrl: @json(route('user.devices.map-custom-icon', $device)),
-            mapCustomIconDeleteUrl: @json(route('user.devices.map-custom-icon.delete', $device)),
+            vehicleType: @json($deviceMapAppearance['vehicle_type'] ?? $device->vehicle_type),
+            mapBuiltinIconPath: @json($deviceMapAppearance['map_builtin_icon_path'] ?? null),
+            mapBuiltinIconUrl: @json($deviceMapAppearance['map_builtin_icon_url'] ?? null),
+            mapMarkerStyle: @json($deviceMapAppearance['map_marker_style'] ?? $device->map_marker_style),
+            mapMarkerSize: @json($deviceMapAppearance['map_marker_size'] ?? $device->map_marker_size),
+            mapMarkerSizeScale: @json($deviceMapAppearance['map_marker_size_scale'] ?? $device->mapMarkerSizeScale()),
+            mapIconSource: @json($deviceMapAppearance['map_icon_source'] ?? 'default'),
+            mapCustomIconUrl: @json($deviceMapAppearance['map_custom_icon_url'] ?? null),
+            mapIconRotationEnabled: @json($deviceMapAppearance['map_icon_rotation_enabled'] ?? $device->map_icon_rotation_enabled),
+            mapIconRotationOffset: @json($deviceMapAppearance['map_icon_rotation_offset'] ?? $device->resolvedIconRotationOffset()),
+            mapFallbackIconUrl: @json($deviceMapAppearance['map_fallback_icon_url'] ?? $device->fallbackMapIconUrl()),
+            mapAppearanceSaveUrl: @json($canEditMapAppearance ? route("{$mapAppearanceRoutePrefix}.map-appearance", $device) : null),
+            mapCustomIconUploadUrl: @json($canEditMapAppearance && $mapAppearanceAuth->canUploadCustomIcon($mapViewer, $device) ? route("{$mapAppearanceRoutePrefix}.map-custom-icon", $device) : null),
+            mapCustomIconDeleteUrl: @json($canEditMapAppearance && $mapAppearanceAuth->canUploadCustomIcon($mapViewer, $device) ? route("{$mapAppearanceRoutePrefix}.map-custom-icon.delete", $device) : null),
             mapAppearanceI18n: {
                 saved: @json(__('app.map.marker_appearance_saved')),
                 failed: @json(__('app.map.marker_appearance_save_failed')),
@@ -3288,8 +3252,11 @@
     <script>window.APP_TIMEZONE = @json(config('app.timezone'));</script>
     <script src="{{ protected_js('app-datetime.js') }}"></script>
     @include('partials.google-maps-platform')
+    <script src="{{ protected_js('builtin-map-icons.js') }}"></script>
     <script src="{{ protected_js('vehicle-marker.js') }}"></script>
-    <script src="{{ protected_js('map-marker-appearance.js') }}"></script>
+    @if($canEditMapAppearance)
+        <script src="{{ protected_js('map-marker-appearance.js') }}"></script>
+    @endif
     <script src="{{ protected_js('polyline-simplify.js') }}"></script>
     <script src="{{ protected_js('fleet-map-renderer.js') }}"></script>
     <script src="{{ protected_js('map-panel-position.js') }}"></script>

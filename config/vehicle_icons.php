@@ -39,6 +39,14 @@ return [
         '#a855f7', '#06b6d4', '#64748b', '#0f172a', '#ec4899',
     ],
 
+    'builtin' => [
+        'public_root' => 'icons/builtin',
+    ],
+
+    'shared' => [
+        'public_root' => 'icons/shared',
+    ],
+
     'upload' => [
         'disk' => 'public',
         'directory' => 'device-icons',
@@ -46,7 +54,9 @@ return [
         'max_width' => 256,
         'max_height' => 256,
         'auto_resize' => true,
-        'allowed_extensions' => ['png', 'svg', 'webp'],
-        'allowed_mimes' => ['image/png', 'image/svg+xml', 'image/webp'],
+        'trim_transparent' => true,
+        'thumbnail_size' => 64,
+        'allowed_extensions' => ['png', 'svg'],
+        'allowed_mimes' => ['image/png', 'image/svg+xml'],
     ],
 ];

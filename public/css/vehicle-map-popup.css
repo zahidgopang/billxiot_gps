@@ -87,6 +87,11 @@
     padding: 4px 6px;
     border-radius: 6px;
     border: 1px solid #cbd5e1;
+    background: #fff;
+    color: #0f172a;
+    pointer-events: auto;
+    position: relative;
+    z-index: 2;
 }
 .vehicle-map-popup__commands button {
     font-size: 0.75rem;
@@ -98,6 +103,9 @@
     font-weight: 600;
     cursor: pointer;
     white-space: nowrap;
+    pointer-events: auto;
+    position: relative;
+    z-index: 2;
 }
 .vehicle-map-popup__commands button:disabled {
     opacity: 0.6;
@@ -117,11 +125,14 @@
 }
 .vehicle-map-popup-overlay {
     position: absolute;
-    z-index: 999999;
+    z-index: 1000000;
     pointer-events: auto;
     max-width: 340px;
     filter: drop-shadow(0 12px 40px rgba(15, 23, 42, 0.18));
     transform-origin: center bottom;
+    /* Mounted on map getDiv() — must not inherit Google pane transforms. */
+    left: 0;
+    top: 0;
 }
 .vehicle-map-popup-overlay .vehicle-map-popup {
     background: #fff;

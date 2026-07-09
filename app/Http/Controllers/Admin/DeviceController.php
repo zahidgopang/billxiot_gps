@@ -12,6 +12,7 @@ use App\Models\User;
 use App\Services\AdminAuditService;
 use App\Services\Inventory\InventoryService;
 use App\Services\Stock\ClientStockBalanceService;
+use App\Services\Tracking\DeviceOdometerService;
 use App\Support\Traccar\TraccarSchema;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -25,6 +26,7 @@ class DeviceController extends Controller
         private AdminAuditService $audit,
         private ClientStockBalanceService $clientStock,
         private InventoryService $inventory,
+        private DeviceOdometerService $odometer,
     ) {}
 
     public function index(Request $request)
@@ -127,6 +129,8 @@ class DeviceController extends Controller
             return $device;
         });
 
+        $this->syncOdometerBaseline($device, $request);
+
         // Central inventory: consume 1 unit from client inventory for this install.
         // (Sell invoice transfers to client, install consumes client stock.)
         $this->inventory->consumeForInstall($clientId, $data['device_type'], (int) $device->id, (int) $request->user()->id);
@@ -192,6 +196,9 @@ class DeviceController extends Controller
             $this->tenantScope()->assignDeviceToClient($device, $clientId);
             $this->syncRouteAssignment($device, $data['route_id'] ?? null);
         });
+
+        $device->refresh();
+        $this->syncOdometerBaseline($device, $request);
 
         $this->audit->logUpdated($device, "device {$device->imei}", array_merge($data, ['client_id' => $clientId]));
 
@@ -293,6 +300,7 @@ class DeviceController extends Controller
             'sim_type' => ['nullable', Rule::in(array_keys(Device::SIM_TYPES))],
             'sim_number' => 'nullable|string|max:40',
             'plate_type' => ['nullable', Rule::in(array_keys(Device::PLATE_TYPES))],
+            'odometer_base_km' => 'nullable|numeric|min:0|max:9999999',
         ];
 
         if (! $this->isClientPanel()) {
@@ -300,6 +308,25 @@ class DeviceController extends Controller
         }
 
         return $rules;
+    }
+
+    private function syncOdometerBaseline(Device $device, Request $request): void
+    {
+        if (! $request->has('odometer_base_km')) {
+            return;
+        }
+
+        $raw = $request->input('odometer_base_km');
+        if ($raw === null || $raw === '') {
+            return;
+        }
+
+        $km = round((float) $raw, 1);
+        $previous = $this->odometer->baselineKm($device);
+
+        if ($previous === null || abs($previous - $km) > 0.05) {
+            $this->odometer->setBaseline($device, $km);
+        }
     }
 
     private function normalizeDeviceInput(Request $request): void

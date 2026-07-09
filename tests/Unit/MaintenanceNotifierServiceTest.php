@@ -4,8 +4,10 @@ namespace Tests\Unit;
 
 use App\Contracts\Tracking\EventWriterInterface;
 use App\Services\Push\PushNotificationDispatcher;
+use App\Services\Tracking\DeviceOdometerService;
 use App\Services\Tracking\DevicePositionLoader;
 use App\Services\Tracking\MaintenanceNotifierService;
+use App\Services\Tracking\TrackingSettingsService;
 use Carbon\Carbon;
 use Tests\TestCase;
 
@@ -23,12 +25,14 @@ class MaintenanceNotifierServiceTest extends TestCase
         );
     }
 
-    public function test_odometer_cycle_uses_latest_crossed_interval_for_repeat_reminders(): void
+    public function test_odometer_cycle_stays_on_first_due_until_manual_complete(): void
     {
         $service = $this->service();
 
+        // Overdue by multiple intervals still reports the original next-due threshold
+        // until the owner marks the service completed (advances last).
         $this->assertSame(
-            ['threshold' => 1000.0],
+            ['threshold' => 500.0],
             $service->dueOdometerCycle(0, 500, 1200),
         );
 
@@ -38,7 +42,7 @@ class MaintenanceNotifierServiceTest extends TestCase
         );
     }
 
-    public function test_day_cycle_uses_latest_crossed_due_date(): void
+    public function test_day_cycle_returns_first_due_date_when_overdue(): void
     {
         $service = $this->service();
 
@@ -48,7 +52,7 @@ class MaintenanceNotifierServiceTest extends TestCase
             Carbon::parse('2026-07-25'),
         );
 
-        $this->assertSame('2026-07-21', $due?->format('Y-m-d'));
+        $this->assertSame('2026-07-11', $due?->format('Y-m-d'));
     }
 
     private function service(): MaintenanceNotifierService
@@ -57,6 +61,8 @@ class MaintenanceNotifierServiceTest extends TestCase
             $this->createMock(EventWriterInterface::class),
             $this->createMock(PushNotificationDispatcher::class),
             $this->createMock(DevicePositionLoader::class),
+            $this->createMock(DeviceOdometerService::class),
+            $this->createMock(TrackingSettingsService::class),
         );
     }
 }

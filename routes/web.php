@@ -22,6 +22,7 @@ use App\Http\Controllers\MapController;
 use App\Http\Controllers\MapAccessController;
 use App\Http\Controllers\DeviceMapIconController;
 use App\Http\Controllers\VehicleAlertController;
+use App\Http\Controllers\SubAccountController;
 /*
 |--------------------------------------------------------------------------
 | Public Route
@@ -165,11 +166,17 @@ Route::middleware(['auth', 'user.active', 'tracker.access'])->group(function () 
         Route::get('/fleet-map', [UserDevicesController::class, 'fleetMap'])->name('fleet-map');
         Route::get('/fleet-map/live-json', [UserDevicesController::class, 'fleetMapLiveJson'])->name('fleet-map.live-json');
         Route::post('/{device}/vehicle-label', [UserDevicesController::class, 'updateVehicleLabel'])->name('vehicle-label');
+        Route::post('/map-appearance-bulk', [UserDevicesController::class, 'updateMapAppearanceBulk'])->name('map-appearance-bulk');
+        Route::post('/map-custom-icon-bulk', [UserDevicesController::class, 'uploadMapCustomIconBulk'])->name('map-custom-icon-bulk');
         Route::post('/{device}/map-appearance', [UserDevicesController::class, 'updateMapAppearance'])->name('map-appearance');
         Route::post('/{device}/map-custom-icon', [UserDevicesController::class, 'uploadMapCustomIcon'])->name('map-custom-icon');
         Route::delete('/{device}/map-custom-icon', [UserDevicesController::class, 'deleteMapCustomIcon'])->name('map-custom-icon.delete');
         Route::get('/live-json', [UserDevicesController::class, 'liveJson'])->name('live-json');
     });
+
+    Route::resource('user/sub-accounts', SubAccountController::class)
+        ->parameters(['sub-accounts' => 'subAccount'])
+        ->names('user.sub-accounts');
 
     /*
     |--------------------------------------------------------------------------
@@ -212,6 +219,8 @@ Route::middleware(['auth', 'panel:admin', 'can:admin'])
         Route::patch('users/{user}/toggle-status', [AdminUserController::class, 'toggleStatus'])
             ->name('users.toggle-status');
         Route::resource('users', AdminUserController::class);
+        Route::resource('sub-accounts', SubAccountController::class)
+            ->parameters(['sub-accounts' => 'subAccount']);
         Route::post('subscriptions/{subscription}/renew', [AdminSubscriptionController::class, 'renew'])
             ->name('subscriptions.renew');
         Route::get('subscriptions/{subscription}/histories', [AdminSubscriptionController::class, 'histories'])
@@ -262,6 +271,14 @@ Route::middleware(['auth', 'panel:admin', 'can:admin'])
                 ->name('company-map-settings.index');
             Route::post('company-map-settings', [\App\Http\Controllers\Admin\CompanyMapSettingsController::class, 'update'])
                 ->name('company-map-settings.update');
+            Route::get('shared-map-icons', [\App\Http\Controllers\Admin\SharedMapIconController::class, 'index'])
+                ->name('shared-map-icons.index');
+            Route::post('shared-map-icons', [\App\Http\Controllers\Admin\SharedMapIconController::class, 'store'])
+                ->name('shared-map-icons.store');
+            Route::patch('shared-map-icons/{sharedMapIcon}', [\App\Http\Controllers\Admin\SharedMapIconController::class, 'update'])
+                ->name('shared-map-icons.update');
+            Route::delete('shared-map-icons/{sharedMapIcon}', [\App\Http\Controllers\Admin\SharedMapIconController::class, 'destroy'])
+                ->name('shared-map-icons.destroy');
             Route::get('permissions', [\App\Http\Controllers\Admin\PermissionManagementController::class, 'index'])
                 ->name('permissions.index');
             Route::get('permissions/users', [\App\Http\Controllers\Admin\PermissionManagementController::class, 'users'])
@@ -375,6 +392,8 @@ Route::middleware(['auth', 'panel:client', 'can:client-panel'])
         Route::patch('users/{user}/toggle-status', [AdminUserController::class, 'toggleStatus'])
             ->name('users.toggle-status');
         Route::resource('users', AdminUserController::class)->except(['destroy']);
+        Route::resource('sub-accounts', SubAccountController::class)
+            ->parameters(['sub-accounts' => 'subAccount']);
 
         Route::patch('devices/{device}/toggle-status', [AdminDeviceController::class, 'toggleStatus'])
             ->name('devices.toggle-status');

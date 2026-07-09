@@ -14,6 +14,7 @@ use App\Services\DeviceAccessService;
 use App\Services\Traccar\TraccarEntityProvisioner;
 use App\Services\Push\DeviceConnectivityPushService;
 use App\Services\VehicleEventService;
+use App\Services\Tracking\DeviceOdometerService;
 use App\Support\Tracking\DeviceLocationPayload;
 use App\Support\Tracking\TrackerPayloadNormalizer;
 use App\Support\Traccar\TraccarMode;
@@ -130,6 +131,8 @@ class DeviceDataController extends Controller
         );
 
         app(VehicleEventService::class)->processLocation($device, $loc, $previousLocation);
+
+        app(DeviceOdometerService::class)->onPositionRecorded($device, $loc);
 
         app(DeviceConnectivityPushService::class)->onPositionReceived($device);
 

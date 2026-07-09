@@ -38,6 +38,16 @@
                 </div>
             @endforeach
 
+            <div class="col-12"><div class="gt-settings-sec">{{ __('app.tracking.settings_sec_maintenance') }}</div></div>
+            <div class="col-12">
+                <div class="form-check">
+                    <input type="checkbox" class="form-check-input" id="set_maintenance_notify_sub_accounts" name="maintenance_notify_sub_accounts" value="1"
+                        {{ !empty($settings['maintenance_notify_sub_accounts']) ? 'checked' : '' }}>
+                    <label class="form-check-label small" for="set_maintenance_notify_sub_accounts">{{ __('app.tracking.setting_maintenance_notify_sub_accounts') }}</label>
+                </div>
+                <p class="small text-muted mb-0 mt-1">{{ __('app.tracking.setting_maintenance_notify_sub_accounts_hint') }}</p>
+            </div>
+
             <div class="col-12">
                 <button type="submit" class="btn btn-primary btn-sm"><i class="fas fa-save me-1"></i>{{ __('app.common.save') }}</button>
             </div>

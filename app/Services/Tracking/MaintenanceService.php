@@ -5,7 +5,6 @@ namespace App\Services\Tracking;
 use App\Models\Device;
 use App\Models\User;
 use App\Services\Authorization\TenantScopeService;
-use App\Services\Tracking\GlobalTrackingService;
 use App\Support\Traccar\TraccarSchema;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -16,6 +15,7 @@ class MaintenanceService
         private GlobalTrackingService $tracking,
         private DevicePositionLoader $positionLoader,
         private TenantScopeService $tenantScope,
+        private DeviceOdometerService $odometer,
     ) {}
 
     /**
@@ -34,7 +34,6 @@ class MaintenanceService
 
         $hasPivot = TraccarSchema::hasTable('tc_device_maintenance');
 
-        // Maintenances linked to at least one device the actor can see.
         if ($hasPivot) {
             $maintenanceIds = DB::table('tc_device_maintenance')
                 ->whereIn('deviceid', $deviceIds)
@@ -50,7 +49,6 @@ class MaintenanceService
 
             $rows = DB::table('tc_maintenances')->whereIn('id', $maintenanceIds)->get();
 
-            // Map maintenance -> linked device ids (limited to allowed ones for display).
             $links = DB::table('tc_device_maintenance')
                 ->whereIn('maintenanceid', $maintenanceIds)
                 ->whereIn('deviceid', $deviceIds)
@@ -72,20 +70,44 @@ class MaintenanceService
 
             $objects = collect($linkedDeviceIds)->map(function (int $id) use ($devices) {
                 $device = $devices->get($id);
-                return ['id' => $id, 'name' => $device?->mapMarkerTitle() ?? ('#' . $id)];
+
+                return ['id' => $id, 'name' => $device?->mapMarkerTitle() ?? ('#'.$id)];
             })->values()->all();
 
-            // Use the first linked device's odometer for the status estimate.
             $primaryDevice = $devices->get($linkedDeviceIds[0] ?? 0);
-            $odometerKm = $this->odometerKm($primaryDevice?->latestLocation?->odometer);
+            $odometerKm = $this->currentOdometerKm($primaryDevice);
 
-            return $this->formatRow($row, $objects, $odometerKm);
+            return $this->formatRow($row, $objects, $odometerKm, $primaryDevice);
         })->values()->all();
     }
 
     /**
-     * Create or update a maintenance "service" with multiple objects (Traccar parity).
+     * Due / overdue items for dashboard widgets.
      *
+     * @return array{overdue: int, soon: int, items: list<array<string, mixed>>}
+     */
+    public function dueSummaryForActor(User $actor, int $limit = 8): array
+    {
+        $items = $this->listForActor($actor);
+        $due = array_values(array_filter(
+            $items,
+            fn (array $row) => in_array($row['status'] ?? '', ['overdue', 'soon'], true)
+        ));
+
+        usort($due, function (array $a, array $b) {
+            $rank = ['overdue' => 0, 'soon' => 1, 'ok' => 2];
+
+            return ($rank[$a['status']] ?? 9) <=> ($rank[$b['status']] ?? 9);
+        });
+
+        return [
+            'overdue' => count(array_filter($due, fn ($r) => ($r['status'] ?? '') === 'overdue')),
+            'soon' => count(array_filter($due, fn ($r) => ($r['status'] ?? '') === 'soon')),
+            'items' => array_slice($due, 0, $limit),
+        ];
+    }
+
+    /**
      * @param  array<string, mixed>  $data
      */
     public function save(User $actor, array $data, ?int $maintenanceId = null): ?int
@@ -99,7 +121,6 @@ class MaintenanceService
             return null;
         }
 
-        // When editing, ensure the actor owns the maintenance (one of its devices is allowed).
         if ($maintenanceId !== null && ! $this->actorOwnsMaintenance($actor, $maintenanceId)) {
             return null;
         }
@@ -134,6 +155,90 @@ class MaintenanceService
         return $id;
     }
 
+    /**
+     * Mark service completed: set last-service counters from current device values
+     * and start a new reminder cycle.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function complete(User $actor, int $maintenanceId, ?int $deviceId = null): ?array
+    {
+        if (! TraccarSchema::hasTable('tc_maintenances')) {
+            return null;
+        }
+
+        if (! $this->actorOwnsMaintenance($actor, $maintenanceId)) {
+            return null;
+        }
+
+        $row = DB::table('tc_maintenances')->where('id', $maintenanceId)->first();
+        if (! $row) {
+            return null;
+        }
+
+        $config = $this->decodeConfig($row);
+        $linkedIds = $this->linkedDeviceIds($maintenanceId);
+        $allowed = $this->tracking->allowedDeviceIds($actor);
+        $targetId = $deviceId && in_array($deviceId, $linkedIds, true) && in_array($deviceId, $allowed, true)
+            ? $deviceId
+            : ($linkedIds[0] ?? null);
+
+        if (! $targetId || ! in_array($targetId, $allowed, true)) {
+            return null;
+        }
+
+        $device = Device::query()->find($targetId);
+        if (! $device) {
+            return null;
+        }
+
+        $this->positionLoader->attachLatest($device);
+        $currentKm = $this->currentOdometerKm($device);
+        $useCurrent = filter_var($config['update_last_service'] ?? true, FILTER_VALIDATE_BOOLEAN);
+
+        if ($useCurrent) {
+            if (! empty($config['odometer']['enabled']) && $currentKm !== null) {
+                $config['odometer']['last'] = round($currentKm, 1);
+            }
+
+            if (! empty($config['days']['enabled'])) {
+                $config['days']['last'] = now()->format('Y-m-d');
+            }
+
+            // Hours: no live telemetry in v1 — advance last by one interval when enabled.
+            if (! empty($config['hours']['enabled'])) {
+                $lastH = (float) ($config['hours']['last'] ?? 0);
+                $intervalH = (float) ($config['hours']['interval'] ?? 0);
+                if ($intervalH > 0) {
+                    $config['hours']['last'] = round($lastH + $intervalH, 1);
+                }
+            }
+        }
+
+        $primary = $this->primaryTrigger($config);
+        $payload = TraccarSchema::filterColumns('tc_maintenances', [
+            'type' => $primary['type'],
+            'start' => $primary['start'],
+            'period' => $primary['period'],
+            'attributes' => json_encode($config),
+        ]);
+
+        DB::table('tc_maintenances')->where('id', $maintenanceId)->update($payload);
+
+        $fresh = DB::table('tc_maintenances')->where('id', $maintenanceId)->first() ?? $row;
+
+        $objects = collect($linkedIds)->map(function (int $id) use ($allowed) {
+            if (! in_array($id, $allowed, true)) {
+                return null;
+            }
+            $d = Device::query()->find($id);
+
+            return ['id' => $id, 'name' => $d?->mapMarkerTitle() ?? ('#'.$id)];
+        })->filter()->values()->all();
+
+        return $this->formatRow($fresh, $objects, $currentKm, $device);
+    }
+
     public function delete(User $actor, int $maintenanceId): bool
     {
         if (! TraccarSchema::hasTable('tc_maintenances')) {
@@ -157,12 +262,7 @@ class MaintenanceService
             return true;
         }
 
-        $linkedIds = DB::table('tc_device_maintenance')
-            ->where('maintenanceid', $maintenanceId)
-            ->pluck('deviceid')
-            ->map(fn ($id) => (int) $id)
-            ->all();
-
+        $linkedIds = $this->linkedDeviceIds($maintenanceId);
         if ($linkedIds === []) {
             return true;
         }
@@ -173,8 +273,23 @@ class MaintenanceService
     }
 
     /**
-     * Build the normalized "Service properties" config stored in attributes.
-     *
+     * @return list<int>
+     */
+    private function linkedDeviceIds(int $maintenanceId): array
+    {
+        if (! TraccarSchema::hasTable('tc_device_maintenance')) {
+            return [];
+        }
+
+        return DB::table('tc_device_maintenance')
+            ->where('maintenanceid', $maintenanceId)
+            ->pluck('deviceid')
+            ->map(fn ($id) => (int) $id)
+            ->values()
+            ->all();
+    }
+
+    /**
      * @param  array<string, mixed>  $data
      * @return array<string, mixed>
      */
@@ -207,13 +322,12 @@ class MaintenanceService
                 'hours_left' => $bool($data['trigger_hours'] ?? false),
                 'days_left' => $bool($data['trigger_days'] ?? false),
             ],
+            // Meaning: when marking complete, fill last-service from current counters.
             'update_last_service' => $bool($data['update_last_service'] ?? true),
         ];
     }
 
     /**
-     * Pick the Traccar type/start/period from the first enabled interval.
-     *
      * @param  array<string, mixed>  $config
      * @return array{type:string, start:float, period:float}
      */
@@ -246,16 +360,11 @@ class MaintenanceService
      * @param  list<array{id:int, name:string}>  $objects
      * @return array<string, mixed>
      */
-    private function formatRow(object $row, array $objects, ?float $odometerKm): array
+    private function formatRow(object $row, array $objects, ?float $odometerKm, ?Device $device = null): array
     {
-        $config = json_decode((string) ($row->attributes ?? '{}'), true) ?: [];
-
-        // Back-compat: rows created by the old simple form (type/start/period only).
-        if (! isset($config['odometer']) && ! isset($config['days']) && ! isset($config['hours'])) {
-            $config = $this->configFromLegacyRow($row);
-        }
-
-        $status = $this->resolveStatus($config, $odometerKm);
+        $config = $this->decodeConfig($row);
+        $metrics = $this->computeMetrics($config, $odometerKm);
+        $status = $metrics['status'];
 
         return [
             'id' => (int) $row->id,
@@ -266,7 +375,103 @@ class MaintenanceService
             'summary' => $this->summary($config),
             'status' => $status,
             'current_odometer' => $odometerKm,
+            'current_odometer_label' => $odometerKm !== null
+                ? rtrim(rtrim(number_format($odometerKm, 1, '.', ''), '0'), '.').' km'
+                : null,
+            'odometer_left' => $metrics['odometer_left'],
+            'odometer_left_label' => $metrics['odometer_left_label'],
+            'odometer_exceeded_km' => $metrics['odometer_exceeded_km'],
+            'days_left' => $metrics['days_left'],
+            'days_left_label' => $metrics['days_left_label'],
+            'engine_hours' => null,
+            'engine_hours_left' => null,
+            'engine_hours_label' => null,
+            'engine_hours_left_label' => null,
+            'can_complete' => $status === 'overdue' || $status === 'soon' || $status === 'ok',
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $config
+     * @return array{
+     *   status: string,
+     *   odometer_left: ?float,
+     *   odometer_left_label: ?string,
+     *   odometer_exceeded_km: ?float,
+     *   days_left: ?int,
+     *   days_left_label: ?string
+     * }
+     */
+    public function computeMetrics(array $config, ?float $odometerKm): array
+    {
+        $status = 'ok';
+        $odoLeft = null;
+        $odoLeftLabel = null;
+        $odoExceeded = null;
+        $daysLeft = null;
+        $daysLeftLabel = null;
+
+        if (! empty($config['odometer']['enabled']) && $odometerKm !== null) {
+            $last = (float) ($config['odometer']['last'] ?? 0);
+            $interval = (float) ($config['odometer']['interval'] ?? 0);
+            if ($interval > 0) {
+                $remaining = round(($last + $interval) - $odometerKm, 1);
+                $odoLeft = $remaining;
+                if ($remaining <= 0) {
+                    $status = 'overdue';
+                    $odoExceeded = round(abs($remaining), 1);
+                    $odoLeftLabel = (string) __('app.tracking.maint_expired_km', [
+                        'km' => rtrim(rtrim(number_format($odoExceeded, 1, '.', ''), '0'), '.'),
+                    ]);
+                } else {
+                    $odoLeftLabel = rtrim(rtrim(number_format($remaining, 1, '.', ''), '0'), '.').' km';
+                    if ($remaining <= $interval * 0.1) {
+                        $status = 'soon';
+                    }
+                }
+            }
+        }
+
+        if (! empty($config['days']['enabled']) && ! empty($config['days']['interval'])) {
+            $last = ! empty($config['days']['last']) ? Carbon::parse((string) $config['days']['last'])->startOfDay() : null;
+            if ($last) {
+                $due = $last->copy()->addDays((int) $config['days']['interval']);
+                $diff = (int) now()->startOfDay()->diffInDays($due, false);
+                $daysLeft = $diff;
+                if ($diff < 0) {
+                    $status = 'overdue';
+                    $daysLeftLabel = (string) __('app.tracking.maint_expired_days', ['days' => abs($diff)]);
+                } else {
+                    $daysLeftLabel = (string) __('app.tracking.maint_days_left_value', ['days' => $diff]);
+                    if ($diff <= 7 && $status !== 'overdue') {
+                        $status = 'soon';
+                    }
+                }
+            }
+        }
+
+        return [
+            'status' => $status,
+            'odometer_left' => $odoLeft,
+            'odometer_left_label' => $odoLeftLabel,
+            'odometer_exceeded_km' => $odoExceeded,
+            'days_left' => $daysLeft,
+            'days_left_label' => $daysLeftLabel,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function decodeConfig(object $row): array
+    {
+        $config = json_decode((string) ($row->attributes ?? '{}'), true) ?: [];
+
+        if (! isset($config['odometer']) && ! isset($config['days']) && ! isset($config['hours'])) {
+            return $this->configFromLegacyRow($row);
+        }
+
+        return $config;
     }
 
     /**
@@ -308,65 +513,31 @@ class MaintenanceService
     {
         $parts = [];
         if (! empty($config['odometer']['enabled']) && ! empty($config['odometer']['interval'])) {
-            $parts[] = rtrim(rtrim(number_format((float) $config['odometer']['interval'], 0), '0'), '.') . ' km';
+            $parts[] = rtrim(rtrim(number_format((float) $config['odometer']['interval'], 0), '0'), '.').' km';
         }
         if (! empty($config['hours']['enabled']) && ! empty($config['hours']['interval'])) {
-            $parts[] = (float) $config['hours']['interval'] . ' h';
+            $parts[] = (float) $config['hours']['interval'].' h';
         }
         if (! empty($config['days']['enabled']) && ! empty($config['days']['interval'])) {
-            $parts[] = (int) $config['days']['interval'] . ' d';
+            $parts[] = (int) $config['days']['interval'].' d';
         }
 
         return implode(' · ', $parts);
     }
 
-    /**
-     * @param  array<string, mixed>  $config
-     */
-    private function resolveStatus(array $config, ?float $odometerKm): string
+    private function currentOdometerKm(?Device $device): ?float
     {
-        $status = 'ok';
-
-        // Odometer interval (km).
-        if (! empty($config['odometer']['enabled']) && $odometerKm !== null) {
-            $last = (float) ($config['odometer']['last'] ?? 0);
-            $interval = (float) ($config['odometer']['interval'] ?? 0);
-            if ($interval > 0) {
-                $remaining = ($last + $interval) - $odometerKm;
-                if ($remaining <= 0) {
-                    return 'overdue';
-                }
-                if ($remaining <= $interval * 0.1) {
-                    $status = 'soon';
-                }
-            }
-        }
-
-        // Days interval.
-        if (! empty($config['days']['enabled']) && ! empty($config['days']['interval'])) {
-            $last = ! empty($config['days']['last']) ? Carbon::parse((string) $config['days']['last']) : null;
-            if ($last) {
-                $due = $last->copy()->addDays((int) $config['days']['interval']);
-                if ($due->isPast()) {
-                    return 'overdue';
-                }
-                if (now()->diffInDays($due, false) <= 7) {
-                    $status = 'soon';
-                }
-            }
-        }
-
-        return $status;
-    }
-
-    private function odometerKm(mixed $odometer): ?float
-    {
-        if ($odometer === null || $odometer === '') {
+        if (! $device) {
             return null;
         }
 
-        // Traccar stores odometer in meters.
-        return round(((float) $odometer) / 1000, 1);
+        $reported = $device->latestLocation?->odometer;
+        $km = $this->odometer->displayKm($device, $reported);
+        if ($km !== null) {
+            return round((float) $km, 1);
+        }
+
+        return $device->odometerDisplayKm($reported);
     }
 
     private function nullableDate(mixed $value): ?string

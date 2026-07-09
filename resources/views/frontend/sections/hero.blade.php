@@ -1,4 +1,4 @@
-﻿<!-- frontend/sections/hero.blade.php -->
+<!-- frontend/sections/hero.blade.php -->
 <section class="relative min-h-[90vh] flex items-center overflow-hidden">
     <!-- Animated Background -->
     <div class="absolute inset-0">

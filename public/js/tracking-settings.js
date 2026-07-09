@@ -20,7 +20,12 @@
         if (!form || !settings) return;
         Object.entries(settings).forEach(([key, value]) => {
             const el = form.elements[key];
-            if (el && value != null) el.value = value;
+            if (!el) return;
+            if (el.type === 'checkbox') {
+                el.checked = !!Number(value) || value === true || value === '1' || value === 'true';
+            } else if (value != null) {
+                el.value = value;
+            }
         });
     }
 
@@ -36,6 +41,10 @@
     form?.addEventListener('submit', async (e) => {
         e.preventDefault();
         const settings = Object.fromEntries(new FormData(form).entries());
+        // Unchecked checkboxes are omitted from FormData — send explicit 0.
+        if (!settings.maintenance_notify_sub_accounts) {
+            settings.maintenance_notify_sub_accounts = '0';
+        }
         const btn = form.querySelector('button[type="submit"]');
         btn?.setAttribute('disabled', 'disabled');
         try {

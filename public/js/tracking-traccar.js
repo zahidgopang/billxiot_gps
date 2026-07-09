@@ -878,12 +878,18 @@
                     getColor: (state) => this.stateColors[state] || this.stateColors.offline || '#94a3b8',
                     getVehicleType: (p) => p.vehicle_type || 'car',
                     getMarkerStyle: (p) => {
-                        if (VM.resolveCustomIconUrl(p)) return 'body';
-                        return VM.resolveMarkerStyle(p);
+                        if (this.hasSelectedMapIcon(p)) {
+                            return 'body';
+                        }
+                        // No upload / broken custom → status arrow (Google-style default).
+                        return 'pin';
                     },
                     getMarkerSizeScale: (p) => VM.resolveMarkerSizeScale(p),
+                    getMapIconUrl: (p) => (this.hasSelectedMapIcon(p) ? (VM.resolveMapIconUrl(p) || null) : null),
+                    getFallbackIconUrl: () => null,
                     getCustomIconUrl: (p) => VM.resolveCustomIconUrl(p),
                     getRotationEnabled: (p) => VM.resolveRotationEnabled(p),
+                    getRotationOffset: (p) => VM.resolveIconRotationOffset(p),
                     shouldShowDirection: (_, state) => MOVING_KEYS.has(state),
                 });
             }
@@ -1496,16 +1502,18 @@
             return { lat, lng };
         }
 
-        openVehiclePopup(id) {
+        openVehiclePopup(id, clickLatLng = null) {
             const numId = Number(id);
             const v = this.vehicles.get(numId);
             const st = this.vehicleState(numId);
             if (!v || !this.vehiclePopup) return;
 
-            const anchor = st.marker?.getAnchor?.() || st.marker;
-            const markerPos = this.markerGpsPosition(anchor);
-            const lat = markerPos?.lat ?? st.renderPos?.lat ?? v.lat;
-            const lng = markerPos?.lng ?? st.renderPos?.lng ?? v.lng;
+            // Keep the compat wrapper (has _advanced). Native getAnchor() made the popup
+            // open via InfoWindow and sit far above the click when other markers were present.
+            const anchor = st.marker || null;
+            const markerPos = this.markerGpsPosition(anchor) || this.markerGpsPosition(st.marker);
+            const lat = clickLatLng?.lat ?? markerPos?.lat ?? st.renderPos?.lat ?? v.lat;
+            const lng = clickLatLng?.lng ?? markerPos?.lng ?? st.renderPos?.lng ?? v.lng;
             if (!hasGeo(lat, lng)) return;
 
             this._popupVehicleId = numId;
@@ -1525,9 +1533,9 @@
         }
 
         /** Marker click: stable map popup only — no cluster reflow or hiding nearby markers. */
-        onMapMarkerClick(id) {
+        onMapMarkerClick(id, clickLatLng = null) {
             global.GoogleMapsPlatform?.runAfterMarkerClick?.();
-            this.openVehiclePopup(id);
+            this.openVehiclePopup(id, clickLatLng);
         }
 
         async sendCommandFromPopup(deviceId, type, btn) {
@@ -1764,6 +1772,35 @@
             }
         }
 
+        popupError(message, title) {
+            const text = String(message || this.cfg.i18n?.loadFailed || 'Failed').trim();
+            const heading = title || this.cfg.i18n?.accessDeniedTitle || 'Access Denied';
+            if (global.Swal) {
+                global.Swal.fire({
+                    icon: 'error',
+                    title: heading,
+                    text,
+                    confirmButtonText: this.cfg.i18n?.ok || 'OK',
+                });
+                return;
+            }
+            global.alert(text);
+        }
+
+        historyPermissionMessage(payload, status) {
+            const bodyMessage = String(payload?.message || '').trim();
+            if (status === 403 || status === 401) {
+                return bodyMessage
+                    || this.cfg.i18n?.historyPermissionDenied
+                    || 'Access Denied. You do not have permission to view tracking history.';
+            }
+            return bodyMessage || `Request failed (${status})`;
+        }
+
+        isHistoryPermissionError(err) {
+            return Boolean(err && (err.status === 401 || err.status === 403 || err.code === 'history_permission_denied'));
+        }
+
         showHistoryPreset(id, preset) {
             const { from, to } = computePresetRange(preset);
             if (!from) return;
@@ -1782,13 +1819,41 @@
             this.loadHistory();
         }
 
+        /** True when a real custom/library icon is selected. Bare defaults → status arrow. */
+        hasSelectedMapIcon(v) {
+            const VM = global.VehicleMarker;
+            if (!v || !VM) return false;
+            if (VM.resolveCustomIconUrl?.(v)) return true;
+            const src = String(v.map_icon_source || v.mapIconSource || 'default').toLowerCase();
+            if (src === 'custom') return false; // orphaned / broken upload
+            const path = String(v.map_builtin_icon_path || v.mapBuiltinIconPath || '').replace(/^\//, '');
+            const type = String(v.vehicle_type || v.vehicleType || '').toLowerCase().trim();
+            if (type.startsWith('shared_')) return true;
+            if (type && type !== 'car' && type !== 'pin_marker' && type !== 'other') return true;
+            // Explicit non-default builtin path (not the generic Vehicles/car.svg filler).
+            if (path && !/^Vehicles\/car\.svg$/i.test(path)) return true;
+            return false;
+        }
+
         setVehicleMarkerIcon(st, v, heading) {
             const VM = global.VehicleMarker;
             const color = colorForPoint(v, this.stateColors);
             const h = heading != null ? heading : parseFloat(v.heading || 0);
             const point = { ...v, heading: h };
-            const icon = this.iconBuilder?.iconFor(point);
-            applyMarkerIcon(st.marker, icon || arrowIcon(color, h));
+            // Orphaned custom (file missing) → treat as no icon.
+            if (point.map_icon_source === 'custom' && !VM?.resolveCustomIconUrl?.(point)) {
+                point.map_icon_source = 'default';
+                point.map_custom_icon_url = null;
+            }
+            let icon = null;
+            if (this.hasSelectedMapIcon(point)) {
+                icon = this.iconBuilder?.iconFor(point) || null;
+            }
+            // No upload / broken custom → Google-style status arrow pin.
+            if (!icon?.url) {
+                icon = arrowIcon(color, h);
+            }
+            applyMarkerIcon(st.marker, icon);
             if (typeof st.marker?.setLabel === 'function') {
                 st.marker.setLabel(null);
             }
@@ -1796,12 +1861,16 @@
 
         /** Rebuild marker bitmap only when heading bucket / status color changes. */
         _markerIconSignature(v, heading) {
+            const VM = global.VehicleMarker;
             const key = v?.status_key || 'offline';
-            const bucket = Math.round((((heading || 0) % 360) + 360) % 360 / 3) * 3;
-            const style = global.VehicleMarker?.resolveMarkerStyle?.(v) || 'pin';
-            const scale = global.VehicleMarker?.resolveMarkerSizeScale?.(v) || 1;
-            const custom = global.VehicleMarker?.resolveCustomIconUrl?.(v) || '';
-            return `${key}|${colorForPoint(v, this.stateColors)}|${bucket}|${style}|${scale}|${custom}`;
+            const offset = VM?.resolveIconRotationOffset?.(v) || 0;
+            const enabled = VM?.resolveRotationEnabled?.(v) !== false;
+            const final = VM?.finalRotation?.(heading, offset, enabled) ?? (((heading || 0) + offset + 360) % 360);
+            const bucket = Math.round((((final || 0) % 360) + 360) % 360 / 2) * 2;
+            const style = VM?.resolveMarkerStyle?.(v) || 'pin';
+            const scale = VM?.resolveMarkerSizeScale?.(v) || 1;
+            const custom = VM?.resolveMapIconUrl?.(v) || '';
+            return `${key}|${colorForPoint(v, this.stateColors)}|${bucket}|${style}|${scale}|${custom}|${offset}`;
         }
 
         activeClusterBreakId() {
@@ -1998,8 +2067,7 @@
                 title: this.labelFor(v),
                 zIndex: 1500 + id,
                 optimized: false,
-                // Classic Marker + icon anchor = exact GPS at all zoom levels + reliable click.
-                useClassicMarker: true,
+                // AdvancedMarkerElement: required for CSS heading rotation of flat image icons.
             });
             this.setVehicleMarkerIcon(st, v, v.heading || 0);
             st.marker.addListener('click', (e) => {
@@ -2007,8 +2075,17 @@
                     e.domEvent.stopPropagation?.();
                     e.domEvent.preventDefault?.();
                 }
+                let clickLatLng = null;
+                const ll = e?.latLng;
+                if (ll) {
+                    const lat = typeof ll.lat === 'function' ? ll.lat() : Number(ll.lat);
+                    const lng = typeof ll.lng === 'function' ? ll.lng() : Number(ll.lng);
+                    if (Number.isFinite(lat) && Number.isFinite(lng)) {
+                        clickLatLng = { lat, lng };
+                    }
+                }
                 global.GoogleMapsPlatform?.runAfterMarkerClick?.(() => {
-                    this.onMapMarkerClick(id);
+                    this.onMapMarkerClick(id, clickLatLng);
                 });
             });
             if (pos) {
@@ -3000,12 +3077,18 @@
                     getVehicleType: (p) => p.vehicle_type || 'car',
                     getMarkerStyle: (p) => {
                         const VM = global.VehicleMarker;
-                        if (VM?.resolveCustomIconUrl?.(p)) return 'body';
+                        if (VM?.resolveMapIconUrl?.(p)) return 'body';
                         return VM?.resolveMarkerStyle?.(p) || 'labeled';
                     },
                     getMarkerSizeScale: (p) => global.VehicleMarker?.resolveMarkerSizeScale?.(p) ?? 1,
+                    getMapIconUrl: (p) => global.VehicleMarker?.resolveMapIconUrl?.(p)
+                        || global.VehicleMarker?.resolveFallbackIconUrl?.(p)
+                        || null,
+                    getFallbackIconUrl: (p) => global.VehicleMarker?.resolveFallbackIconUrl?.(p)
+                        || '/icons/builtin/Vehicles/car.svg',
                     getCustomIconUrl: (p) => global.VehicleMarker?.resolveCustomIconUrl?.(p) ?? null,
                     getRotationEnabled: (p) => global.VehicleMarker?.resolveRotationEnabled?.(p) !== false,
+                    getRotationOffset: (p) => global.VehicleMarker?.resolveIconRotationOffset?.(p) || 0,
                     shouldShowDirection: (_, state) => MOVING_KEYS.has(state),
                     isHidden: (p) => !hasGeo(p?.lat, p?.lng),
                     speedToColor,
@@ -3055,14 +3138,22 @@
 
             try {
                 const response = await fetch(url, { credentials: 'same-origin', cache: 'no-store', signal: fetchSignal });
-                let json;
+                let json = {};
                 try {
                     json = await response.json();
                 } catch (_) {
-                    throw new Error('Invalid history response');
+                    if (response.ok) {
+                        throw new Error('Invalid history response');
+                    }
+                    json = {};
                 }
                 if (!response.ok) {
-                    throw new Error(json.message || `Request failed (${response.status})`);
+                    const err = new Error(this.historyPermissionMessage(json, response.status));
+                    err.status = response.status;
+                    if (response.status === 401 || response.status === 403) {
+                        err.code = 'history_permission_denied';
+                    }
+                    throw err;
                 }
                 const data = { response, json };
                 this._historyResponseCache.set(url, { ts: Date.now(), data });
@@ -3678,6 +3769,9 @@
                         })
                         .catch(async (err) => {
                             if (loadSeq !== this._historyLoadSeq || err?.name === 'AbortError') return false;
+                            if (this.isHistoryPermissionError(err)) {
+                                throw err;
+                            }
                             console.warn('[traccar-ui] history points', err);
                             try {
                                 skipParallelAnalytics = true;
@@ -3704,6 +3798,9 @@
                         })
                         .catch((err) => {
                             if (loadSeq !== this._historyLoadSeq || err?.name === 'AbortError') return false;
+                            if (this.isHistoryPermissionError(err)) {
+                                throw err;
+                            }
                             console.warn('[traccar-ui] history analytics', err);
                             if (this._historyPoints.length) {
                                 this.applyAnalyticsFallback(loadSeq);
@@ -3737,13 +3834,23 @@
             } catch (err) {
                 if (loadSeq !== this._historyLoadSeq || err?.name === 'AbortError') return;
                 console.error('[traccar-ui] history', err);
+                this.finishHistoryLoadBanners();
+                this.exitHistory();
+                if (this.isHistoryPermissionError(err)) {
+                    this.popupError(
+                        err.message
+                            || this.cfg.i18n?.historyPermissionDenied
+                            || 'Access Denied. You do not have permission to view tracking history.',
+                        this.cfg.i18n?.accessDeniedTitle || 'Access Denied',
+                    );
+                    return;
+                }
                 if (!(this.historyActive && this.historyLayers.length > 0)) {
                     this.toast(
                         `${this.cfg.i18n?.loadFailed || 'Failed to load history.'} ${err.message || ''}`.trim(),
                         'error',
                     );
                 }
-                this.finishHistoryLoadBanners();
             } finally {
                 if (loadSeq === this._historyLoadSeq) btn?.removeAttribute('disabled');
             }
@@ -5355,6 +5462,16 @@
             document.getElementById('tcEventsReload')?.addEventListener('click', () => this.loadEvents());
         }
 
+        eventsPermissionMessage(payload, status) {
+            const bodyMessage = String(payload?.message || '').trim();
+            if (status === 403 || status === 401) {
+                return bodyMessage
+                    || this.cfg.i18n?.eventsPermissionDenied
+                    || 'Access Denied. You do not have permission to view events.';
+            }
+            return bodyMessage || `Request failed (${status})`;
+        }
+
         async loadEvents() {
             const listEl = document.getElementById('tcEventsList');
             if (!listEl || !this.cfg.eventsJsonUrl) {
@@ -5363,8 +5480,29 @@
             }
             listEl.innerHTML = `<div class="tc-empty">…</div>`;
             try {
-                const res = await fetch(`${this.cfg.eventsJsonUrl}?per_page=50&_=${Date.now()}`, { credentials: 'same-origin', cache: 'no-store' });
-                const data = await res.json();
+                const res = await fetch(`${this.cfg.eventsJsonUrl}?per_page=50&_=${Date.now()}`, {
+                    credentials: 'same-origin',
+                    cache: 'no-store',
+                    headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) {
+                    if (res.status === 401 || res.status === 403) {
+                        this._eventsPermissionDenied = true;
+                        if (this.alertTimer) {
+                            clearInterval(this.alertTimer);
+                            this.alertTimer = null;
+                        }
+                        listEl.innerHTML = `<div class="tc-empty">${escHtml(this.cfg.i18n?.accessDeniedTitle || 'Access Denied')}</div>`;
+                        this.popupError(
+                            this.eventsPermissionMessage(data, res.status),
+                            this.cfg.i18n?.accessDeniedTitle || 'Access Denied',
+                        );
+                        return;
+                    }
+                    throw new Error(data.message || `Request failed (${res.status})`);
+                }
+                this._eventsPermissionDenied = false;
                 this._eventsLoaded = true;
                 const events = data.events || [];
                 if (events.length === 0) { listEl.innerHTML = `<div class="tc-empty">${escHtml(this.cfg.i18n?.noData || 'No data')}</div>`; return; }
@@ -5388,6 +5526,7 @@
             } catch (err) {
                 console.error('[traccar-ui] events', err);
                 listEl.innerHTML = `<div class="tc-empty">${escHtml(this.cfg.i18n?.loadFailed || 'Failed')}</div>`;
+                this.toast(err.message || this.cfg.i18n?.loadFailed || 'Failed', 'error');
             }
         }
 
@@ -5515,7 +5654,7 @@
         }
 
         async pollAlerts(baseline) {
-            if (!this.cfg.eventsJsonUrl || document.hidden || (this.realtimeHealthy && !baseline)) return;
+            if (this._eventsPermissionDenied || !this.cfg.eventsJsonUrl || document.hidden || (this.realtimeHealthy && !baseline)) return;
             const params = new URLSearchParams({
                 per_page: '25',
                 page: '1',
@@ -5533,7 +5672,16 @@
             const url = `${this.cfg.eventsJsonUrl}?${params.toString()}`;
             try {
                 const res = await fetch(url, { credentials: 'same-origin', cache: 'no-store' });
-                if (!res.ok) return;
+                if (!res.ok) {
+                    if (res.status === 401 || res.status === 403) {
+                        this._eventsPermissionDenied = true;
+                        if (this.alertTimer) {
+                            clearInterval(this.alertTimer);
+                            this.alertTimer = null;
+                        }
+                    }
+                    return;
+                }
                 const data = await res.json();
                 const events = (data.events || []).filter((e) => e && e.id != null);
                 if (events.length === 0) return;
@@ -5659,6 +5807,16 @@
             this.placeLayers = [];
         }
 
+        geofencePermissionMessage(payload, status) {
+            const bodyMessage = String(payload?.message || '').trim();
+            if (status === 403 || status === 401) {
+                return bodyMessage
+                    || this.cfg.i18n?.geofencePermissionDenied
+                    || 'Access Denied. You do not have permission to view geofences.';
+            }
+            return bodyMessage || `Request failed (${status})`;
+        }
+
         async loadPlaces() {
             const listEl = document.getElementById('tcPlacesList');
             if (!listEl || !this.cfg.geofencesJsonUrl) {
@@ -5667,8 +5825,23 @@
             }
             listEl.innerHTML = `<div class="tc-empty">…</div>`;
             try {
-                const res = await fetch(`${this.cfg.geofencesJsonUrl}?_=${Date.now()}`, { credentials: 'same-origin', cache: 'no-store' });
-                const data = await res.json();
+                const res = await fetch(`${this.cfg.geofencesJsonUrl}?_=${Date.now()}`, {
+                    credentials: 'same-origin',
+                    cache: 'no-store',
+                    headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) {
+                    if (res.status === 401 || res.status === 403) {
+                        listEl.innerHTML = `<div class="tc-empty">${escHtml(this.cfg.i18n?.accessDeniedTitle || 'Access Denied')}</div>`;
+                        this.popupError(
+                            this.geofencePermissionMessage(data, res.status),
+                            this.cfg.i18n?.accessDeniedTitle || 'Access Denied',
+                        );
+                        return;
+                    }
+                    throw new Error(data.message || `Request failed (${res.status})`);
+                }
                 this._placesLoaded = true;
                 this.clearPlaces();
                 const fences = data.geofences || [];
@@ -5686,6 +5859,7 @@
             } catch (err) {
                 console.error('[traccar-ui] places', err);
                 listEl.innerHTML = `<div class="tc-empty">${escHtml(this.cfg.i18n?.loadFailed || 'Failed')}</div>`;
+                this.toast(err.message || this.cfg.i18n?.loadFailed || 'Failed', 'error');
             }
         }
 

@@ -37,6 +37,7 @@
         @include('partials.rtl-head')
     @endif
     @stack('styles')
+    <link rel="stylesheet" href="{{ asset('css/admin-panel-apple.css') }}?v={{ @filemtime(public_path('css/admin-panel-apple.css')) }}">
 
     <style>
         :root {
@@ -725,7 +726,7 @@
     </style>
 </head>
 
-<body class="admin-panel admin-sidebar-open" data-map-session-end="{{ route('map.session.end') }}" data-admin-locale="{{ app()->getLocale() }}">
+<body class="admin-panel apple-hig admin-sidebar-open" data-map-session-end="{{ route('map.session.end') }}" data-admin-locale="{{ app()->getLocale() }}">
 <!-- Sidebar Overlay -->
 <div class="sidebar-overlay" id="sidebarOverlay"></div>
 
@@ -798,72 +799,75 @@
 
 @include('partials.reverb-echo')
 
+<script src="{{ asset('js/admin-panel-apple.js') }}"></script>
+
 @stack('scripts')
 
 <script>
     document.addEventListener('DOMContentLoaded', function() {
-        const sidebar = document.getElementById('adminSidebar');
-        const overlay = document.getElementById('sidebarOverlay');
-        const toggleBtn = document.getElementById('sidebarToggle');
-        function isMobile() {
-            return window.innerWidth <= 768;
-        }
+        // Legacy dark-shell sidebar toggle — only used as a fallback when the
+        // page has NOT opted into the Apple HIG shell. When apple-hig is on,
+        // admin-panel-apple.js owns sidebar open/close + persistence.
+        if (!document.body.classList.contains('apple-hig')) {
+            const sidebar = document.getElementById('adminSidebar');
+            const overlay = document.getElementById('sidebarOverlay');
+            const toggleBtn = document.getElementById('sidebarToggle');
+            const isMobile = function () {
+                return window.innerWidth <= 768;
+            };
 
-        function setSidebarOpen(open) {
-            if (!sidebar) return;
-            const useOffset = open && !isMobile();
-            sidebar.classList.toggle('is-open', open);
-            document.body.classList.toggle('admin-sidebar-open', useOffset);
-            if (overlay) {
-                overlay.classList.toggle('show', open && isMobile());
-            }
-            document.body.style.overflow = (open && isMobile()) ? 'hidden' : '';
+            const setSidebarOpen = function (open) {
+                if (!sidebar) return;
+                const useOffset = open && !isMobile();
+                sidebar.classList.toggle('is-open', open);
+                document.body.classList.toggle('admin-sidebar-open', useOffset);
+                if (overlay) {
+                    overlay.classList.toggle('show', open && isMobile());
+                }
+                document.body.style.overflow = (open && isMobile()) ? 'hidden' : '';
+
+                if (toggleBtn) {
+                    toggleBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+                    const icon = toggleBtn.querySelector('i');
+                    if (icon) {
+                        icon.classList.toggle('fa-bars', !open);
+                        icon.classList.toggle('fa-times', open);
+                    }
+                }
+            };
+
+            const toggleSidebar = function () {
+                setSidebarOpen(!sidebar.classList.contains('is-open'));
+            };
+
+            const syncSidebarForViewport = function () {
+                if (!sidebar) return;
+                setSidebarOpen(!isMobile());
+            };
 
             if (toggleBtn) {
-                toggleBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
-                const icon = toggleBtn.querySelector('i');
-                if (icon) {
-                    icon.classList.toggle('fa-bars', !open);
-                    icon.classList.toggle('fa-times', open);
+                toggleBtn.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    toggleSidebar();
+                });
+            }
+
+            if (overlay) {
+                overlay.addEventListener('click', function() {
+                    setSidebarOpen(false);
+                });
+            }
+
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape' && sidebar && sidebar.classList.contains('is-open') && isMobile()) {
+                    setSidebarOpen(false);
                 }
-            }
-        }
-
-        function toggleSidebar() {
-            setSidebarOpen(!sidebar.classList.contains('is-open'));
-        }
-
-        function syncSidebarForViewport() {
-            if (!sidebar) return;
-            if (isMobile()) {
-                setSidebarOpen(false);
-            } else {
-                setSidebarOpen(true);
-            }
-        }
-
-        if (toggleBtn) {
-            toggleBtn.addEventListener('click', function(e) {
-                e.preventDefault();
-                e.stopPropagation();
-                toggleSidebar();
             });
+
+            window.addEventListener('resize', syncSidebarForViewport);
+            syncSidebarForViewport();
         }
-
-        if (overlay) {
-            overlay.addEventListener('click', function() {
-                setSidebarOpen(false);
-            });
-        }
-
-        document.addEventListener('keydown', function(e) {
-            if (e.key === 'Escape' && sidebar && sidebar.classList.contains('is-open') && isMobile()) {
-                setSidebarOpen(false);
-            }
-        });
-
-        window.addEventListener('resize', syncSidebarForViewport);
-        syncSidebarForViewport();
 
         // Initialize DataTables (English; Arabic uses admin-rtl.js)
         if ($.fn.DataTable && document.documentElement.getAttribute('dir') !== 'rtl') {

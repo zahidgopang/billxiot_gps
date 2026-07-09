@@ -18,6 +18,8 @@
     .gt-field-row label { font-size:.85rem; margin:0; }
     .gt-check { display:flex; align-items:center; gap:.45rem; font-size:.85rem; }
     .gt-maint-status { font-size:.72rem; }
+    .gt-maint-expired { color:#c62828; font-weight:600; }
+    .gt-maint-left { color:#2e7d32; }
     /* Select2 multi-select fits the modal width and renders above the overlay */
     .gt-obj-select { width:100%; }
     .gt-field-row .select2-container { width:100% !important; }
@@ -40,7 +42,10 @@
                 <thead><tr>
                     <th>{{ __('app.tracking.maint_objects') }}</th>
                     <th>{{ __('app.common.name') }}</th>
-                    <th>{{ __('app.tracking.maint_intervals') }}</th>
+                    <th>{{ __('app.tracking.maint_current_odo') }}</th>
+                    <th>{{ __('app.tracking.maint_odo_left') }}</th>
+                    <th>{{ __('app.tracking.maint_hours_left_col') }}</th>
+                    <th>{{ __('app.tracking.maint_days_left_col') }}</th>
                     <th>{{ __('app.common.status') }}</th>
                     <th></th>
                 </tr></thead>
@@ -110,7 +115,7 @@
                 <div class="gt-field-row">
                     <label class="gt-check"><input type="checkbox" name="trigger_odometer" value="1"> {{ __('app.tracking.maint_trig_odo') }}</label>
                     <span></span>
-                    <label class="gt-check"><input type="checkbox" name="update_last_service" value="1"> {{ __('app.tracking.maint_update_last') }}</label>
+                    <label class="gt-check"><input type="checkbox" name="update_last_service" value="1" checked> {{ __('app.tracking.maint_update_last') }}</label>
                     <span></span>
                 </div>
                 <div class="gt-field-row">
@@ -143,9 +148,13 @@
         },
         noRecords: @json(__('app.tracking.task_no_records')),
         confirmDelete: @json(__('app.tracking.maint_confirm_delete')),
+        confirmComplete: @json(__('app.tracking.maint_confirm_complete')),
+        completeTitle: @json(__('app.tracking.maint_complete')),
+        completed: @json(__('app.tracking.maint_completed')),
         selectObject: @json(__('app.tracking.maint_select_object')),
         selectTrigger: @json(__('app.tracking.maint_select_trigger')),
         failed: @json(__('app.common.failed')),
+        na: '—',
     },
 };</script>
 <script src="{{ protected_js('tracking-maintenance.js') }}"></script>

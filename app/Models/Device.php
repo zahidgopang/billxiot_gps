@@ -6,6 +6,7 @@ use App\Models\ClientDevice;
 use App\Models\Concerns\HasTraccarUserAssignment;
 use App\Models\Concerns\UsesTcTable;
 use App\Services\Traccar\TraccarDeviceAccessService;
+use App\Services\Tracking\DeviceOdometerService;
 use App\Support\Traccar\TraccarAppFields;
 use App\Support\Traccar\TraccarAttributes;
 use App\Support\Traccar\TraccarSchema;
@@ -354,6 +355,22 @@ class Device extends Model
         $this->patchTraccarAppAttributes([TraccarAppFields::KEY_VEHICLE_TYPE => $value ?: null]);
     }
 
+    public function odometerBaselineKm(): ?float
+    {
+        return app(DeviceOdometerService::class)->baselineKm($this);
+    }
+
+    public function odometerDisplayKm($reportedOdometerMeters = null): ?float
+    {
+        if ($reportedOdometerMeters === null) {
+            $reportedOdometerMeters = $this->relationLoaded('latestLocation')
+                ? $this->latestLocation?->odometer
+                : null;
+        }
+
+        return app(DeviceOdometerService::class)->displayKm($this, $reportedOdometerMeters);
+    }
+
     public function getMapMarkerStyleAttribute(): string
     {
         $value = TraccarAppFields::get(
@@ -431,6 +448,70 @@ class Device extends Model
         ]);
     }
 
+    public function getMapBuiltinIconPathAttribute(): ?string
+    {
+        $path = TraccarAppFields::get(
+            $this->getTraccarAttributesJson(),
+            TraccarAppFields::KEY_MAP_BUILTIN_ICON
+        );
+
+        return is_string($path) && $path !== '' ? $path : null;
+    }
+
+    public function setMapBuiltinIconPathAttribute(?string $value): void
+    {
+        $this->patchTraccarAppAttributes([
+            TraccarAppFields::KEY_MAP_BUILTIN_ICON => is_string($value) && $value !== '' ? $value : null,
+        ]);
+    }
+
+    public function resolvedBuiltinIconPath(): string
+    {
+        $fallback = \App\Support\VehicleIcons\BuiltinMapIconStorage::relativePathForType('car');
+        $stored = $this->map_builtin_icon_path;
+
+        if (\App\Support\VehicleIcons\SharedMapIconStorage::isValidRelativePath($stored)) {
+            return (string) $stored;
+        }
+
+        if (\App\Support\VehicleIcons\SharedMapIconStorage::isSharedType($this->vehicle_type)) {
+            $shared = \App\Support\VehicleIcons\SharedMapIconStorage::findByType($this->vehicle_type);
+            if ($shared && \App\Support\VehicleIcons\SharedMapIconStorage::isValidRelativePath($shared->relative_path)) {
+                return $shared->relative_path;
+            }
+
+            // Shared icon deleted / file missing — never leave the map blank.
+            return $fallback;
+        }
+
+        $resolved = \App\Support\VehicleIcons\BuiltinMapIconStorage::resolveRelativePath(
+            $stored,
+            $this->vehicle_type
+        );
+
+        if (\App\Support\VehicleIcons\BuiltinMapIconStorage::isValidRelativePath($resolved)) {
+            return $resolved;
+        }
+
+        return $fallback;
+    }
+
+    public function resolvedBuiltinIconUrl(): string
+    {
+        $path = $this->resolvedBuiltinIconPath();
+        if (\App\Support\VehicleIcons\VehicleIconLibrary::isValidIconPath($path)) {
+            return \App\Support\VehicleIcons\VehicleIconLibrary::urlForIconPath($path);
+        }
+
+        return \App\Support\VehicleIcons\VehicleIconLibrary::builtinUrlFor('car');
+    }
+
+    /** Guaranteed map icon URL used when custom/shared assets are missing. */
+    public function fallbackMapIconUrl(): string
+    {
+        return \App\Support\VehicleIcons\VehicleIconLibrary::builtinUrlFor('car');
+    }
+
     public function getMapIconRotationEnabledAttribute(): bool
     {
         $value = TraccarAppFields::get(
@@ -452,6 +533,74 @@ class Device extends Model
         ]);
     }
 
+    public function getMapIconRotationOffsetAttribute(): int
+    {
+        $value = TraccarAppFields::get(
+            $this->getTraccarAttributesJson(),
+            TraccarAppFields::KEY_MAP_ICON_ROTATION_OFFSET
+        );
+
+        if ($value === null || $value === '') {
+            return $this->resolvedIconRotationOffset();
+        }
+
+        return self::normalizeRotationOffsetDegrees($value);
+    }
+
+    public function setMapIconRotationOffsetAttribute(mixed $value): void
+    {
+        $this->patchTraccarAppAttributes([
+            TraccarAppFields::KEY_MAP_ICON_ROTATION_OFFSET => (string) self::normalizeRotationOffsetDegrees($value),
+        ]);
+    }
+
+    /**
+     * Degrees added to GPS heading so the selected icon nose points forward.
+     */
+    public function resolvedIconRotationOffset(): int
+    {
+        if ($this->usesCustomMapIcon()) {
+            $stored = TraccarAppFields::get(
+                $this->getTraccarAttributesJson(),
+                TraccarAppFields::KEY_MAP_ICON_ROTATION_OFFSET
+            );
+            if ($stored !== null && $stored !== '') {
+                return self::normalizeRotationOffsetDegrees($stored);
+            }
+
+            return 0;
+        }
+
+        if (\App\Support\VehicleIcons\SharedMapIconStorage::isSharedType($this->vehicle_type)) {
+            $shared = \App\Support\VehicleIcons\SharedMapIconStorage::findByType($this->vehicle_type);
+            if ($shared) {
+                return $shared->signedRotationOffset();
+            }
+        }
+
+        $path = $this->map_builtin_icon_path;
+        if (\App\Support\VehicleIcons\SharedMapIconStorage::isValidRelativePath($path)) {
+            $shared = \App\Support\VehicleIcons\SharedMapIconStorage::findByRelativePath($path);
+            if ($shared) {
+                return $shared->signedRotationOffset();
+            }
+        }
+
+        // Built-in top-down icons face North (nose up).
+        return 0;
+    }
+
+    public static function normalizeRotationOffsetDegrees(mixed $value): int
+    {
+        $raw = (int) $value;
+        $raw = (($raw % 360) + 360) % 360;
+        if ($raw > 180) {
+            $raw -= 360;
+        }
+
+        return $raw;
+    }
+
     public function mapMarkerSizeScale(): float
     {
         return VehicleIconLibrary::scaleForSize($this->map_marker_size);
@@ -466,9 +615,16 @@ class Device extends Model
 
     public function usesCustomMapIcon(): bool
     {
-        return $this->map_icon_source === 'custom'
-            && is_string($this->map_custom_icon)
-            && $this->map_custom_icon !== '';
+        if ($this->map_icon_source !== 'custom'
+            || ! is_string($this->map_custom_icon)
+            || $this->map_custom_icon === '') {
+            return false;
+        }
+
+        // Missing/deleted upload files must not hide the selected library icon.
+        $url = app(\App\Services\Tracking\DeviceVehicleIconService::class)->url($this);
+
+        return is_string($url) && $url !== '';
     }
 
     /**
@@ -479,15 +635,38 @@ class Device extends Model
         $iconService = app(\App\Services\Tracking\DeviceVehicleIconService::class);
 
         $usesCustom = $this->usesCustomMapIcon();
+        $fallbackUrl = $this->fallbackMapIconUrl();
+        $builtinPath = $this->resolvedBuiltinIconPath();
+        $builtinUrl = $this->resolvedBuiltinIconUrl() ?: $fallbackUrl;
+
+        // Prefer a real vehicle type the renderer understands; missing shared types → car.
+        $vehicleType = $this->defaultMapIconName();
+        if (\App\Support\VehicleIcons\SharedMapIconStorage::isSharedType($vehicleType)
+            && ! \App\Support\VehicleIcons\SharedMapIconStorage::isValidRelativePath($builtinPath)) {
+            $vehicleType = 'car';
+        }
 
         return [
-            'vehicle_type' => $this->defaultMapIconName(),
+            'vehicle_type' => $vehicleType,
+            // Always expose a resolvable library URL so maps never render blank markers.
+            'map_builtin_icon_path' => $usesCustom ? 'Vehicles/car.svg' : $builtinPath,
+            'map_builtin_icon_url' => $usesCustom ? $fallbackUrl : $builtinUrl,
+            'map_fallback_icon_url' => $fallbackUrl,
             'map_icon_source' => $usesCustom ? 'custom' : 'default',
             'map_custom_icon_url' => $usesCustom ? $iconService->url($this) : null,
-            'map_marker_style' => $usesCustom ? 'body' : 'pin',
+            // Built-in / custom library icons use body markers (center-anchored).
+            // Status pin only for the explicit pin_marker type.
+            'map_marker_style' => $usesCustom
+                ? 'body'
+                : ($vehicleType === 'pin_marker'
+                    ? 'pin'
+                    : ($this->map_marker_style === 'labeled' ? 'labeled' : 'body')),
             'map_marker_size' => $this->map_marker_size,
             'map_marker_size_scale' => $this->mapMarkerSizeScale(),
             'map_icon_rotation_enabled' => $this->map_icon_rotation_enabled,
+            'map_icon_rotation_offset' => $this->resolvedIconRotationOffset(),
+            'map_icon_anchor_x' => 0.5,
+            'map_icon_anchor_y' => 0.5,
         ];
     }
 
@@ -574,12 +753,18 @@ class Device extends Model
             TraccarAppFields::KEY_MAP_MARKER_SIZE => $this->map_marker_size,
             TraccarAppFields::KEY_MAP_ICON_SOURCE => $this->map_icon_source,
             TraccarAppFields::KEY_MAP_CUSTOM_ICON => $this->map_custom_icon,
+            TraccarAppFields::KEY_MAP_BUILTIN_ICON => $this->map_builtin_icon_path,
             TraccarAppFields::KEY_MAP_ICON_ROTATION => $this->map_icon_rotation_enabled ? '1' : '0',
             TraccarAppFields::KEY_DRIVER_NAME => $this->driver_name,
             TraccarAppFields::KEY_DRIVER_CONTACT => $this->driver_contact,
             TraccarAppFields::KEY_SIM_TYPE => $this->sim_type,
             TraccarAppFields::KEY_SIM_NUMBER => $this->sim_number,
             TraccarAppFields::KEY_PLATE_TYPE => $this->plate_type,
+            TraccarAppFields::KEY_ODOMETER_BASE_KM => $this->odometerBaselineKm(),
+            TraccarAppFields::KEY_ODOMETER_BASE_SET_AT => TraccarAppFields::get(
+                $this->getTraccarAttributesJson(),
+                TraccarAppFields::KEY_ODOMETER_BASE_SET_AT
+            ),
         ];
 
         foreach ($appFields as $key => $value) {

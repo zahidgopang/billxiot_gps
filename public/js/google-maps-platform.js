@@ -279,6 +279,9 @@
         }
         const { w, h } = scaledSizePx(icon);
         const img = document.createElement('img');
+        const fallbackUrl = icon.meta?.fallbackUrl
+            || global.BuiltinMapIcons?.fallbackUrl?.()
+            || '/icons/builtin/Vehicles/car.svg';
         img.src = icon.url;
         img.alt = '';
         img.draggable = false;
@@ -287,12 +290,27 @@
         img.style.display = 'block';
         img.style.userSelect = 'none';
 
+        const baked = !!(icon.meta?.baked);
         const rotation = Number(icon.meta?.rotation ?? state.rotation ?? 0) || 0;
-        const flat = !!(icon.meta?.flat ?? state.flat);
-        if (flat && rotation) {
+        const flat = !baked && !!(icon.meta?.flat ?? state.flat);
+        if (flat) {
             img.style.transformOrigin = 'center center';
             img.style.transform = `rotate(${rotation}deg)`;
         }
+
+        // Missing/broken uploaded icons must never leave an empty marker.
+        img.onerror = () => {
+            if (!fallbackUrl || img.dataset.fallbackApplied === '1' || img.src === fallbackUrl) {
+                return;
+            }
+            img.dataset.fallbackApplied = '1';
+            img.src = fallbackUrl;
+            if (flat || baked) {
+                img.style.transformOrigin = 'center center';
+                const heading = Number(icon.meta?.heading ?? state.rotation ?? 0) || 0;
+                img.style.transform = `rotate(${heading}deg)`;
+            }
+        };
 
         parent.appendChild(img);
         return img;
@@ -331,6 +349,9 @@
                 outer._img = appendIconElement(inner, icon, state || { flat: false, rotation: 0 });
                 if (outer._img) {
                     outer._img.style.flexShrink = '0';
+                    if (icon?.meta?.baked) {
+                        outer._img.dataset.baked = '1';
+                    }
                 }
             }
         });
@@ -340,8 +361,13 @@
         if (!content?._img) {
             return;
         }
-        if (flat && rotation) {
-            content._img.style.transform = `rotate(${rotation}deg)`;
+        if (content._img.dataset?.baked === '1') {
+            content._img.style.transform = '';
+            return;
+        }
+        if (flat && Number.isFinite(Number(rotation))) {
+            content._img.style.transformOrigin = 'center center';
+            content._img.style.transform = `rotate(${Number(rotation) || 0}deg)`;
         } else {
             content._img.style.transform = '';
         }
@@ -493,7 +519,9 @@
                 return addAdvancedMarkerListener(native, event, fn);
             },
             getAnchor() {
-                return native;
+                // Return the compat wrapper (keeps _advanced) so popups use overlay
+                // positioning at the GPS point instead of InfoWindow tip offsets.
+                return compat;
             },
             getMap() {
                 return native.map ?? null;

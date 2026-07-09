@@ -76,19 +76,18 @@ class RbacService
             return true;
         }
 
-        // End users always get essential fleet permissions (live map, reports, commands).
-        // Device scope is enforced separately — overrides cannot revoke these.
+        $overrides = $this->permissionOverrides($user);
+
+        if (array_key_exists($permission, $overrides)) {
+            return $this->overrideEnables($overrides[$permission]);
+        }
+
         if ($this->isEndUser($user) && PermissionCatalog::isEssentialFleetPermission($permission)) {
             return true;
         }
 
         $role = $this->roleOf($user)->value;
         $rolePermissions = $this->rolePermissionKeys($role);
-        $overrides = $this->permissionOverrides($user);
-
-        if (array_key_exists($permission, $overrides)) {
-            return (bool) $overrides[$permission];
-        }
 
         if (in_array('*', $rolePermissions, true)) {
             return true;
@@ -133,7 +132,7 @@ class RbacService
         }
 
         foreach ($overrides as $key => $enabled) {
-            if ($enabled) {
+            if ($this->overrideEnables($enabled)) {
                 $granted[] = $key;
             } elseif (! ($this->isEndUser($user) && PermissionCatalog::isEssentialFleetPermission($key))) {
                 $granted = array_values(array_filter($granted, fn ($k) => $k !== $key));
@@ -210,6 +209,7 @@ class RbacService
             }
 
             if ($this->isEndUser($user)
+                && ! $user->isSubAccount()
                 && PermissionCatalog::isEssentialFleetPermission($key)
                 && ($value === '0' || $value === 0 || $value === false)) {
                 continue;
@@ -236,6 +236,7 @@ class RbacService
     public function setPermissionOverride(User $user, string $permission, ?bool $value): void
     {
         if ($this->isEndUser($user)
+            && ! $user->isSubAccount()
             && $value === false
             && PermissionCatalog::isEssentialFleetPermission($permission)) {
             return;
@@ -295,5 +296,18 @@ class RbacService
         }
 
         return true;
+    }
+
+    private function overrideEnables(mixed $value): bool
+    {
+        if ($value === true || $value === 1 || $value === '1') {
+            return true;
+        }
+
+        if ($value === false || $value === 0 || $value === '0' || $value === null || $value === '') {
+            return false;
+        }
+
+        return (bool) $value;
     }
 }

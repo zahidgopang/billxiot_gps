@@ -26,7 +26,8 @@ class MaintenanceController extends Controller
         return view('tracking.maintenance', $this->viewData($request, $panel, [
             'jsonUrl' => route('tracking.maintenance.json'),
             'storeUrl' => route('tracking.maintenance.store'),
-            'baseUrl' => route('tracking.maintenance.index'),
+            'baseUrl' => url('/tracking/maintenance'),
+            'completeUrlBase' => url('/tracking/maintenance'),
         ]));
     }
 
@@ -56,6 +57,27 @@ class MaintenanceController extends Controller
         $ok = $this->maintenance->delete($request->user(), $maintenance);
 
         return $this->noStoreJson(['success' => $ok]);
+    }
+
+    public function complete(Request $request, int $maintenance): JsonResponse
+    {
+        $validated = $request->validate([
+            'device_id' => 'nullable|integer',
+        ]);
+
+        $item = $this->maintenance->complete(
+            $request->user(),
+            $maintenance,
+            isset($validated['device_id']) ? (int) $validated['device_id'] : null,
+        );
+
+        return $this->noStoreJson([
+            'success' => $item !== null,
+            'item' => $item,
+            'message' => $item
+                ? __('app.tracking.maint_completed')
+                : __('app.common.failed'),
+        ], $item !== null ? 200 : 422);
     }
 
     /**

@@ -13,6 +13,10 @@ final class TraccarAppFields
 
     public const KEY_CREATED_BY = 'laravel_created_by';
 
+    public const KEY_PARENT_USER_ID = 'laravel_parent_user_id';
+
+    public const KEY_IS_SUB_ACCOUNT = 'laravel_is_sub_account';
+
     public const KEY_STATUS = 'laravel_status';
 
     public const KEY_PREFERENCES = 'laravel_preferences';
@@ -54,13 +58,29 @@ final class TraccarAppFields
 
     public const KEY_MAP_CUSTOM_ICON = 'map_custom_icon';
 
+    public const KEY_MAP_BUILTIN_ICON = 'map_builtin_icon_path';
+
     public const KEY_MAP_ICON_ROTATION = 'map_icon_rotation_enabled';
+
+    public const KEY_MAP_ICON_ROTATION_OFFSET = 'map_icon_rotation_offset';
 
     public const KEY_DRIVER_NAME = 'driver_name';
 
     public const KEY_DRIVER_CONTACT = 'driver_contact';
 
     public const KEY_PLATE_TYPE = 'plate_type';
+
+    public const KEY_ODOMETER_BASE_KM = 'odometer_base_km';
+
+    public const KEY_ODOMETER_BASE_SET_AT = 'odometer_base_set_at';
+
+    public const KEY_ODOMETER_GPS_ACCUM_KM = 'odometer_gps_accum_km';
+
+    public const KEY_ODOMETER_LAST_ACCUM_AT = 'odometer_last_accum_at';
+
+    public const KEY_ODOMETER_LAST_ACCUM_LAT = 'odometer_last_accum_lat';
+
+    public const KEY_ODOMETER_LAST_ACCUM_LNG = 'odometer_last_accum_lng';
 
     public const KEY_SIM_TYPE = 'sim_type';
 

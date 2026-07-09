@@ -38,6 +38,10 @@
         </div>
     @endif
 
+    @include('user.partials.profile-fleet-status')
+
+    @include('user.partials.dashboard-maintenance-due')
+
     {{-- KPI row 1 — matches /user/devices summary stats --}}
     <div class="ud-kpi-grid">
         <div class="ud-card">

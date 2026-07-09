@@ -33,14 +33,31 @@
                 <i class="fas fa-satellite text-white"></i>
             </div>
             <div>
-                <h6 class="mb-1">My Devices</h6>
-                <p class="small text-muted mb-0">Manage tracking devices</p>
+                <h6 class="mb-1">{{ __('app.user.devices.title') }}</h6>
+                <p class="small text-muted mb-0">{{ __('app.user.devices.subtitle') }}</p>
             </div>
         </div>
         <a href="{{ route('user.devices.index') }}" class="btn btn-outline-premium btn-sm w-100">
-            <i class="fas fa-list me-2"></i> View Devices
+            <i class="fas fa-list me-2"></i> {{ __('app.user.nav.view_devices') }}
         </a>
     </div>
+
+    @if(auth()->user()?->canViewSubAccounts())
+        <div class="premium-card mb-3">
+            <div class="d-flex align-items-center mb-3">
+                <div class="icon-box-sm me-3" style="background: linear-gradient(135deg, #6366F1, #4F46E5);">
+                    <i class="fas fa-user-group text-white"></i>
+                </div>
+                <div>
+                    <h6 class="mb-1">{{ __('app.sub_accounts.nav') }}</h6>
+                    <p class="small text-muted mb-0">{{ __('app.sub_accounts.subtitle') }}</p>
+                </div>
+            </div>
+            <a href="{{ route('user.sub-accounts.index') }}" class="btn btn-outline-premium btn-sm w-100">
+                <i class="fas fa-users me-2"></i> {{ __('app.sub_accounts.manage') }}
+            </a>
+        </div>
+    @endif
 
     <!-- Alerts -->
     <div class="premium-card mb-3">
@@ -49,12 +66,12 @@
                 <i class="fas fa-bell text-white"></i>
             </div>
             <div>
-                <h6 class="mb-1">Alerts &amp; Events</h6>
-                <p class="small text-muted mb-0">Stops, speed, geofence logs</p>
+                <h6 class="mb-1">{{ __('app.user.nav.alerts_events') }}</h6>
+                <p class="small text-muted mb-0">{{ __('app.user.nav.alerts_desc') }}</p>
             </div>
         </div>
         <a href="{{ route('user.alerts.index') }}" class="btn btn-outline-premium btn-sm w-100">
-            <i class="fas fa-list me-2"></i> View All Alerts
+            <i class="fas fa-list me-2"></i> {{ __('app.user.nav.view_all_alerts') }}
         </a>
     </div>
 
@@ -65,8 +82,8 @@
                 <i class="fas fa-user text-white"></i>
             </div>
             <div>
-                <h6 class="mb-1">My Profile</h6>
-                <p class="small text-muted mb-0">Account information</p>
+                <h6 class="mb-1">{{ __('app.user.nav.my_profile') }}</h6>
+                <p class="small text-muted mb-0">{{ __('app.user.nav.account_info') }}</p>
             </div>
         </div>
         <div class="user-info mb-3 p-3 rounded" style="background: rgba(25, 118, 210, 0.1);">
@@ -80,7 +97,7 @@
             </div>
         </div>
         <a href="{{ route('user.profile') }}" class="btn btn-premium btn-sm w-100">
-            <i class="fas fa-edit me-2"></i> Edit Profile
+            <i class="fas fa-edit me-2"></i> {{ __('app.user.nav.edit_profile') }}
         </a>
     </div>
 

@@ -15,6 +15,7 @@ use App\Services\Traccar\TraccarTrackingGate;
 use App\Support\DateTime\AppDateTime;
 use App\Support\Tracking\DeviceLocationPayload;
 use App\Support\Tracking\TelemetryFormatter;
+use App\Services\Tracking\DeviceOdometerService;
 use App\Services\Tracking\StatusDurationResolver;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
@@ -159,7 +160,7 @@ class GlobalTrackingService
             'speed' => $latest !== null ? round((float) ($latest->speed ?? 0)) : null,
             'angle' => $latest !== null ? round((float) ($latest->heading ?? 0)) : null,
             'altitude' => ($latest?->altitude !== null) ? round((float) $latest->altitude) : null,
-            'odometer' => TelemetryFormatter::odometerKm($latest?->odometer),
+            'odometer' => app(DeviceOdometerService::class)->displayKm($device, $latest?->odometer),
             'lat' => $latest ? (float) $latest->lat : null,
             'lng' => $latest ? (float) $latest->lng : null,
             'ignition' => $latest !== null ? (bool) $latest->ignition : null,
