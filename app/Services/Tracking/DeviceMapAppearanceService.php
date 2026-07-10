@@ -141,24 +141,35 @@ class DeviceMapAppearanceService
         }
 
         if (array_key_exists('vehicle_type', $validated)) {
-            $device->vehicle_type = $validated['vehicle_type'] ?: null;
-            // Selecting a library / shared icon clears per-device custom upload
-            // only when the client explicitly switches source to default.
-            if ($validated['vehicle_type']) {
+            $incoming = $validated['vehicle_type'] ?: null;
+
+            if ($incoming) {
+                // Always resolve the map icon path from the picker selection.
                 if (! array_key_exists('map_builtin_icon_path', $validated)) {
-                    if (\App\Support\VehicleIcons\SharedMapIconStorage::isSharedType($validated['vehicle_type'])) {
-                        $shared = \App\Support\VehicleIcons\SharedMapIconStorage::findByType($validated['vehicle_type']);
+                    if (\App\Support\VehicleIcons\SharedMapIconStorage::isSharedType($incoming)) {
+                        $shared = \App\Support\VehicleIcons\SharedMapIconStorage::findByType($incoming);
                         $device->map_builtin_icon_path = $shared?->relative_path;
                     } else {
-                        $device->map_builtin_icon_path = BuiltinMapIconStorage::relativePathForType($validated['vehicle_type']);
+                        $device->map_builtin_icon_path = BuiltinMapIconStorage::relativePathForType($incoming);
                     }
                 }
+
+                // Keep install-time body type (car/truck/…). Never store shared_* map-icon ids here —
+                // that polluted /admin/devices "Vehicle type" with labels like "Shared Car Svgrepo Com".
+                if (isset(Device::VEHICLE_TYPES[$incoming])) {
+                    $device->vehicle_type = $incoming;
+                } elseif (! isset(Device::VEHICLE_TYPES[(string) $device->vehicle_type])) {
+                    $device->vehicle_type = Device::guessBodyTypeFromMapIconKey($incoming) ?? 'car';
+                }
+
                 if (($validated['map_icon_source'] ?? null) === 'default') {
                     $this->iconService->delete($device);
                 }
                 if (! array_key_exists('map_marker_style', $validated)) {
-                    $device->map_marker_style = $validated['vehicle_type'] === 'pin_marker' ? 'pin' : 'body';
+                    $device->map_marker_style = $incoming === 'pin_marker' ? 'pin' : 'body';
                 }
+            } else {
+                $device->vehicle_type = null;
             }
         }
         if (array_key_exists('map_marker_style', $validated)) {

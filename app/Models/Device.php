@@ -352,7 +352,19 @@ class Device extends Model
 
     public function setVehicleTypeAttribute(?string $value): void
     {
-        $this->patchTraccarAppAttributes([TraccarAppFields::KEY_VEHICLE_TYPE => $value ?: null]);
+        $normalized = is_string($value) ? trim($value) : null;
+        if ($normalized === '') {
+            $normalized = null;
+        }
+
+        // Map-icon picker ids (shared_*) must never overwrite install-time body type.
+        if ($normalized !== null && ! isset(self::VEHICLE_TYPES[$normalized])) {
+            $normalized = self::guessBodyTypeFromMapIconKey($normalized);
+        }
+
+        $this->patchTraccarAppAttributes([
+            TraccarAppFields::KEY_VEHICLE_TYPE => $normalized,
+        ]);
     }
 
     public function odometerBaselineKm(): ?float
@@ -974,7 +986,54 @@ class Device extends Model
 
     public function vehicleTypeLabel(): string
     {
-        return $this->typeLabelFor($this->vehicle_type, self::VEHICLE_TYPES, 'vehicle_type');
+        $type = $this->vehicle_type;
+
+        // Map-icon ids (shared_*) must not appear as the install-time vehicle body type.
+        if (\App\Support\VehicleIcons\SharedMapIconStorage::isSharedType($type)
+            || ($type && ! isset(self::VEHICLE_TYPES[$type]))) {
+            $guess = self::guessBodyTypeFromMapIconKey($type);
+            if ($guess !== null) {
+                return $this->typeLabelFor($guess, self::VEHICLE_TYPES, 'vehicle_type');
+            }
+        }
+
+        return $this->typeLabelFor($type, self::VEHICLE_TYPES, 'vehicle_type');
+    }
+
+    /**
+     * Infer a predefined body type (car/truck/…) from a map-icon key or shared slug.
+     */
+    public static function guessBodyTypeFromMapIconKey(?string $key): ?string
+    {
+        $raw = strtolower(trim((string) $key));
+        if ($raw === '') {
+            return null;
+        }
+
+        $raw = preg_replace('/^shared_/', '', $raw) ?? $raw;
+        $raw = str_replace(['-', 'svgrepo', 'com'], ['_', '', ''], $raw);
+        $raw = preg_replace('/_+/', '_', $raw) ?? $raw;
+
+        foreach (array_keys(self::VEHICLE_TYPES) as $type) {
+            if ($type === 'other') {
+                continue;
+            }
+            if (str_contains($raw, $type)) {
+                return $type;
+            }
+        }
+
+        if (str_contains($raw, 'bike') || str_contains($raw, 'bicycle')) {
+            return 'bicycle';
+        }
+        if (str_contains($raw, 'moto')) {
+            return 'motorcycle';
+        }
+        if (str_contains($raw, 'bus')) {
+            return 'bus';
+        }
+
+        return null;
     }
 
     /**

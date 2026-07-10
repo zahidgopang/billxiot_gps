@@ -17,6 +17,9 @@
     $vehicleNumber = old('vehicle_number', optional($device)->vehicle_number ?? '');
     $vehicleModel = old('vehicle_model', optional($device)->vehicle_model ?? '');
     $vehicleType = old('vehicle_type', optional($device)->vehicle_type ?? '');
+    if ($vehicleType !== '' && ! isset(Device::VEHICLE_TYPES[$vehicleType])) {
+        $vehicleType = Device::guessBodyTypeFromMapIconKey($vehicleType) ?? '';
+    }
     $driverName = old('driver_name', optional($device)->driver_name ?? '');
     $driverContact = old('driver_contact', optional($device)->driverContactNumber() ?? '');
     $plateType = old('plate_type', optional($device)->plate_type ?? '');
