@@ -285,7 +285,8 @@ class UserDevicesController extends Controller
         if ($result['updated'] === 0) {
             return response()->json([
                 'success' => false,
-                'message' => $result['failed'][0]['message'] ?? __('app.map.marker_appearance_save_failed'),
+                'message' => $result['failed'][0]['message']
+                    ?? __('app.user.devices.icon_select_vehicles'),
                 'failed' => $result['failed'],
             ], 422);
         }

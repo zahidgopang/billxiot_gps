@@ -98,6 +98,36 @@
             font-size: 0.75rem;
             color: #64748b;
         }
+        .device-map-icon-thumb {
+            width: 36px;
+            height: 36px;
+            object-fit: contain;
+            border-radius: 8px;
+            background: #f1f5f9;
+            padding: 3px;
+            flex-shrink: 0;
+            border: 1px solid rgba(15, 23, 42, 0.06);
+        }
+        .device-row .device-icon {
+            width: 40px;
+            height: 40px;
+            background: transparent;
+            padding: 0;
+        }
+        .device-row .device-icon .device-map-icon-thumb {
+            width: 100%;
+            height: 100%;
+        }
+        .icon-vehicle-picker__thumb {
+            width: 28px;
+            height: 28px;
+            object-fit: contain;
+            border-radius: 6px;
+            background: #fff;
+            padding: 2px;
+            flex-shrink: 0;
+            border: 1px solid rgba(15, 23, 42, 0.08);
+        }
     </style>
     @if($canChangeIcons)
         <link rel="stylesheet" href="{{ asset('css/map-marker-appearance.css') }}?v={{ @filemtime(public_path('css/map-marker-appearance.css')) ?: 1 }}">
@@ -302,7 +332,7 @@
                             <td data-field="vehicle-identity">
                                 <div class="d-flex align-items-center">
                                     <div class="device-icon me-3">
-                                        <i class="fas {{ $d->deviceTypeIconClass() }} fa-lg" style="color: var(--primary-blue);"></i>
+                                        @include('partials.device-map-icon-thumb', ['device' => $d, 'size' => 36])
                                     </div>
                                     <div class="vehicle-list-identity">
                                         <span class="vehicle-list-name">{{ $d->listPrimaryLabel() }}</span>
@@ -437,6 +467,11 @@
                                                    class="form-check-input js-modal-icon-device"
                                                    id="modalIconDevice{{ $pickerDevice->id }}"
                                                    value="{{ $pickerDevice->id }}">
+                                            @include('partials.device-map-icon-thumb', [
+                                                'device' => $pickerDevice,
+                                                'size' => 28,
+                                                'class' => 'icon-vehicle-picker__thumb',
+                                            ])
                                             <label for="modalIconDevice{{ $pickerDevice->id }}">
                                                 <span>{{ $pickerDevice->listPrimaryLabel() }}</span>
                                                 @if($secondary = $pickerDevice->listSecondaryLabel())
@@ -795,6 +830,16 @@
                 }
                 const statusEl = iconForm.querySelector('[data-map-save-status]');
                 if (statusEl) statusEl.textContent = '';
+                // Bulk modal: always start from the default map icon (not a prior custom/AI upload preview).
+                iconForm.dataset.customActive = '0';
+                delete iconForm.dataset.customPreviewUrl;
+                delete iconForm.dataset.customPreviewBlob;
+                iconForm.querySelector('[data-map-revert-custom]')?.setAttribute('hidden', 'hidden');
+                const typeEl = iconForm.querySelector('[data-map-vehicle-type]');
+                const pathEl = iconForm.querySelector('[data-map-builtin-icon-path]');
+                if (typeEl) typeEl.value = 'car';
+                if (pathEl) pathEl.value = 'Vehicles/car.svg';
+                window.MapMarkerAppearance?.renderPreview?.(iconForm, {});
                 if (vehicleSearch) vehicleSearch.value = '';
                 filterVehicleList();
                 // Keep table + modal in sync: checked list rows become selected in Change icon.

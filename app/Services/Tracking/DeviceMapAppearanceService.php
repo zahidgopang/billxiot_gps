@@ -362,14 +362,21 @@ class DeviceMapAppearanceService
             return collect();
         }
 
-        // Panel managers resolve by tenant device scope; end users by assigned trackers.
-        $query = $this->rbac->hasPermission($user, 'devices.manage')
-            ? $this->tenantScope->scopeDevices(Device::query(), $user)
-            : $user->trackerDevicesQuery();
-
-        return $query
+        // End users (and hybrid accounts) always resolve by assigned trackers.
+        // Panel managers with devices.manage also include tenant-scoped devices
+        // that may not be on their personal tracker assignment.
+        $devices = $user->trackerDevicesQuery()
             ->whereIn('id', $ids)
-            ->get()
+            ->get();
+
+        if ($this->rbac->hasPermission($user, 'devices.manage')) {
+            $tenantDevices = $this->tenantScope->scopeDevices(Device::query(), $user)
+                ->whereIn('id', $ids)
+                ->get();
+            $devices = $devices->merge($tenantDevices)->unique('id')->values();
+        }
+
+        return $devices
             ->filter(fn (Device $device) => $this->auth->canEditAppearance($user, $device))
             ->values();
     }

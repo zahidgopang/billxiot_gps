@@ -673,9 +673,11 @@
                     statusEl.textContent = data.message || options.i18n?.saved || 'Saved';
                 }
             } catch (err) {
+                const msg = err.message || options.i18n?.failed || 'Failed';
                 if (statusEl) {
-                    statusEl.textContent = err.message || options.i18n?.failed || 'Failed';
+                    statusEl.textContent = msg;
                 }
+                options.onError?.(msg);
             } finally {
                 btn?.removeAttribute('disabled');
             }

@@ -507,6 +507,37 @@ class Device extends Model
         return \App\Support\VehicleIcons\VehicleIconLibrary::builtinUrlFor('car');
     }
 
+    /** List/table thumb: uploaded custom icon when present, otherwise the real default map icon. */
+    public function listMapIconUrl(): string
+    {
+        if ($this->usesCustomMapIcon()) {
+            $url = app(\App\Services\Tracking\DeviceVehicleIconService::class)->url($this);
+            if (is_string($url) && $url !== '') {
+                return $url;
+            }
+        }
+
+        // Prefer root-relative builtin assets so list thumbs match the live map
+        // and never depend on a generated/placeholder image.
+        $path = $this->resolvedBuiltinIconPath();
+        if (\App\Support\VehicleIcons\BuiltinMapIconStorage::isValidRelativePath($path)) {
+            $relative = \App\Support\VehicleIcons\BuiltinMapIconStorage::publicRoot().'/'.ltrim($path, '/');
+            $url = '/'.trim(str_replace('\\', '/', $relative), '/');
+            $absolute = \App\Support\VehicleIcons\BuiltinMapIconStorage::absolutePath($path);
+            if (is_file($absolute)) {
+                $url .= '?v='.filemtime($absolute);
+            }
+
+            return $url;
+        }
+
+        if (\App\Support\VehicleIcons\SharedMapIconStorage::isValidRelativePath($path)) {
+            return \App\Support\VehicleIcons\SharedMapIconStorage::urlForRelativePath($path);
+        }
+
+        return '/icons/builtin/Vehicles/car.svg';
+    }
+
     public function getMapIconRotationEnabledAttribute(): bool
     {
         $value = TraccarAppFields::get(

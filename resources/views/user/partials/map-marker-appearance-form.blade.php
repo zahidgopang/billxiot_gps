@@ -25,9 +25,17 @@
     $appearance = $device->mapAppearancePayload();
     $sizePresets = VehicleIconLibrary::sizeScales();
     $registry = VehicleIconLibrary::clientRegistry();
-    $hasCustomIcon = ($appearance['map_icon_source'] ?? 'default') === 'custom' && ! empty($appearance['map_custom_icon_url']);
-    $currentType = $appearance['vehicle_type'] ?? 'car';
-    $currentBuiltinPath = $appearance['map_builtin_icon_path'] ?? VehicleIconLibrary::builtinPathFor($currentType);
+    // Bulk Change-icon modal must not seed one vehicle's custom/AI upload into the shared preview.
+    $forceDefaultPreview = (bool) ($forceDefaultPreview ?? ($mapCustomIconDeleteUrl === ''));
+    $hasCustomIcon = ! $forceDefaultPreview
+        && ($appearance['map_icon_source'] ?? 'default') === 'custom'
+        && ! empty($appearance['map_custom_icon_url']);
+    $currentType = $forceDefaultPreview
+        ? 'car'
+        : ($appearance['vehicle_type'] ?? 'car');
+    $currentBuiltinPath = $forceDefaultPreview
+        ? VehicleIconLibrary::builtinPathFor('car')
+        : ($appearance['map_builtin_icon_path'] ?? VehicleIconLibrary::builtinPathFor($currentType));
 @endphp
 <form id="{{ $formId }}"
       class="map-marker-appearance"
