@@ -341,6 +341,7 @@ class GlobalTrackingController extends Controller
             'multiColors' => GlobalTrackingService::MULTI_VEHICLE_COLORS,
             'hubRoutes' => $this->trackingHubRoutes($panel),
             'routes' => $this->liveRouteNames($panel),
+            'trackingUi' => $this->trackingUiFor($request->user()),
         ]);
     }
 

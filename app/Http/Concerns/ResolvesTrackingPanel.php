@@ -36,6 +36,16 @@ trait ResolvesTrackingPanel
     }
 
     /**
+     * UI permission gates for the shared /tracking workspace nav.
+     *
+     * @return array<string, mixed>
+     */
+    protected function trackingUiFor(?User $user): array
+    {
+        return app(\App\Services\Tracking\TrackingUiPermissions::class)->forUser($user);
+    }
+
+    /**
      * @return array<string, string>
      */
     protected function trackingHubRoutes(string $panel): array

@@ -69,6 +69,7 @@ class CommandsController extends Controller
             'layout' => $this->layoutForPanel($panel),
             'vehicles' => $this->tracking->listItemsForActor($request->user()),
             'hubRoutes' => $this->trackingHubRoutes($panel),
+            'trackingUi' => $this->trackingUiFor($request->user()),
         ], $extra);
     }
 }

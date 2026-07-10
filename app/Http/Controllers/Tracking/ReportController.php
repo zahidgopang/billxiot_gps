@@ -131,6 +131,7 @@ class ReportController extends Controller
             'layout' => $this->layoutForPanel($panel),
             'vehicles' => $this->tracking->listItemsForActor($request->user()),
             'hubRoutes' => $this->trackingHubRoutes($panel),
+            'trackingUi' => $this->trackingUiFor($request->user()),
             'stateColors' => \App\Services\Mobile\VehicleStatusSpec::STATE_COLORS,
         ], $extra);
     }

@@ -210,6 +210,7 @@
         body.tracking-embed .tracking-topbar { display: none !important; }
         body.tracking-embed .content-wrap { margin-top: 0; padding: 0.85rem; }
         body.tracking-embed .gt-hub-nav { display: none !important; }
+        body.tracking-embed .tc-workspace-nav { display: none !important; }
         body.tracking-embed .gt-module-page > h1:first-child { display: none; }
     </style>
 </head>

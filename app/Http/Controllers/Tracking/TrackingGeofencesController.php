@@ -137,6 +137,7 @@ class TrackingGeofencesController extends Controller
             'layout' => $this->layoutForPanel($panel),
             'vehicles' => $this->tracking->listItemsForActor($request->user()),
             'hubRoutes' => $this->trackingHubRoutes($panel),
+            'trackingUi' => $this->trackingUiFor($request->user()),
             'googleMapsKey' => config('services.google.maps_key'),
             'canManageGeofences' => $this->rbac->hasPermission($request->user(), 'web.geofence.manage'),
         ], $extra);

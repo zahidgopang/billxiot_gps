@@ -14,45 +14,119 @@
         min-height: calc(100vh - var(--tracking-topbar-height, 52px));
     }
 
-    /* Apple segmented hub nav (Reports, Geofences, etc.) */
-    .gt-hub-nav {
-        margin-bottom: 0.85rem !important;
-        padding: 0;
+    /* Shared /tracking workspace nav (same bar on Live + Maintenance/Reports/…) */
+    .tc-workspace-nav {
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        gap: 0.35rem;
+        min-height: 34px;
+        padding: 0.25rem 0.5rem;
+        background: var(--apple-bg-primary);
+        border-bottom: 0.5px solid var(--apple-separator);
+        z-index: 30;
+        margin: 0 0 0.85rem;
+        border-radius: 0;
     }
-    .gt-hub-nav .nav {
-        display: inline-flex;
-        flex-wrap: wrap;
-        gap: 2px;
+    .tc-workspace-nav--modules {
+        margin-inline: -1rem;
+        margin-top: -0.85rem;
+        width: calc(100% + 2rem);
+        max-width: none;
+        box-sizing: border-box;
+    }
+    .tc-workspace-nav__track {
+        display: flex;
+        align-items: center;
+        flex: 1;
+        min-width: 0;
         padding: 2px;
         border-radius: 9px;
         background: var(--apple-bg-secondary);
+        overflow-x: auto;
+        scrollbar-width: none;
+        -webkit-overflow-scrolling: touch;
     }
-    .gt-hub-nav .nav-link {
+    .tc-workspace-nav__track::-webkit-scrollbar { display: none; }
+    .tc-workspace-nav__links {
         display: inline-flex;
         align-items: center;
-        gap: 0.35rem;
-        padding: 0.32rem 0.65rem;
-        border-radius: 7px;
-        border: none;
+        gap: 2px;
+        min-width: min-content;
+    }
+    .tc-workspace-nav__links a {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        padding: 0.22rem 0.5rem;
+        border-radius: 6px;
         color: #636366;
-        font-size: 0.75rem;
+        text-decoration: none;
+        font-size: 0.6875rem;
         font-weight: 500;
         letter-spacing: -0.02em;
         line-height: 1.25;
+        white-space: nowrap;
         transition: background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
     }
-    .gt-hub-nav .nav-link:hover {
-        color: #1d1d1f;
-        background: rgba(118, 118, 128, 0.08);
+    .tc-workspace-nav__links a i {
+        font-size: 0.6875rem;
+        opacity: 0.75;
+        width: 1em;
+        text-align: center;
+        color: #8e8e93;
     }
-    .gt-hub-nav .nav-link.active {
+    .tc-workspace-nav__links a:hover { color: #1d1d1f; }
+    .tc-workspace-nav__links a:hover i { opacity: 0.95; color: #636366; }
+    .tc-workspace-nav__links a.active {
         background: var(--apple-bg-primary);
         color: #1d1d1f;
         font-weight: 600;
         box-shadow: var(--tc-shadow-sm);
     }
-    .gt-hub-nav .nav-link.active i {
+    .tc-workspace-nav__links a.active i {
+        opacity: 1;
         color: #007aff;
+    }
+    .tc-workspace-nav__panel-btn {
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        width: 30px;
+        height: 30px;
+        border: none;
+        border-radius: 8px;
+        background: rgba(118, 118, 128, 0.12);
+        color: #3a3a3c;
+        font-size: 0.8rem;
+        text-decoration: none;
+        cursor: pointer;
+    }
+    .tc-workspace-nav__panel-btn:hover {
+        background: rgba(118, 118, 128, 0.18);
+        color: #1d1d1f;
+    }
+    .tc-workspace-nav__actions {
+        display: inline-flex;
+        align-items: center;
+        flex-shrink: 0;
+        margin-inline-start: 0.15rem;
+    }
+    .tc-workspace-nav__collapse-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        width: 26px;
+        height: 26px;
+        border: none;
+        border-radius: 6px;
+        background: transparent;
+        color: #86868b;
+        font-size: 0.7rem;
+        cursor: pointer;
     }
 
     .gt-module-card {

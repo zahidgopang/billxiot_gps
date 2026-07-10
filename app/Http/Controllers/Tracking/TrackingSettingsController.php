@@ -25,6 +25,7 @@ class TrackingSettingsController extends Controller
             'panel' => $panel,
             'layout' => $this->layoutForPanel($panel),
             'hubRoutes' => $this->trackingHubRoutes($panel),
+            'trackingUi' => $this->trackingUiFor($request->user()),
             'settings' => $this->settings->forActor($request->user()),
             'jsonUrl' => route('tracking.settings.json'),
             'updateUrl' => route('tracking.settings.update'),

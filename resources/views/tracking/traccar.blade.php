@@ -1904,17 +1904,6 @@
         $mapCtl = $ui['map_controls'] ?? [];
         $firstSidebarTab = collect(['objects', 'events', 'places', 'history'])
             ->first(fn (string $tab) => ! empty($tabPerms[$tab])) ?? null;
-        $iconLinks = [
-            ['key' => 'live', 'icon' => 'fa-location-arrow', 'route' => $hubRoutes['live'] ?? null, 'label' => __('app.tracking.live_link'), 'active' => true, 'hub' => true],
-            ['key' => 'reports', 'icon' => 'fa-chart-bar', 'route' => $hubRoutes['reports'] ?? null, 'label' => __('app.tracking.reports_nav')],
-            ['key' => 'geofences', 'icon' => 'fa-draw-polygon', 'route' => $hubRoutes['geofences'] ?? null, 'label' => __('app.tracking.geofences_nav')],
-            ['key' => 'maintenance', 'icon' => 'fa-wrench', 'route' => $hubRoutes['maintenance'] ?? null, 'label' => __('app.tracking.maintenance_nav')],
-            ['key' => 'drivers', 'icon' => 'fa-id-card', 'route' => $hubRoutes['drivers'] ?? null, 'label' => __('app.tracking.drivers_nav')],
-            ['key' => 'commands', 'icon' => 'fa-terminal', 'route' => $hubRoutes['commands'] ?? null, 'label' => __('app.tracking.commands_nav')],
-            ['key' => 'tasks', 'icon' => 'fa-tasks', 'route' => $hubRoutes['tasks'] ?? null, 'label' => __('app.tracking.tasks_nav')],
-            ['key' => 'notifications', 'icon' => 'fa-bell', 'route' => $hubRoutes['notifications'] ?? null, 'label' => __('app.tracking.notifications_nav')],
-            ['key' => 'settings', 'icon' => 'fa-sliders-h', 'route' => $hubRoutes['settings'] ?? null, 'label' => __('app.tracking.settings_nav')],
-        ];
     @endphp
     @if(! empty($ui['alert_controls']))
     @push('tracking-topbar-actions')
@@ -1957,30 +1946,12 @@
             @if(! empty($ui['iconbar']))
             <div class="tc-workspace-nav__track">
                 <div class="tc-workspace-nav__links" id="tcIconbarLinks">
-                    @foreach($iconLinks as $link)
-                        @php
-                            $hubKey = $link['key'];
-                            $showHub = ! empty($link['hub']) || ! empty($hubPerms[$hubKey]);
-                        @endphp
-                        @if($showHub && $link['route'] && Route::has($link['route']))
-                            @if(!empty($link['active']))
-                                <a href="{{ route($link['route']) }}" class="active"
-                                   title="{{ $link['label'] }}" aria-label="{{ $link['label'] }}">
-                                    <i class="fas {{ $link['icon'] }}"></i>
-                                    <span>{{ $link['label'] }}</span>
-                                </a>
-                            @else
-                                <a href="{{ route($link['route']) }}"
-                                   data-tc-module="{{ route($link['route']) }}"
-                                   data-tc-module-title="{{ $link['label'] }}"
-                                   data-tc-module-icon="{{ $link['icon'] }}"
-                                   title="{{ $link['label'] }}" aria-label="{{ $link['label'] }}">
-                                    <i class="fas {{ $link['icon'] }}"></i>
-                                    <span>{{ $link['label'] }}</span>
-                                </a>
-                            @endif
-                        @endif
-                    @endforeach
+                    @include('tracking.partials.workspace-nav-links', [
+                        'hubRoutes' => $hubRoutes ?? [],
+                        'trackingUi' => $ui,
+                        'moduleEmbed' => false,
+                        'activeHubKey' => 'live',
+                    ])
                 </div>
             </div>
             <div class="tc-workspace-nav__actions">

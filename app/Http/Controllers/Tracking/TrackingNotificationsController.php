@@ -62,6 +62,7 @@ class TrackingNotificationsController extends Controller
             'panel' => $panel,
             'layout' => $this->layoutForPanel($panel),
             'hubRoutes' => $this->trackingHubRoutes($panel),
+            'trackingUi' => $this->trackingUiFor($request->user()),
         ], $extra);
     }
 }
