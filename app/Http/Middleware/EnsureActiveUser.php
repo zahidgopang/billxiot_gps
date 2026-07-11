@@ -27,6 +27,17 @@ class EnsureActiveUser
 
         $message = 'Your account is inactive. You cannot use map tracking until an administrator reactivates your account.';
 
+        // /user/devices is the inactive landing page (shows access_denied flash).
+        // Never redirect away from it — that caused ERR_TOO_MANY_REDIRECTS.
+        if ($request->routeIs('user.devices.index')) {
+            if (! $request->session()->has('access_denied_message')) {
+                $request->session()->now('access_denied_title', 'Account inactive');
+                $request->session()->now('access_denied_message', $message);
+            }
+
+            return $next($request);
+        }
+
         if ($request->expectsJson() || $request->ajax()) {
             return response()->json([
                 'error' => 'user_inactive',

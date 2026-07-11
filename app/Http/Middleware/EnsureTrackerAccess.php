@@ -43,6 +43,13 @@ class EnsureTrackerAccess
                 ], 403);
             }
 
+            // Inactive users land on /user/devices via EnsureActiveUser. Do not
+            // bounce them to dashboard (that middleware would send them back → loop).
+            if ($request->routeIs('user.devices.index')
+                && ! app(\App\Services\DeviceAccessService::class)->isUserActive($user)) {
+                return $next($request);
+            }
+
             if (! $request->routeIs('user.dashboard')) {
                 return redirect()
                     ->route('user.dashboard')
