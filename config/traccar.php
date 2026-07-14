@@ -179,4 +179,19 @@ return [
         'geofence_events' => 'geofence_events',
     ],
 
+    /*
+    | Traccar HTTP API — used to deliver engineStop / engineResume / custom commands
+    | over the live GPRS session (POST /api/commands/send). Direct DB inserts into
+    | tc_commands_queue alone do not notify an already-online device.
+    */
+    'api' => [
+        'url' => rtrim((string) env('TRACCAR_API_URL', 'http://127.0.0.1:8082'), '/'),
+        'email' => (string) env('TRACCAR_API_EMAIL', 'admin@admin.com'),
+        'password' => (string) env(
+            'TRACCAR_API_PASSWORD',
+            env('TRACCAR_DEFAULT_USER_PASSWORD', '12345678')
+        ),
+        'timeout' => (int) env('TRACCAR_API_TIMEOUT', 15),
+    ],
+
 ];

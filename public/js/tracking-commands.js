@@ -18,8 +18,11 @@
     function statusBadge(status) {
         const map = {
             pending: ['warning', i18n.statusPending || 'Pending'],
-            sent: ['success', i18n.statusSent || 'Sent'],
+            sent: ['info', i18n.statusSent || 'Sent'],
+            delivered: ['primary', i18n.statusDelivered || 'Delivered'],
+            executed: ['success', i18n.statusExecuted || 'Executed'],
             failed: ['danger', i18n.statusFailed || 'Failed'],
+            timeout: ['dark', i18n.statusTimeout || 'Timeout'],
             canceled: ['secondary', i18n.statusCanceled || 'Canceled'],
         };
         const [cls, label] = map[status] || ['secondary', status];
@@ -63,15 +66,21 @@
         }
 
         body.innerHTML = commands.map((c) => {
-            const cancelBtn = c.status === 'pending'
+            const cancelBtn = (c.status === 'pending' || c.status === 'sent')
                 ? `<button type="button" class="btn btn-sm btn-outline-danger" data-cancel="${c.id}"><i class="fas fa-times"></i> ${escHtml(i18n.cancel || 'Cancel')}</button>`
+                : '';
+            const wire = c.wire_type
+                ? `<div class="small text-muted">${escHtml(c.wire_type)}${c.wire_data ? ': ' + escHtml(c.wire_data) : ''}</div>`
+                : '';
+            const result = c.result
+                ? `<div class="small text-muted" title="${escHtml(c.result)}">${escHtml(String(c.result).slice(0, 80))}</div>`
                 : '';
             return `<tr data-id="${c.id}">
                 <td class="text-nowrap small">${escHtml(c.time_display || c.time || '')}</td>
                 <td>${escHtml(c.device || ('#' + c.device_id))}</td>
-                <td>${escHtml(c.type_label || c.type)}</td>
+                <td>${escHtml(c.type_label || c.type)}${wire}</td>
                 <td class="small text-muted">${escHtml(c.data || '')}</td>
-                <td>${statusBadge(c.status)}</td>
+                <td>${statusBadge(c.status)}${result}</td>
                 <td class="small text-muted">${escHtml(c.requested_by || '')}</td>
                 <td class="text-end">${cancelBtn}</td>
             </tr>`;

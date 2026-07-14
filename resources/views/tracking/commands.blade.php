@@ -75,7 +75,10 @@
         cancel: @json(__('app.common.cancel')),
         statusPending: @json(__('app.tracking.command_status_pending')),
         statusSent: @json(__('app.tracking.command_status_sent')),
+        statusDelivered: @json(__('app.tracking.command_status_delivered')),
+        statusExecuted: @json(__('app.tracking.command_status_executed')),
         statusFailed: @json(__('app.tracking.command_status_failed')),
+        statusTimeout: @json(__('app.tracking.command_status_timeout')),
         statusCanceled: @json(__('app.tracking.command_status_canceled')),
     },
 };</script>

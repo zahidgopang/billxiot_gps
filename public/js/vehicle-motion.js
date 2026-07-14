@@ -12,10 +12,14 @@
 
     var EARTH_RADIUS_M = 6371000;
     var MAX_DT_S = 0.1;
-    /** Soft catch-up time constant (seconds) for position. */
+    /** Soft catch-up time constant (seconds) for position (straight driving). */
     var RECONCILE_TAU_S = 0.65;
+    /** Slower residual pull during sharp turns (accuracy over catch-up). */
+    var TURN_RECONCILE_TAU_S = 1.35;
     /** Hard cap — one natural turn, never several full revolutions. */
     var MAX_TURN_DEG_PER_S = 160;
+    /** Slightly faster yaw allowed while navigating a corner. */
+    var TURN_MAX_TURN_DEG_PER_S = 200;
     /** Treat as moving only above this speed (m/s ≈ 2 km/h). */
     var MIN_DR_MPS = 0.56;
     /** Device speed at or below this (km/h) is stationary — ignore heading/DR. */
@@ -30,6 +34,12 @@
     var MAX_COAST_S = 8;
     /** Keep the shared rAF alive briefly after last motion (ms). */
     var IDLE_KEEPALIVE_MS = 250;
+    /** Heading delta between fixes that starts sharp-turn / low-prediction mode. */
+    var SHARP_TURN_DEG = 35;
+    /** Heading considered stable again — resume normal prediction. */
+    var STABLE_HEADING_DEG = 18;
+    /** U-turn / reverse-direction class (extra-conservative prediction). */
+    var UTURN_DEG = 120;
 
     function clamp(n, min, max) {
         return Math.max(min, Math.min(max, n));
@@ -236,7 +246,12 @@
                 meta: st.meta,
                 fixTimeMs: st.lastFixMs,
                 idle: !!st.idle,
-                deadReckoning: !st.idle && !st.hasTarget && st.speedMps > MIN_DR_MPS,
+                turnMode: !!st.turnMode,
+                deadReckoning: !st.idle
+                    && !st.hasTarget
+                    && !st.suppressDr
+                    && !st.turnMode
+                    && st.speedMps > MIN_DR_MPS,
                 t: st.hasTarget ? 0.5 : 1,
                 done: !!st.idle || (!st.hasTarget && st.speedMps <= MIN_DR_MPS),
             };
@@ -289,6 +304,9 @@
             st.hasTarget = false;
             st.speedMps = 0;
             st.targetSpeedMps = 0;
+            st.turnMode = false;
+            st.suppressDr = false;
+            st.turnHeadingDelta = 0;
             if (to && Number.isFinite(to.lat) && Number.isFinite(to.lng)) {
                 st.lat = to.lat;
                 st.lng = to.lng;
@@ -301,6 +319,7 @@
             st.courseHeading = st.heading;
             st.targetHeading = st.heading;
             st.lastFixHeading = st.heading;
+            st.lastPathBearing = st.heading;
             st.lastFixSpeedMps = 0;
             st.lastFixReceivedAt = now;
             st._settledEmitted = false;
@@ -326,37 +345,84 @@
                     lat: st.targetLat,
                     lng: st.targetLng,
                 });
-                var alpha = 1 - Math.exp(-dt / RECONCILE_TAU_S);
 
-                if (err > TARGET_ABSORB_M) {
-                    st.lat = lerp(st.lat, st.targetLat, alpha);
-                    st.lng = lerp(st.lng, st.targetLng, alpha);
-                    st.heading = turnToward(
-                        st.heading,
-                        st.targetHeading,
-                        dt,
-                        MAX_TURN_DEG_PER_S
-                    );
-                    st.courseHeading = st.heading;
-                    st.speedMps = lerp(st.speedMps, st.targetSpeedMps, alpha);
-                    lastActivityPerf = now;
-                } else {
+                if (err <= TARGET_ABSORB_M) {
                     st.lat = st.targetLat;
                     st.lng = st.targetLng;
                     st.heading = normalizeHeading(st.targetHeading);
                     st.courseHeading = st.heading;
                     st.speedMps = st.targetSpeedMps;
                     st.hasTarget = false;
+                    // After a turn segment, hold prediction until the next fix so we
+                    // do not coast on a chord while the road is still bending.
+                    if (st.turnMode || st.suppressDr) {
+                        st.suppressDr = true;
+                        st.turnMode = false;
+                    }
                     if (st.speedMps < MIN_DR_MPS) {
                         enterIdle(st, { lat: st.lat, lng: st.lng }, now);
                     } else {
                         lastActivityPerf = now;
                     }
+                    return;
                 }
+
+                var inTurn = !!(st.turnMode || st.suppressDr);
+                var turnSeverity = clamp(
+                    (Number(st.turnHeadingDelta) || (inTurn ? SHARP_TURN_DEG : 0)) / 180,
+                    0,
+                    1
+                );
+                var yawRate = inTurn ? TURN_MAX_TURN_DEG_PER_S : MAX_TURN_DEG_PER_S;
+                st.heading = turnToward(
+                    st.heading,
+                    st.targetHeading,
+                    dt,
+                    yawRate
+                );
+                st.courseHeading = st.heading;
+
+                // Advance along the *current* heading so the path curves through
+                // the turn instead of cutting the chord between GPS fixes.
+                var speed = Math.max(st.speedMps, st.targetSpeedMps * 0.55);
+                if (inTurn) {
+                    // Large yaw → less forward prediction (U-turns almost pause advance).
+                    var forwardGain = 0.55 * (1 - 0.65 * turnSeverity);
+                    var forward = Math.min(speed * dt * forwardGain, err * 0.8);
+                    if (forward > 0.02) {
+                        var arc = offsetMeters(display, forward, st.heading);
+                        st.lat = arc.lat;
+                        st.lng = arc.lng;
+                    }
+                    // Weak residual pull onto the new fix (keeps us on-road, not chord-dominant).
+                    var pull = 1 - Math.exp(-dt / TURN_RECONCILE_TAU_S);
+                    pull *= 0.22 + 0.28 * (1 - turnSeverity);
+                    st.lat = lerp(st.lat, st.targetLat, pull);
+                    st.lng = lerp(st.lng, st.targetLng, pull);
+                } else {
+                    // Straight / gentle: light heading-aligned step + normal attract.
+                    var fwd = Math.min(speed * dt * 0.4, err * 0.45);
+                    if (fwd > 0.05 && !st.suppressDr) {
+                        var step = offsetMeters(display, fwd, st.heading);
+                        st.lat = step.lat;
+                        st.lng = step.lng;
+                    }
+                    var alpha = 1 - Math.exp(-dt / RECONCILE_TAU_S);
+                    st.lat = lerp(st.lat, st.targetLat, alpha);
+                    st.lng = lerp(st.lng, st.targetLng, alpha);
+                }
+
+                st.speedMps = lerp(st.speedMps, st.targetSpeedMps, Math.min(1, dt / 0.5));
+                lastActivityPerf = now;
                 return;
             }
 
-            // Free coast between fixes — only while still carrying real speed.
+            // Free coast between fixes — disabled during / after sharp turns until
+            // the next stable heading period (avoids shooting past the corner).
+            if (st.suppressDr || st.turnMode) {
+                return;
+            }
+
             var coastAge = (now - st.lastFixReceivedAt) / 1000;
             var canCoast = st.speedMps > MIN_DR_MPS && coastAge < MAX_COAST_S;
             if (canCoast) {
@@ -404,6 +470,9 @@
                     courseHeading: h0,
                     speedMps: startMoving ? speedMps : 0,
                     hasTarget: false,
+                    turnMode: false,
+                    suppressDr: false,
+                    turnHeadingDelta: 0,
                     targetLat: to.lat,
                     targetLng: to.lng,
                     targetHeading: h0,
@@ -411,6 +480,7 @@
                     lastFixLat: to.lat,
                     lastFixLng: to.lng,
                     lastFixHeading: h0,
+                    lastPathBearing: h0,
                     lastFixSpeedMps: startMoving ? speedMps : 0,
                     lastFixMs: fixMs,
                     lastFixReceivedAt: now,
@@ -481,11 +551,57 @@
                     : normalizeHeading(st.heading);
             }
 
+            // Detect sharp turns / U-turns from consecutive GPS courses (and path bearing).
+            var pathBearing = gpsDist > 1.5 ? bearingDegrees(prev, to) : toH;
+            var courseDelta = Math.abs(shortestHeadingDelta(st.lastFixHeading, toH));
+            var pathDelta = Math.abs(shortestHeadingDelta(st.lastFixHeading, pathBearing));
+            var turnDelta = Math.max(courseDelta, pathDelta);
+
+            // Enter turn mode on a sharp heading jump. Do not exit here on a small
+            // consecutive delta alone — gradual U-turns are many mild steps; exit
+            // once stepVehicle sees heading + position stabilize, or when both
+            // course and path-bend stay gentle on a later fix.
+            var pathBend = Math.abs(
+                shortestHeadingDelta(st.lastPathBearing != null ? st.lastPathBearing : st.lastFixHeading, pathBearing)
+            );
+            if (turnDelta >= SHARP_TURN_DEG || pathBend >= SHARP_TURN_DEG) {
+                st.turnMode = true;
+                st.suppressDr = true;
+                st.turnHeadingDelta = Math.max(
+                    st.turnHeadingDelta || 0,
+                    Math.max(turnDelta, pathBend)
+                );
+            } else if (
+                (st.turnMode || st.suppressDr)
+                && turnDelta < STABLE_HEADING_DEG
+                && pathBend < STABLE_HEADING_DEG
+            ) {
+                var align = Math.abs(shortestHeadingDelta(st.heading, toH));
+                if (align < STABLE_HEADING_DEG) {
+                    st.turnMode = false;
+                    st.suppressDr = false;
+                    st.turnHeadingDelta = 0;
+                }
+            }
+
             st.hasTarget = true;
             st.targetLat = to.lat;
             st.targetLng = to.lng;
             st.targetHeading = toH;
-            st.targetSpeedMps = Math.max(speedMps, MIN_DR_MPS);
+            // During U-turns, temper speed so we don't launch across the median.
+            if (turnDelta >= UTURN_DEG || pathBend >= UTURN_DEG) {
+                st.targetSpeedMps = Math.min(
+                    Math.max(speedMps, MIN_DR_MPS),
+                    Math.max(MIN_DR_MPS, speedMps * 0.55)
+                );
+            } else if (turnDelta >= SHARP_TURN_DEG || pathBend >= SHARP_TURN_DEG) {
+                st.targetSpeedMps = Math.min(
+                    Math.max(speedMps, MIN_DR_MPS),
+                    Math.max(MIN_DR_MPS, speedMps * 0.75)
+                );
+            } else {
+                st.targetSpeedMps = Math.max(speedMps, MIN_DR_MPS);
+            }
             if (st.speedMps < MIN_DR_MPS) {
                 st.speedMps = st.targetSpeedMps;
             }
@@ -493,6 +609,7 @@
             st.lastFixLat = to.lat;
             st.lastFixLng = to.lng;
             st.lastFixHeading = toH;
+            st.lastPathBearing = pathBearing;
             st.lastFixSpeedMps = st.targetSpeedMps;
             st.lastFixMs = fixMs;
             st.lastFixReceivedAt = now;
@@ -525,7 +642,12 @@
                 meta: st.meta,
                 fixTimeMs: st.lastFixMs,
                 idle: !!st.idle,
-                deadReckoning: !st.idle && !st.hasTarget && st.speedMps > MIN_DR_MPS,
+                turnMode: !!st.turnMode,
+                deadReckoning: !st.idle
+                    && !st.hasTarget
+                    && !st.suppressDr
+                    && !st.turnMode
+                    && st.speedMps > MIN_DR_MPS,
                 t: st.hasTarget ? 0.5 : 1,
                 done: !!st.idle || (!st.hasTarget && st.speedMps <= MIN_DR_MPS),
             };

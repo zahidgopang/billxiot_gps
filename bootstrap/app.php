@@ -85,6 +85,10 @@ return Application::configure(basePath: dirname(__DIR__))
         $schedule->command('maintenance:check')
             ->hourly()
             ->withoutOverlapping(10);
+
+        $schedule->command('commands:reconcile-status')
+            ->everyMinute()
+            ->withoutOverlapping(2);
     })
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->alias([

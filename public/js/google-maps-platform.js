@@ -324,11 +324,16 @@
             spin.style.transformOrigin = '50% 50%';
             spin.style.transition = 'none';
             spin.style.willChange = 'transform';
-            spin.style.pointerEvents = 'none';
+            // Must accept pointer events — outer/inner are 0×0 at LatLng; this
+            // square is the only hit target for AdvancedMarker clicks / popups.
+            spin.style.pointerEvents = 'auto';
+            spin.style.cursor = 'pointer';
             spin.style.transform = `rotate(${rotation}deg)`;
 
             img.style.width = `${w}px`;
             img.style.height = `${h}px`;
+            // Img can stay non-interactive; the spin box receives the click.
+            img.style.pointerEvents = 'none';
             spin.appendChild(img);
             parent.appendChild(spin);
             return { img, spin };

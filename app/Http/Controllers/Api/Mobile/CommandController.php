@@ -61,6 +61,7 @@ class CommandController extends Controller
 
         return $this->mobileSuccess([
             'id' => $result['id'] ?? null,
+            'status' => $result['status'] ?? null,
             'message' => (string) ($result['message'] ?? ''),
         ]);
     }
