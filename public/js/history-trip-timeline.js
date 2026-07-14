@@ -251,30 +251,61 @@
             } catch (_e) { /* ignore */ }
         }
 
+        function readDayInputValue(el) {
+            if (!el) return '';
+            if (typeof global.FormEnhancements?.getDateValue === 'function') {
+                return String(global.FormEnhancements.getDateValue(el) || '').trim();
+            }
+            return String(el.value || '').trim();
+        }
+
+        function emitDayChange(ymd, { refreshNav = true } = {}) {
+            const next = String(ymd || '').trim();
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(next)) return;
+            currentDay = next;
+            if (typeof opts.onDayChange === 'function') opts.onDayChange(currentDay);
+            if (refreshNav) renderDayNav();
+        }
+
+        function bindManualDayInput(el) {
+            if (!el) return;
+
+            // Keep native date control — Flatpickr altInput was swallowing manual picks.
+            el.classList.add('no-flatpickr');
+            if (el._flatpickr) {
+                try { el._flatpickr.destroy(); } catch (_e) { /* ignore */ }
+            }
+            if (el.type !== 'date') el.type = 'date';
+
+            const onManual = () => {
+                const next = readDayInputValue(el) || currentDay;
+                emitDayChange(next);
+            };
+
+            el.addEventListener('change', onManual);
+
+            if (el._flatpickr && typeof global.FormEnhancements?.appendFlatpickrOnChange === 'function') {
+                global.FormEnhancements.appendFlatpickrOnChange(el._flatpickr, onManual);
+            }
+        }
+
         function renderDayNav() {
             if (!opts.dayEl) return;
             opts.dayEl.innerHTML = `<div class="htt-day">
                 <button type="button" class="btn btn-outline-secondary btn-sm" data-htt-day="-1" title="Previous day">◀</button>
-                <input type="date" class="form-control form-control-sm admin-ltr" dir="ltr" data-htt-date value="${esc(currentDay)}">
+                <input type="date" class="form-control form-control-sm admin-ltr no-flatpickr" dir="ltr" data-htt-date data-flatpickr-manual value="${esc(currentDay)}">
                 <button type="button" class="btn btn-outline-secondary btn-sm" data-htt-day="1" title="Next day">▶</button>
                 <button type="button" class="btn btn-outline-secondary btn-sm" data-htt-today>${esc(i18n.today || 'Today')}</button>
             </div>`;
             opts.dayEl.querySelectorAll('[data-htt-day]').forEach((btn) => {
                 btn.addEventListener('click', () => {
-                    currentDay = addDaysYmd(currentDay, parseInt(btn.dataset.httDay, 10));
-                    if (typeof opts.onDayChange === 'function') opts.onDayChange(currentDay);
-                    renderDayNav();
+                    emitDayChange(addDaysYmd(currentDay, parseInt(btn.dataset.httDay, 10)));
                 });
             });
             opts.dayEl.querySelector('[data-htt-today]')?.addEventListener('click', () => {
-                currentDay = ymdLocal(new Date());
-                if (typeof opts.onDayChange === 'function') opts.onDayChange(currentDay);
-                renderDayNav();
+                emitDayChange(ymdLocal(new Date()));
             });
-            opts.dayEl.querySelector('[data-htt-date]')?.addEventListener('change', (e) => {
-                currentDay = e.target.value || currentDay;
-                if (typeof opts.onDayChange === 'function') opts.onDayChange(currentDay);
-            });
+            bindManualDayInput(opts.dayEl.querySelector('[data-htt-date]'));
         }
 
         function renderExport() {

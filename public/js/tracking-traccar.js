@@ -3030,13 +3030,47 @@
         }
 
         /* ---------- History ---------- */
+        readHistoryDateInput(id) {
+            const el = document.getElementById(id);
+            if (!el) return '';
+            if (typeof global.FormEnhancements?.getDateValue === 'function') {
+                return String(global.FormEnhancements.getDateValue(el) || '').trim();
+            }
+            return String(el.value || '').trim();
+        }
+
+        writeHistoryDateInput(elOrId, ymd) {
+            const el = typeof elOrId === 'string' ? document.getElementById(elOrId) : elOrId;
+            if (!el) return;
+            if (typeof global.FormEnhancements?.setDateValue === 'function') {
+                global.FormEnhancements.setDateValue(el, ymd, false);
+                return;
+            }
+            el.value = ymd || '';
+        }
+
+        applyHistoryDay(ymd) {
+            this.writeHistoryDateInput('tcHistDateFrom', ymd);
+            this.writeHistoryDateInput('tcHistDateTo', ymd);
+            const fromTime = document.getElementById('tcHistTimeFrom');
+            const toTime = document.getElementById('tcHistTimeTo');
+            if (fromTime) fromTime.value = '00:00';
+            if (toTime) toTime.value = '23:59';
+            // Day nav already refreshed by emitDayChange; avoid a second rebuild here.
+        }
+
+        onHistoryVehicleChanged() {
+            const id = parseInt(document.getElementById('tcHistVehicle')?.value, 10);
+            if (id) this.loadHistory();
+        }
+
         setDefaultDates() {
             const fmt = (d) => d.toISOString().slice(0, 10);
             const now = new Date();
             const from = document.getElementById('tcHistDateFrom');
             const to = document.getElementById('tcHistDateTo');
-            if (from && !from.value) from.value = fmt(now);
-            if (to && !to.value) to.value = fmt(now);
+            if (from && !this.readHistoryDateInput('tcHistDateFrom')) this.writeHistoryDateInput(from, fmt(now));
+            if (to && !this.readHistoryDateInput('tcHistDateTo')) this.writeHistoryDateInput(to, fmt(now));
         }
 
         ensureHistorySelect2() {
@@ -3062,6 +3096,17 @@
         bindHistory() {
             document.getElementById('tcHistShow')?.addEventListener('click', () => this.loadHistory());
             document.getElementById('tcHistHide')?.addEventListener('click', () => this.exitHistory());
+            const vehicleEl = document.getElementById('tcHistVehicle');
+            if (vehicleEl && !vehicleEl.dataset.historyLoadBound) {
+                vehicleEl.dataset.historyLoadBound = '1';
+                const $ = global.jQuery;
+                // Prefer jQuery so Select2's .trigger('change') reaches the handler.
+                if ($) {
+                    $(vehicleEl).off('change.tcHistoryLoad').on('change.tcHistoryLoad', () => this.onHistoryVehicleChanged());
+                } else {
+                    vehicleEl.addEventListener('change', () => this.onHistoryVehicleChanged());
+                }
+            }
             this.initTripTimelineUi();
             document.getElementById('tcFooterClose')?.addEventListener('click', () => {
                 this.hideFooterPanel();
@@ -3083,21 +3128,14 @@
                 geocodeUrl: this.cfg.historyGeocodeUrl || null,
                 i18n: this.cfg.i18n || {},
                 onDayChange: (ymd) => {
-                    const fromDate = document.getElementById('tcHistDateFrom');
-                    const toDate = document.getElementById('tcHistDateTo');
-                    const fromTime = document.getElementById('tcHistTimeFrom');
-                    const toTime = document.getElementById('tcHistTimeTo');
-                    if (fromDate) fromDate.value = ymd;
-                    if (toDate) toDate.value = ymd;
-                    if (fromTime) fromTime.value = '00:00';
-                    if (toTime) toTime.value = '23:59';
+                    this.applyHistoryDay(ymd);
                     this.loadHistory();
                 },
                 onExport: (format) => this.exportHistoryTimeline(format),
                 onSelect: (seg) => this.onTripTimelineSelect(seg),
             });
 
-            const fromDate = document.getElementById('tcHistDateFrom')?.value;
+            const fromDate = this.readHistoryDateInput('tcHistDateFrom');
             if (fromDate) this._tripTimeline.setDay(fromDate);
         }
 
@@ -3107,8 +3145,8 @@
                 this.toast(this.mi('selectVehicle', 'Select a vehicle.'), 'warning');
                 return;
             }
-            const fromDate = document.getElementById('tcHistDateFrom')?.value || '';
-            const toDate = document.getElementById('tcHistDateTo')?.value || fromDate;
+            const fromDate = this.readHistoryDateInput('tcHistDateFrom');
+            const toDate = this.readHistoryDateInput('tcHistDateTo') || fromDate;
             const tFrom = document.getElementById('tcHistTimeFrom')?.value || '00:00';
             const tTo = document.getElementById('tcHistTimeTo')?.value || '23:59';
             const params = new URLSearchParams();
@@ -3805,8 +3843,8 @@
                 return;
             }
 
-            const fromDate = document.getElementById('tcHistDateFrom')?.value || '';
-            const toDate = document.getElementById('tcHistDateTo')?.value || '';
+            const fromDate = this.readHistoryDateInput('tcHistDateFrom');
+            const toDate = this.readHistoryDateInput('tcHistDateTo');
             const tFrom = document.getElementById('tcHistTimeFrom')?.value || '';
             const tTo = document.getElementById('tcHistTimeTo')?.value || '';
             let from = fromDate;

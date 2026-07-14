@@ -38,6 +38,7 @@ const FILES = [
     { in: path.join(SOURCE_DIR, 'fleet-map-renderer.js'), out: 'fleet-map-renderer.js' },
     { in: path.join(SOURCE_DIR, 'map-panel-position.js'), out: 'map-panel-position.js' },
     { in: path.join(SOURCE_DIR, 'history-map-processor.js'), out: 'history-map-processor.js' },
+    { in: path.join(SOURCE_DIR, 'history-trip-timeline.js'), out: 'history-trip-timeline.js' },
     { in: path.join(SOURCE_DIR, 'device-map-tracker.js'), out: 'device-map-tracker.js' },
     { in: path.join(SOURCE_DIR, 'device-status-toggle.js'), out: 'device-status-toggle.js' },
     { in: path.join(SOURCE_DIR, 'form-enhancements.js'), out: 'form-enhancements.js' },

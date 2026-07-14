@@ -213,6 +213,41 @@
             if (toEl && !toEl.value) toEl.value = fmt(now);
         }
 
+        readDateInput(id) {
+            const el = document.getElementById(id);
+            if (!el) return '';
+            if (typeof global.FormEnhancements?.getDateValue === 'function') {
+                return String(global.FormEnhancements.getDateValue(el) || '').trim();
+            }
+            return String(el.value || '').trim();
+        }
+
+        writeDateInput(elOrId, ymd) {
+            const el = typeof elOrId === 'string' ? document.getElementById(elOrId) : elOrId;
+            if (!el) return;
+            if (typeof global.FormEnhancements?.setDateValue === 'function') {
+                global.FormEnhancements.setDateValue(el, ymd, false);
+                return;
+            }
+            el.value = ymd || '';
+        }
+
+        applyHistoryDay(ymd) {
+            this.writeDateInput('gtDateFrom', ymd);
+            this.writeDateInput('gtDateTo', ymd);
+            const fromTime = document.getElementById('gtTimeFrom');
+            const toTime = document.getElementById('gtTimeTo');
+            if (fromTime) fromTime.value = '00:00';
+            if (toTime) toTime.value = '23:59';
+            // Day nav already refreshed by emitDayChange; avoid a second rebuild here.
+        }
+
+        onVehicleChanged() {
+            const selectEl = document.getElementById('gtHistoryVehicle');
+            this.selectedId = parseInt(selectEl?.value, 10) || null;
+            if (this.selectedId) this.loadHistory();
+        }
+
         bindUi() {
             const selectEl = document.getElementById('gtHistoryVehicle');
             if (selectEl) {
@@ -226,13 +261,9 @@
                         placeholder: this.cfg.i18n?.selectVehicle || 'Select a vehicle',
                         dir: document.documentElement.getAttribute('dir') || 'ltr',
                     });
-                    $sel.on('change', () => {
-                        this.selectedId = parseInt($sel.val(), 10) || null;
-                    });
+                    $sel.off('change.gtHistoryLoad').on('change.gtHistoryLoad', () => this.onVehicleChanged());
                 } else {
-                    selectEl.addEventListener('change', (e) => {
-                        this.selectedId = parseInt(e.target.value, 10) || null;
-                    });
+                    selectEl.addEventListener('change', () => this.onVehicleChanged());
                 }
             }
 
@@ -259,20 +290,13 @@
                 geocodeUrl: this.cfg.historyGeocodeUrl || null,
                 i18n: this.cfg.i18n || {},
                 onDayChange: (ymd) => {
-                    const fromDate = document.getElementById('gtDateFrom');
-                    const toDate = document.getElementById('gtDateTo');
-                    const fromTime = document.getElementById('gtTimeFrom');
-                    const toTime = document.getElementById('gtTimeTo');
-                    if (fromDate) fromDate.value = ymd;
-                    if (toDate) toDate.value = ymd;
-                    if (fromTime) fromTime.value = '00:00';
-                    if (toTime) toTime.value = '23:59';
+                    this.applyHistoryDay(ymd);
                     this.loadHistory();
                 },
                 onExport: (format) => this.exportHistory(format),
                 onSelect: (seg) => this.focusSegment(seg),
             });
-            const fromDate = document.getElementById('gtDateFrom')?.value;
+            const fromDate = this.readDateInput('gtDateFrom');
             if (fromDate) this._tripTimeline.setDay(fromDate);
         }
 
@@ -401,8 +425,8 @@
         }
 
         buildQuery() {
-            const fromDate = document.getElementById('gtDateFrom')?.value || '';
-            const toDate = document.getElementById('gtDateTo')?.value || '';
+            const fromDate = this.readDateInput('gtDateFrom');
+            const toDate = this.readDateInput('gtDateTo');
             const timeFrom = document.getElementById('gtTimeFrom')?.value || '';
             const timeTo = document.getElementById('gtTimeTo')?.value || '';
 
