@@ -47,10 +47,10 @@
                 <div class="col-md-2">
                     <label class="form-label small mb-1" for="sharedIconOrientation">{{ __('app.map.icon_default_orientation') }}</label>
                     <select name="rotation_offset" id="sharedIconOrientation" class="form-select form-select-sm">
-                        <option value="0" @selected((string) old('rotation_offset', '0') === '0')>{{ __('app.map.icon_orient_north') }}</option>
-                        <option value="-90" @selected((string) old('rotation_offset', '0') === '-90')>{{ __('app.map.icon_orient_east') }}</option>
-                        <option value="180" @selected((string) old('rotation_offset', '0') === '180')>{{ __('app.map.icon_orient_south') }}</option>
-                        <option value="90" @selected((string) old('rotation_offset', '0') === '90')>{{ __('app.map.icon_orient_west') }}</option>
+                        <option value="-90" @selected((string) old('rotation_offset', '-90') === '-90')>{{ __('app.map.icon_orient_east') }}</option>
+                        <option value="0" @selected((string) old('rotation_offset', '-90') === '0')>{{ __('app.map.icon_orient_north') }}</option>
+                        <option value="180" @selected((string) old('rotation_offset', '-90') === '180')>{{ __('app.map.icon_orient_south') }}</option>
+                        <option value="90" @selected((string) old('rotation_offset', '-90') === '90')>{{ __('app.map.icon_orient_west') }}</option>
                     </select>
                 </div>
                 <div class="col-md-2">

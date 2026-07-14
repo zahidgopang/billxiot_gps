@@ -615,19 +615,17 @@ class Device extends Model
 
     /**
      * Degrees added to GPS heading so the selected icon nose points forward.
+     * Prefer the device-saved offset (Change Icon “nose direction”), then the
+     * shared library catalog offset, then 0 for built-in nose-up artwork.
      */
     public function resolvedIconRotationOffset(): int
     {
-        if ($this->usesCustomMapIcon()) {
-            $stored = TraccarAppFields::get(
-                $this->getTraccarAttributesJson(),
-                TraccarAppFields::KEY_MAP_ICON_ROTATION_OFFSET
-            );
-            if ($stored !== null && $stored !== '') {
-                return self::normalizeRotationOffsetDegrees($stored);
-            }
-
-            return 0;
+        $stored = TraccarAppFields::get(
+            $this->getTraccarAttributesJson(),
+            TraccarAppFields::KEY_MAP_ICON_ROTATION_OFFSET
+        );
+        if ($stored !== null && $stored !== '') {
+            return self::normalizeRotationOffsetDegrees($stored);
         }
 
         if (\App\Support\VehicleIcons\SharedMapIconStorage::isSharedType($this->vehicle_type)) {
@@ -635,6 +633,9 @@ class Device extends Model
             if ($shared) {
                 return $shared->signedRotationOffset();
             }
+
+            // SVG Repo–style shared side views face East when catalog row is missing.
+            return -90;
         }
 
         $path = $this->map_builtin_icon_path;
@@ -643,6 +644,8 @@ class Device extends Model
             if ($shared) {
                 return $shared->signedRotationOffset();
             }
+
+            return -90;
         }
 
         // Built-in top-down icons face North (nose up).

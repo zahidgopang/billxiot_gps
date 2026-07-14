@@ -75,15 +75,31 @@
     @endif
 
     <div class="map-marker-appearance__preview-wrap">
-        <span class="map-marker-appearance__label">{{ __('app.map.selected_icon_preview') }}</span>
-        <div class="map-marker-appearance__live-map" data-map-live-preview aria-live="polite">
-            <div class="map-marker-appearance__live-map-scene">
-                <div class="map-marker-appearance__live-map-pin map-marker-appearance__live-map-pin--custom" data-map-live-custom hidden>
-                    <img data-map-live-custom-img alt="" width="64" height="64">
+        <div class="map-marker-appearance__preview-pair">
+            <div class="map-marker-appearance__art-block">
+                <span class="map-marker-appearance__label">{{ __('app.map.artwork_as_drawn') }}</span>
+                <div class="map-marker-appearance__art-scene" data-map-art-preview aria-live="polite">
+                    <span class="map-marker-appearance__compass map-marker-appearance__compass--n" aria-hidden="true">N</span>
+                    <span class="map-marker-appearance__compass map-marker-appearance__compass--e" aria-hidden="true">E</span>
+                    <span class="map-marker-appearance__compass map-marker-appearance__compass--s" aria-hidden="true">S</span>
+                    <span class="map-marker-appearance__compass map-marker-appearance__compass--w" aria-hidden="true">W</span>
+                    <div class="map-marker-appearance__art-pin map-marker-appearance__art-pin--custom" data-map-art-custom hidden>
+                        <img data-map-art-custom-img alt="" width="72" height="72">
+                    </div>
+                    <div class="map-marker-appearance__art-pin map-marker-appearance__art-pin--default" data-map-art-default></div>
                 </div>
-                <div class="map-marker-appearance__live-map-pin map-marker-appearance__live-map-pin--default" data-map-live-default></div>
+                <p class="small text-muted mb-0">{{ __('app.map.artwork_as_drawn_hint') }}</p>
             </div>
-            <p class="map-marker-appearance__live-scale small text-muted mb-0" data-map-live-scale></p>
+            <div class="map-marker-appearance__live-map" data-map-live-preview>
+                <span class="map-marker-appearance__label">{{ __('app.map.map_live_preview_sample') }}</span>
+                <div class="map-marker-appearance__live-map-scene">
+                    <div class="map-marker-appearance__live-map-pin map-marker-appearance__live-map-pin--custom" data-map-live-custom hidden>
+                        <img data-map-live-custom-img alt="" width="64" height="64">
+                    </div>
+                    <div class="map-marker-appearance__live-map-pin map-marker-appearance__live-map-pin--default" data-map-live-default></div>
+                </div>
+                <p class="map-marker-appearance__live-scale small text-muted mb-0" data-map-live-scale></p>
+            </div>
         </div>
         <p class="small text-info mb-0" data-map-resize-notice hidden role="status"></p>
     </div>
@@ -148,8 +164,8 @@
                 {{ __('app.map.icon_orientation_hint') }}
             </div>
             <select class="form-select form-select-sm" data-map-rotation-offset name="map_icon_rotation_offset" aria-describedby="{{ $formId }}-orient-help">
-                <option value="0" @selected($currentOffset === '0')>{{ __('app.map.icon_orient_north') }}</option>
                 <option value="-90" @selected($currentOffset === '-90')>{{ __('app.map.icon_orient_east') }}</option>
+                <option value="0" @selected($currentOffset === '0')>{{ __('app.map.icon_orient_north') }}</option>
                 <option value="180" @selected($currentOffset === '180')>{{ __('app.map.icon_orient_south') }}</option>
                 <option value="90" @selected($currentOffset === '90')>{{ __('app.map.icon_orient_west') }}</option>
             </select>

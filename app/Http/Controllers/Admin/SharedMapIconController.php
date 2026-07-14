@@ -68,7 +68,8 @@ class SharedMapIconController extends Controller
                     $file,
                     $label,
                     $validated['category'],
-                    $validated['rotation_offset'] ?? 0,
+                    // SVG Repo–style suggestion art is usually side-view (nose right / East).
+                    $validated['rotation_offset'] ?? -90,
                 );
             }
         } catch (\Illuminate\Validation\ValidationException $e) {

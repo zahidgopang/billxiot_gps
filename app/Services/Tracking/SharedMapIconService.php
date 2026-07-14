@@ -59,6 +59,10 @@ class SharedMapIconService
     {
         return $this->all()->map(function (SharedMapIcon $icon) {
             $category = $this->normalizeCategory($icon->category);
+            $absolute = SharedMapIconStorage::absolutePath($icon->relative_path);
+            if (! is_file($absolute)) {
+                return null;
+            }
 
             return [
                 'id' => $icon->registryId(),
@@ -72,7 +76,7 @@ class SharedMapIconService
                 'anchor_x' => 0.5,
                 'anchor_y' => 0.5,
             ];
-        })->values()->all();
+        })->filter()->values()->all();
     }
 
     /**

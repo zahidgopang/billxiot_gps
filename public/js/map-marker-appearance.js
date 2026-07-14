@@ -2,8 +2,14 @@
     'use strict';
 
     const DEFAULT_SIZE_ORDER = ['50', '75', '100', '125', '150', '200'];
+    /** Sample GPS heading for the “map sample” panel only (not for nose picking). */
     const PREVIEW_HEADING = 45;
     const MAP_ICON_BASE_PX = 64;
+
+    function parseOffsetDegrees(value) {
+        const n = Number(value);
+        return Number.isFinite(n) ? n : 0;
+    }
 
     function stepSize(current, delta, order) {
         const sizes = order && order.length ? order : DEFAULT_SIZE_ORDER;
@@ -45,13 +51,13 @@
             : ((!customActive && type && global.BuiltinMapIcons?.urlForType)
                 ? global.BuiltinMapIcons.urlForType(type, registry)
                 : (iconMeta?.url || null));
-        const resolvedOffset = Number(
+        const resolvedOffset = parseOffsetDegrees(
             offsetFromSelect != null && offsetFromSelect !== ''
                 ? offsetFromSelect
                 : (offsetFromForm != null && offsetFromForm !== ''
                     ? offsetFromForm
-                    : (offsetFromIcon ?? 0))
-        ) || 0;
+                    : (offsetFromIcon ?? (iconMeta?.shared ? -90 : 0)))
+        );
         return {
             vehicle_type: type,
             map_builtin_icon_path: path,
@@ -134,12 +140,58 @@
         return '';
     }
 
+    function applyPreviewIcon(pinEl, imgEl, url, bodyPx, rotateCss) {
+        if (!pinEl) return;
+        pinEl.style.width = `${bodyPx}px`;
+        pinEl.style.height = `${bodyPx}px`;
+        // Keep translate centering; never overwrite with rotate alone.
+        pinEl.style.transform = rotateCss
+            ? `translate(-50%, -50%) ${rotateCss}`
+            : 'translate(-50%, -50%)';
+        pinEl.style.transformOrigin = 'center center';
+        if (imgEl) {
+            if (url && imgEl.src !== url) {
+                imgEl.src = url;
+            }
+            imgEl.style.transform = 'none';
+        } else if (pinEl.style) {
+            pinEl.style.backgroundImage = url ? `url("${url}")` : 'none';
+            pinEl.style.backgroundSize = 'contain';
+            pinEl.style.backgroundRepeat = 'no-repeat';
+            pinEl.style.backgroundPosition = 'center center';
+        }
+    }
+
+    function renderArtworkPreview(form, options, state, registry, customUrl, hasCustom, bodyPx) {
+        const customWrap = form.querySelector('[data-map-art-custom]');
+        const customImg = form.querySelector('[data-map-art-custom-img]');
+        const defaultWrap = form.querySelector('[data-map-art-default]');
+        if (!defaultWrap && !customWrap) return;
+
+        // Unrotated — this is what nose direction must match.
+        if (hasCustom && customWrap && customImg) {
+            if (customWrap) customWrap.hidden = false;
+            if (defaultWrap) defaultWrap.hidden = true;
+            applyPreviewIcon(customWrap, customImg, customUrl, bodyPx, null);
+            customImg.onerror = () => {
+                const blob = form.dataset.customPreviewBlob;
+                if (blob && customImg.src !== blob) {
+                    customImg.src = blob;
+                }
+            };
+        } else if (defaultWrap) {
+            if (customWrap) customWrap.hidden = true;
+            defaultWrap.hidden = false;
+            const previewUrl = resolvePreviewIconUrl(state, registry);
+            applyPreviewIcon(defaultWrap, null, previewUrl, bodyPx, null);
+        }
+    }
+
     function renderLiveMapPreview(form, options) {
         const customWrap = form.querySelector('[data-map-live-custom]');
         const customImg = form.querySelector('[data-map-live-custom-img]');
         const defaultWrap = form.querySelector('[data-map-live-default]');
         const scaleEl = form.querySelector('[data-map-live-scale]');
-        if (!defaultWrap) return;
 
         const state = readState(form, options.sizeOrder);
         const registry = readIconRegistry(form, options);
@@ -147,40 +199,32 @@
         const hasCustom = !!(customUrl && form.dataset.customActive === '1');
         const scale = resolvePreviewScale(state, options.mapRendering);
         const bodyPx = Math.max(28, Math.round(MAP_ICON_BASE_PX * scale));
-        const offset = Number(state.map_icon_rotation_offset || 0) || 0;
+        const artPx = Math.max(40, Math.round(72 * Math.min(scale, 1.25)));
+        const offset = parseOffsetDegrees(state.map_icon_rotation_offset);
         const previewAngle = state.map_icon_rotation_enabled
             ? ((PREVIEW_HEADING + offset) % 360 + 360) % 360
             : 0;
-        const rotate = state.map_icon_rotation_enabled ? `rotate(${previewAngle}deg)` : 'none';
+        const rotateCss = state.map_icon_rotation_enabled ? `rotate(${previewAngle}deg)` : null;
 
-        if (hasCustom && customWrap && customImg) {
-            customWrap.hidden = false;
-            defaultWrap.hidden = true;
-            customWrap.style.width = `${bodyPx}px`;
-            customWrap.style.height = `${bodyPx}px`;
-            if (customImg.src !== customUrl) {
-                customImg.src = customUrl;
+        renderArtworkPreview(form, options, state, registry, customUrl, hasCustom, artPx);
+
+        if (defaultWrap) {
+            if (hasCustom && customWrap && customImg) {
+                customWrap.hidden = false;
+                defaultWrap.hidden = true;
+                applyPreviewIcon(customWrap, customImg, customUrl, bodyPx, rotateCss);
+                customImg.onerror = () => {
+                    const blob = form.dataset.customPreviewBlob;
+                    if (blob && customImg.src !== blob) {
+                        customImg.src = blob;
+                    }
+                };
+            } else {
+                if (customWrap) customWrap.hidden = true;
+                defaultWrap.hidden = false;
+                const previewUrl = resolvePreviewIconUrl(state, registry);
+                applyPreviewIcon(defaultWrap, null, previewUrl, bodyPx, rotateCss);
             }
-            customImg.style.transform = rotate;
-            customImg.onerror = () => {
-                const blob = form.dataset.customPreviewBlob;
-                if (blob && customImg.src !== blob) {
-                    customImg.src = blob;
-                }
-            };
-        } else {
-            if (customWrap) customWrap.hidden = true;
-            defaultWrap.hidden = false;
-            defaultWrap.style.width = `${bodyPx}px`;
-            defaultWrap.style.height = `${bodyPx}px`;
-            defaultWrap.style.transform = state.map_icon_rotation_enabled ? rotate : 'none';
-            defaultWrap.style.transformOrigin = 'center center';
-
-            const previewUrl = resolvePreviewIconUrl(state, registry);
-            defaultWrap.style.backgroundImage = previewUrl ? `url("${previewUrl}")` : 'none';
-            defaultWrap.style.backgroundSize = 'contain';
-            defaultWrap.style.backgroundRepeat = 'no-repeat';
-            defaultWrap.style.backgroundPosition = 'center center';
         }
 
         if (scaleEl) {
@@ -384,7 +428,7 @@
                     if (pathEl && icon?.path) {
                         pathEl.value = icon.path;
                     }
-                    const nextOffset = String(icon?.rotation_offset ?? 0);
+                    const nextOffset = String(icon?.rotation_offset ?? (icon?.shared ? -90 : 0));
                     form.dataset.rotationOffset = nextOffset;
                     const offsetSelect = form.querySelector('[data-map-rotation-offset]');
                     if (offsetSelect) offsetSelect.value = nextOffset;
