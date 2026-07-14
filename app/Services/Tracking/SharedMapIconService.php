@@ -133,6 +133,10 @@ class SharedMapIconService
             ]);
         }
 
+        if ($extension === 'svg') {
+            \App\Support\VehicleIcons\SvgMapIconNormalizer::normalizeFile($absolute);
+        }
+
         $icon = SharedMapIcon::query()->create([
             'slug' => $slug,
             'label' => Str::limit($baseLabel, 120, ''),

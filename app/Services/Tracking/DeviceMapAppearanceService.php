@@ -154,17 +154,19 @@ class DeviceMapAppearanceService
                     }
                 }
 
-                // Keep install-time body type (car/truck/…). Never store shared_* map-icon ids here —
-                // that polluted /admin/devices "Vehicle type" with labels like "Shared Car Svgrepo Com".
+                // Keep install-time body type (car/truck/…). Picker id for shared icons
+                // lives in map_builtin_icon_path (Shared/…). Storing shared_* here polluted
+                // /admin/devices "Vehicle type" — but we must still clear custom uploads.
                 if (isset(Device::VEHICLE_TYPES[$incoming])) {
                     $device->vehicle_type = $incoming;
                 } elseif (! isset(Device::VEHICLE_TYPES[(string) $device->vehicle_type])) {
                     $device->vehicle_type = Device::guessBodyTypeFromMapIconKey($incoming) ?? 'car';
                 }
 
-                if (($validated['map_icon_source'] ?? null) === 'default') {
-                    $this->iconService->delete($device);
-                }
+                // Picking any library suggestion always replaces a prior custom upload.
+                $this->iconService->delete($device);
+                $device->map_icon_source = 'default';
+
                 if (! array_key_exists('map_marker_style', $validated)) {
                     $device->map_marker_style = $incoming === 'pin_marker' ? 'pin' : 'body';
                 }

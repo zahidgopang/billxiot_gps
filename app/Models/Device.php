@@ -670,6 +670,14 @@ class Device extends Model
 
     public function defaultMapIconName(): string
     {
+        $path = $this->map_builtin_icon_path;
+        if (\App\Support\VehicleIcons\SharedMapIconStorage::isValidRelativePath($path)) {
+            $shared = \App\Support\VehicleIcons\SharedMapIconStorage::findByRelativePath($path);
+            if ($shared) {
+                return $shared->registryId();
+            }
+        }
+
         $type = $this->vehicle_type;
 
         return VehicleIconLibrary::isValidDefaultType($type) ? $type : 'car';

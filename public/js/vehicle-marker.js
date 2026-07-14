@@ -71,19 +71,25 @@
         const direct = source.map_icon_rotation_offset ?? source.mapIconRotationOffset
             ?? source.rotation_offset ?? source.rotationOffset;
         if (direct != null && direct !== '') {
-            return Number(direct) || 0;
+            const n = Number(direct);
+            return Number.isFinite(n) ? n : 0;
         }
         const type = String(source.vehicle_type || source.vehicleType || '').toLowerCase();
         const path = source.map_builtin_icon_path || source.mapBuiltinIconPath || '';
         const reg = global.VehicleIconRegistry || global.__vehicleIconRegistry || null;
         if (reg?.icons?.[type]?.rotation_offset != null) {
-            return Number(reg.icons[type].rotation_offset) || 0;
+            const n = Number(reg.icons[type].rotation_offset);
+            return Number.isFinite(n) ? n : 0;
         }
         if (path && reg?.icons) {
             const hit = Object.values(reg.icons).find((icon) => icon?.path === path);
             if (hit?.rotation_offset != null) {
-                return Number(hit.rotation_offset) || 0;
+                const n = Number(hit.rotation_offset);
+                return Number.isFinite(n) ? n : 0;
             }
+        }
+        if (String(path).startsWith('Shared/') || type.startsWith('shared_')) {
+            return -90;
         }
         return 0;
     }
