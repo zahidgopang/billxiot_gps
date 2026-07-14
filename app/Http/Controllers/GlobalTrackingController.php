@@ -25,10 +25,19 @@ class GlobalTrackingController extends Controller
         private RbacService $rbac,
     ) {}
 
-    public function index(Request $request): View
+    public function index(Request $request): View|\Illuminate\Http\RedirectResponse
     {
+        $user = $request->user();
+        if ($this->rbac->isEndUser($user) && ! $this->tracking->endUserCanOpenLiveTracking($user)) {
+            return redirect()
+                ->route('user.devices.index')
+                ->with('access_denied_title', __('app.user.devices.subscribe_for_map_title'))
+                ->with('access_denied_message', __('app.user.devices.subscribe_for_map_message'))
+                ->with('access_denied_reason', 'subscription_inactive');
+        }
+
         $panel = $this->resolvePanel($request);
-        $vehicles = $this->tracking->listItemsForActor($request->user());
+        $vehicles = $this->tracking->listItemsForActor($user);
 
         return view('tracking.traccar', [
             'panel' => $panel,
@@ -37,13 +46,13 @@ class GlobalTrackingController extends Controller
             'stateColors' => VehicleStatusSpec::STATE_COLORS,
             'hubRoutes' => $this->trackingHubRoutes($panel),
             'routes' => $this->liveRouteNames($panel),
-            'deviceEditUrlTemplate' => $this->canOpenVehicleDetails($request->user())
+            'deviceEditUrlTemplate' => $this->canOpenVehicleDetails($user)
                 ? $this->deviceEditUrlTemplate($panel)
                 : null,
             'manageRoutesUrl' => Route::has("{$panel}.routes.index")
                 ? route("{$panel}.routes.index")
                 : null,
-            'trackingUi' => app(TrackingUiPermissions::class)->forUser($request->user()),
+            'trackingUi' => app(TrackingUiPermissions::class)->forUser($user),
             'companyMapCard' => app(\App\Services\Tracking\CompanyMapCardService::class)->mapPayload(),
         ]);
     }

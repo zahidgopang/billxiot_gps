@@ -8,6 +8,7 @@ use App\Models\Device;
 use App\Models\VehicleEvent;
 use App\Models\User;
 use App\Services\Authorization\RbacService;
+use App\Services\DeviceSubscriptionService;
 use App\Services\Mobile\MobileMapStatusResolver;
 use App\Services\Mobile\VehicleStatusSpec;
 use App\Services\Tracking\DevicePositionLoader;
@@ -74,6 +75,14 @@ class UserDashboardService
         $fleetDevices = $devices->sortByDesc(fn (Device $d) => $d->latestLocation?->recorded_at)->values();
         $pageStats = $this->getDevicePageStats($devices);
 
+        $needsSubscriptionCount = 0;
+        if (! $this->rbac->bypassesSubscriptionRestrictions($user)) {
+            $subscriptionService = app(DeviceSubscriptionService::class);
+            $needsSubscriptionCount = $devices->filter(
+                fn (Device $device) => ! $subscriptionService->isActive($device)
+            )->count();
+        }
+
         try {
             $activities = $this->getRecentActivities($deviceIds);
         } catch (\Throwable $e) {
@@ -100,6 +109,7 @@ class UserDashboardService
             'recentDevices' => $fleetDevices,
             'activities' => $activities,
             'alertDeviceIds' => $alertDeviceIds,
+            'needsSubscriptionCount' => $needsSubscriptionCount,
             'activePercent' => $totalDevices > 0 ? round(($activeDevices / $totalDevices) * 100) : 0,
             'onlinePercent' => $totalDevices > 0 ? round(($onlineNow / $totalDevices) * 100) : 0,
             'alertsPercent' => 0,
@@ -423,10 +433,12 @@ class UserDashboardService
             return collect();
         }
 
+        // List all linked vehicles on the dashboard (including unpaid/expired).
+        // Live map / fleet tracking still require an active subscription elsewhere.
         return $this->trackingGate->filterTrackable(
             $user,
             $user->trackerDevicesQuery()->with(['subscription'])->get(),
-            requireSubscription: ! $this->rbac->bypassesSubscriptionRestrictions($user),
+            requireSubscription: false,
         );
     }
 
@@ -562,6 +574,7 @@ class UserDashboardService
             'recentDevices' => collect(),
             'activities' => collect(),
             'alertDeviceIds' => collect(),
+            'needsSubscriptionCount' => 0,
             'activePercent' => 0,
             'onlinePercent' => 0,
             'alertsPercent' => 0,

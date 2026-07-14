@@ -533,6 +533,23 @@ class GlobalTrackingService
     }
 
     /**
+     * Whether an end user may open Live Tracking / fleet map entry points.
+     * Requires at least one linked device with an active subscription.
+     */
+    public function endUserCanOpenLiveTracking(User $actor): bool
+    {
+        if ($this->rbac->bypassesSubscriptionRestrictions($actor)) {
+            return true;
+        }
+
+        if ($this->rbac->canAccessPanel($actor)) {
+            return true;
+        }
+
+        return $this->subscribedDevicesForEndUser($actor)->isNotEmpty();
+    }
+
+    /**
      * @return list<int>
      */
     public function allowedDeviceIds(User $actor): array

@@ -222,6 +222,16 @@
             </div>
         @endif
 
+        @if(($needsSubscriptionCount ?? 0) > 0)
+            <div class="alert alert-warning d-flex align-items-start mb-4" role="status">
+                <i class="fas fa-credit-card me-3 mt-1 fa-lg"></i>
+                <div class="flex-grow-1">
+                    <strong class="d-block mb-1">{{ __('app.user.devices.subscribe_for_map_title') }}</strong>
+                    <p class="mb-0">{{ trans_choice('app.user.devices.subscribe_for_map_banner', $needsSubscriptionCount, ['count' => $needsSubscriptionCount]) }}</p>
+                </div>
+            </div>
+        @endif
+
         @if(session('access_denied_message'))
             @php
                 $denyReason = session('access_denied_reason', 'restricted');
@@ -310,11 +320,16 @@
                             $liveStatus = $dashboardService->resolveDeviceStatus($d, $alertDeviceIds);
                             $latest = $d->latestLocation;
                             $subStatus = $subscriptionService->statusLabel($d);
-                            $accessCheck = $deviceAccessMap[$d->id] ?? ['allowed' => false, 'title' => '', 'message' => ''];
+                            $accessCheck = $deviceAccessMap[$d->id] ?? ['allowed' => false, 'title' => '', 'message' => '', 'reason' => ''];
                             $canTrack = $accessCheck['allowed'];
+                            $isSubscriptionLock = ($accessCheck['reason'] ?? '') === 'subscription_inactive';
                             $canViewVehicleDetails = $mapIconAuth->canViewVehicleDetails(auth()->user(), $d);
                             $canEditThisIcon = $canChangeIcons && $mapIconAuth->canEditAppearance(auth()->user(), $d);
-                            $lockTitle = $canTrack ? '' : ($accessCheck['title'] . ' — ' . $accessCheck['message']);
+                            $lockTitle = $canTrack
+                                ? ''
+                                : ($isSubscriptionLock
+                                    ? __('app.user.devices.subscribe_for_map_message')
+                                    : ($accessCheck['title'] . ' — ' . $accessCheck['message']));
                         @endphp
                         <tr class="device-row" data-device-id="{{ $d->id }}" data-imei="{{ $d->imei }}"
                             data-search="{{ strtolower(($d->vehicle_name ?? '') . ' ' . ($d->vehicle_number ?? '') . ' ' . $d->name . ' ' . $d->imei . ' ' . ($d->vehicle_model ?? '')) }}">
@@ -370,6 +385,9 @@
                             </td>
                             <td>
                                 <span class="badge {{ $subStatus['class'] }}">{{ $subStatus['label'] }}</span>
+                                @if($isSubscriptionLock)
+                                    <div class="small text-warning mt-1">{{ __('app.user.devices.subscribe_for_map_message') }}</div>
+                                @endif
                             </td>
                             <td>
                                 @include('partials.device-status-badge', ['device' => $d])
@@ -398,8 +416,12 @@
                                             <i class="fas fa-map-marked-alt"></i><span class="btn-label">{{ __('app.user.devices.track') }}</span>
                                         </a>
                                     @else
-                                        <button type="button" class="btn btn-secondary btn-sm" disabled title="{{ $lockTitle }}">
-                                            <i class="fas fa-lock"></i><span class="btn-label">{{ __('app.user.devices.map_locked') }}</span>
+                                        <button type="button"
+                                                class="btn {{ $isSubscriptionLock ? 'btn-outline-warning' : 'btn-secondary' }} btn-sm"
+                                                disabled
+                                                title="{{ $lockTitle }}">
+                                            <i class="fas fa-{{ $isSubscriptionLock ? 'credit-card' : 'lock' }}"></i>
+                                            <span class="btn-label">{{ $isSubscriptionLock ? __('app.user.devices.subscribe_to_track') : __('app.user.devices.map_locked') }}</span>
                                         </button>
                                     @endif
                                 </div>

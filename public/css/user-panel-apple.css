@@ -257,6 +257,20 @@ body.user-panel.apple-hig .ud-nav a {
     transition: background 0.2s, color 0.2s;
 }
 
+body.user-panel.apple-hig .ud-nav-disabled {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    border-radius: var(--apple-radius-sm);
+    color: var(--apple-muted);
+    font-size: 14px;
+    font-weight: 500;
+    opacity: 0.45;
+    cursor: not-allowed;
+    user-select: none;
+}
+
 body.user-panel.apple-hig .ud-nav a:hover {
     background: var(--apple-hover);
     color: var(--apple-text);

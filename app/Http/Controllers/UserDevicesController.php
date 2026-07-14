@@ -25,7 +25,6 @@ class UserDevicesController extends Controller
     {
         try {
             $user = Auth::user();
-            $rbac = app(\App\Services\Authorization\RbacService::class);
             $trackingGate = app(TraccarTrackingGate::class);
             $allDevices = $user
                 ->trackerDevicesQuery()
@@ -33,9 +32,7 @@ class UserDevicesController extends Controller
                 ->orderByDesc('id')
                 ->get();
 
-            $isEndUser = $rbac->isEndUser($user);
-            $requireSubscriptionForList = $isEndUser && ! $rbac->bypassesSubscriptionRestrictions($user);
-
+            // Fleet map still requires an active subscription.
             $trackableForFleet = $trackingGate->filterTrackable(
                 $user,
                 $allDevices,
@@ -43,19 +40,23 @@ class UserDevicesController extends Controller
             );
             $fleetMapEligibleCount = $trackableForFleet->count();
 
-            $devices = $requireSubscriptionForList
-                ? $trackableForFleet
-                : $trackingGate->filterTrackable(
-                    $user,
-                    $allDevices,
-                    requireSubscription: false,
-                );
+            // Device list shows all linked vehicles; map actions stay gated via DeviceAccessService
+            // (subscription inactive → "Map locked").
+            $devices = $trackingGate->filterTrackable(
+                $user,
+                $allDevices,
+                requireSubscription: false,
+            );
 
             app(DevicePositionLoader::class)->attachLatestToMany($devices);
 
             $alertDeviceIds = $dashboard->alertDeviceIds($devices);
             $deviceAccessMap = app(\App\Services\DeviceAccessService::class)
                 ->evaluateMany($user, $devices);
+            $subscriptionService = app(DeviceSubscriptionService::class);
+            $needsSubscriptionCount = $devices->filter(
+                fn (Device $device) => ! $subscriptionService->isActive($device)
+            )->count();
 
             return view('user.devices', array_merge(
                 $dashboard->getDevicePageStats($devices),
@@ -63,9 +64,10 @@ class UserDevicesController extends Controller
                     'devices' => $devices,
                     'alertDeviceIds' => $alertDeviceIds,
                     'dashboardService' => $dashboard,
-                    'subscriptionService' => app(DeviceSubscriptionService::class),
+                    'subscriptionService' => $subscriptionService,
                     'fleetMapEligibleCount' => $fleetMapEligibleCount,
                     'deviceAccessMap' => $deviceAccessMap,
+                    'needsSubscriptionCount' => $needsSubscriptionCount,
                 ]
             ));
         } catch (\Exception $e) {
@@ -85,6 +87,7 @@ class UserDevicesController extends Controller
                 'dashboardService' => $dashboard,
                 'fleetMapEligibleCount' => 0,
                 'deviceAccessMap' => [],
+                'needsSubscriptionCount' => 0,
             ]);
         }
     }
@@ -100,8 +103,9 @@ class UserDevicesController extends Controller
         if ($devices->isEmpty()) {
             return redirect()
                 ->route('user.devices.index')
-                ->with('access_denied_title', __('app.user.devices.fleet_map_unavailable_title'))
-                ->with('access_denied_message', __('app.user.devices.fleet_map_unavailable_message'));
+                ->with('access_denied_title', __('app.user.devices.subscribe_for_map_title'))
+                ->with('access_denied_message', __('app.user.devices.subscribe_for_map_message'))
+                ->with('access_denied_reason', 'subscription_inactive');
         }
 
         $payload = $fleetMap->buildPayload(
