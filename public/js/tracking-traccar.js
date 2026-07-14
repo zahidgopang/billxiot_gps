@@ -2448,11 +2448,13 @@
 
             st.marker.setTitle(this.labelFor(merged));
 
-            const moving = MOVING_KEYS.has(key);
+            const movingStatus = MOVING_KEYS.has(key);
             const spd = Math.max(0, parseFloat(merged.speed) || 0);
+            // Speed wins over status — ignition-ON idle at <2 km/h must freeze.
+            const moving = movingStatus && spd >= 2;
 
             let h = parseFloat(merged.heading);
-            if (!Number.isFinite(h) || (!moving && spd < 3)) {
+            if (!Number.isFinite(h) || !moving) {
                 h = st.renderHeading != null ? st.renderHeading : 0;
             }
             merged.heading = h;

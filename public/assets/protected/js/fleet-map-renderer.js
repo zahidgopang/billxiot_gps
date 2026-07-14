@@ -275,12 +275,13 @@
             this.ensureMotionEngine();
             if (this._motionEngine) {
                 const key = this.opts.getState?.(point) || point.status_key || '';
-                const moving = key === 'running' || key === 'moving';
+                const spd = Math.max(0, parseFloat(point.speed) || 0);
+                const moving = (key === 'running' || key === 'moving') && spd >= 2;
                 this._motionEngine.setFix('v', {
                     lat: point.lat,
                     lng: point.lng,
-                    heading: point.heading,
-                    speed: point.speed,
+                    heading: moving ? point.heading : (this._renderHeading ?? point.heading),
+                    speed: spd,
                     moving,
                     recorded_at: point.recorded_at || point.last_update || point.timestamp || null,
                 });

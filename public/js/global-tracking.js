@@ -668,10 +668,10 @@
                 this.clearTrail(st);
             }
 
-            const moving = MOVING_KEYS.has(key);
             const spd = Math.max(0, parseFloat(merged.speed) || 0);
+            const moving = MOVING_KEYS.has(key) && spd >= 2;
             let h = parseFloat(merged.heading);
-            if (!Number.isFinite(h)) h = st.renderHeading || 0;
+            if (!Number.isFinite(h) || !moving) h = st.renderHeading || 0;
 
             // Deduplicate HTTP poll against a fresher Echo fix (same second).
             const fixMs = global.VehicleMotion?.parseFixTimeMs?.(merged) || Date.now();

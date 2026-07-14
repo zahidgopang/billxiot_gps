@@ -12,16 +12,24 @@
 
     var EARTH_RADIUS_M = 6371000;
     var MAX_DT_S = 0.1;
-    /** Soft catch-up time constant (seconds). */
+    /** Soft catch-up time constant (seconds) for position. */
     var RECONCILE_TAU_S = 0.65;
-    /** Stop dead-reckoning below this speed (m/s). */
-    var MIN_DR_MPS = 0.15;
-    /** Consider target absorbed within this residual (meters). */
+    /** Hard cap — one natural turn, never several full revolutions. */
+    var MAX_TURN_DEG_PER_S = 160;
+    /** Treat as moving only above this speed (m/s ≈ 2 km/h). */
+    var MIN_DR_MPS = 0.56;
+    /** Device speed at or below this (km/h) is stationary — ignore heading/DR. */
+    var IDLE_SPEED_KMH = 2;
+    /** Position noise while parked — ignore smaller jumps. */
+    var IDLE_MAX_DIST_M = 5;
+    /** Parked relocate (GPS reboot / tow) — snap without leaving idle. */
+    var IDLE_RELOCATE_M = 25;
+    /** Consider moving-target absorbed within this residual (meters). */
     var TARGET_ABSORB_M = 1.25;
     /** Cap dead-reckon coast without a fix (seconds). */
-    var MAX_COAST_S = 12;
+    var MAX_COAST_S = 8;
     /** Keep the shared rAF alive briefly after last motion (ms). */
-    var IDLE_KEEPALIVE_MS = 400;
+    var IDLE_KEEPALIVE_MS = 250;
 
     function clamp(n, min, max) {
         return Math.max(min, Math.min(max, n));
@@ -34,13 +42,32 @@
     }
 
     function shortestHeadingDelta(from, to) {
-        return ((normalizeHeading(to) - normalizeHeading(from) + 540) % 360) - 180;
+        // Explicit positive modulo — JS % is signed and can break the classic formula.
+        var a = normalizeHeading(from);
+        var b = normalizeHeading(to);
+        var raw = (b - a) % 360;
+        if (raw > 180) raw -= 360;
+        if (raw < -180) raw += 360;
+        return raw;
     }
 
     function lerpHeading(from, to, t) {
         var start = normalizeHeading(from);
         var delta = shortestHeadingDelta(start, to);
         return normalizeHeading(start + delta * clamp(t, 0, 1));
+    }
+
+    /**
+     * Rotate toward goal using only the shortest arc, rate-limited so a noisy GPS
+     * heading can never whip the marker through multiple full spins.
+     */
+    function turnToward(current, goal, dt, maxDegPerSec) {
+        var delta = shortestHeadingDelta(current, goal);
+        var limit = Math.max(0, Number(maxDegPerSec) || MAX_TURN_DEG_PER_S) * Math.max(0, dt);
+        if (Math.abs(delta) <= limit) {
+            return normalizeHeading(goal);
+        }
+        return normalizeHeading(Number(current) + (delta < 0 ? -limit : limit));
     }
 
     function lerp(a, b, t) {
@@ -208,9 +235,10 @@
                 color: st.color,
                 meta: st.meta,
                 fixTimeMs: st.lastFixMs,
-                deadReckoning: !st.hasTarget && st.speedMps > MIN_DR_MPS,
+                idle: !!st.idle,
+                deadReckoning: !st.idle && !st.hasTarget && st.speedMps > MIN_DR_MPS,
                 t: st.hasTarget ? 0.5 : 1,
-                done: !st.hasTarget && st.speedMps <= MIN_DR_MPS,
+                done: !!st.idle || (!st.hasTarget && st.speedMps <= MIN_DR_MPS),
             };
             if (extra) {
                 Object.keys(extra).forEach(function (k) { pose[k] = extra[k]; });
@@ -228,6 +256,7 @@
         function shouldKeepLoop(now) {
             var keep = false;
             vehicles.forEach(function (st) {
+                if (st.idle) return;
                 if (st.hasTarget || st.speedMps > MIN_DR_MPS) keep = true;
             });
             if (keep) return true;
@@ -241,7 +270,7 @@
             lastTickPerf = now;
 
             vehicles.forEach(function (st, id) {
-                if (st.paused) return;
+                if (st.paused || st.idle) return;
                 stepVehicle(st, dt, now);
                 emitPose(id, st);
             });
@@ -255,10 +284,79 @@
             }
         }
 
-        function stepVehicle(st, dt, now) {
-            if (!(dt > 0)) return;
+        function enterIdle(st, to, now) {
+            st.idle = true;
+            st.hasTarget = false;
+            st.speedMps = 0;
+            st.targetSpeedMps = 0;
+            if (to && Number.isFinite(to.lat) && Number.isFinite(to.lng)) {
+                st.lat = to.lat;
+                st.lng = to.lng;
+                st.targetLat = to.lat;
+                st.targetLng = to.lng;
+                st.lastFixLat = to.lat;
+                st.lastFixLng = to.lng;
+            }
+            // Freeze heading — never rotate while parked.
+            st.courseHeading = st.heading;
+            st.targetHeading = st.heading;
+            st.lastFixHeading = st.heading;
+            st.lastFixSpeedMps = 0;
+            st.lastFixReceivedAt = now;
+            st._settledEmitted = false;
+        }
 
-            // 1) Dead reckoning along current course/speed.
+        function leaveIdle(st) {
+            st.idle = false;
+            st._settledEmitted = false;
+        }
+
+        function stepVehicle(st, dt, now) {
+            if (!(dt > 0) || st.idle) return;
+
+            if (st.hasTarget) {
+                // Stopping mid-glide: freeze immediately, no heading chase.
+                if (st.targetSpeedMps < MIN_DR_MPS) {
+                    enterIdle(st, { lat: st.targetLat, lng: st.targetLng }, now);
+                    return;
+                }
+
+                var display = { lat: st.lat, lng: st.lng };
+                var err = haversineMeters(display, {
+                    lat: st.targetLat,
+                    lng: st.targetLng,
+                });
+                var alpha = 1 - Math.exp(-dt / RECONCILE_TAU_S);
+
+                if (err > TARGET_ABSORB_M) {
+                    st.lat = lerp(st.lat, st.targetLat, alpha);
+                    st.lng = lerp(st.lng, st.targetLng, alpha);
+                    st.heading = turnToward(
+                        st.heading,
+                        st.targetHeading,
+                        dt,
+                        MAX_TURN_DEG_PER_S
+                    );
+                    st.courseHeading = st.heading;
+                    st.speedMps = lerp(st.speedMps, st.targetSpeedMps, alpha);
+                    lastActivityPerf = now;
+                } else {
+                    st.lat = st.targetLat;
+                    st.lng = st.targetLng;
+                    st.heading = normalizeHeading(st.targetHeading);
+                    st.courseHeading = st.heading;
+                    st.speedMps = st.targetSpeedMps;
+                    st.hasTarget = false;
+                    if (st.speedMps < MIN_DR_MPS) {
+                        enterIdle(st, { lat: st.lat, lng: st.lng }, now);
+                    } else {
+                        lastActivityPerf = now;
+                    }
+                }
+                return;
+            }
+
+            // Free coast between fixes — only while still carrying real speed.
             var coastAge = (now - st.lastFixReceivedAt) / 1000;
             var canCoast = st.speedMps > MIN_DR_MPS && coastAge < MAX_COAST_S;
             if (canCoast) {
@@ -269,42 +367,9 @@
                 );
                 st.lat = moved.lat;
                 st.lng = moved.lng;
-                // Keep nose aligned with travel direction.
-                st.heading = lerpHeading(st.heading, st.courseHeading, clamp(dt / 0.35, 0, 1));
-            } else if (st.speedMps > 0 && !st.hasTarget) {
-                // Bleed speed when coast window expires (parked / stale).
-                st.speedMps = Math.max(0, st.speedMps - dt * 2.5);
-            }
-
-            // 2) Soft reconcile toward latest GPS fix (never snap, never t→0).
-            if (st.hasTarget) {
-                var display = { lat: st.lat, lng: st.lng };
-                var target = { lat: st.targetLat, lng: st.targetLng };
-                var err = haversineMeters(display, target);
-                var alpha = 1 - Math.exp(-dt / RECONCILE_TAU_S);
-
-                // Large residual: bias course toward the fix and slightly boost speed
-                // so DR + attract blend instead of teleporting.
-                if (err > TARGET_ABSORB_M) {
-                    var toward = bearingDegrees(display, target);
-                    st.courseHeading = lerpHeading(st.courseHeading, toward, clamp(dt / 0.45, 0, 1));
-                    var catchMps = Math.max(st.targetSpeedMps, err / Math.max(RECONCILE_TAU_S, 0.2));
-                    st.speedMps = lerp(st.speedMps, clamp(catchMps, 0, 45), alpha);
-                    st.lat = lerp(st.lat, st.targetLat, alpha);
-                    st.lng = lerp(st.lng, st.targetLng, alpha);
-                    st.heading = lerpHeading(st.heading, st.targetHeading, alpha);
-                    lastActivityPerf = now;
-                } else {
-                    st.lat = st.targetLat;
-                    st.lng = st.targetLng;
-                    st.heading = normalizeHeading(st.targetHeading);
-                    st.courseHeading = st.heading;
-                    st.speedMps = st.targetSpeedMps;
-                    st.hasTarget = false;
-                    lastActivityPerf = now;
-                }
-            } else if (st.speedMps > MIN_DR_MPS) {
                 lastActivityPerf = now;
+            } else {
+                enterIdle(st, { lat: st.lat, lng: st.lng }, now);
             }
         }
 
@@ -325,26 +390,28 @@
             if (!Number.isFinite(heading)) heading = null;
             var speedKmh = Math.max(0, Number(fix.speedKmh != null ? fix.speedKmh : fix.speed) || 0);
             var speedMps = kmhToMps(speedKmh);
-            var moving = fix.moving !== false && speedMps >= MIN_DR_MPS;
+            var flaggedMoving = fix.moving !== false;
 
             var st = vehicles.get(id);
             if (!st) {
                 var h0 = heading != null ? normalizeHeading(heading) : 0;
+                var startMoving = flaggedMoving && speedKmh >= IDLE_SPEED_KMH;
                 st = {
+                    idle: !startMoving,
                     lat: to.lat,
                     lng: to.lng,
                     heading: h0,
                     courseHeading: h0,
-                    speedMps: moving ? speedMps : 0,
+                    speedMps: startMoving ? speedMps : 0,
                     hasTarget: false,
                     targetLat: to.lat,
                     targetLng: to.lng,
                     targetHeading: h0,
-                    targetSpeedMps: moving ? speedMps : 0,
+                    targetSpeedMps: startMoving ? speedMps : 0,
                     lastFixLat: to.lat,
                     lastFixLng: to.lng,
                     lastFixHeading: h0,
-                    lastFixSpeedMps: moving ? speedMps : 0,
+                    lastFixSpeedMps: startMoving ? speedMps : 0,
                     lastFixMs: fixMs,
                     lastFixReceivedAt: now,
                     color: fix.color,
@@ -354,46 +421,73 @@
                 vehicles.set(id, st);
                 lastActivityPerf = now;
                 emitPose(id, st, { snap: true });
-                ensureLoop();
+                if (startMoving) ensureLoop();
                 return;
             }
 
-            // Ignore stale/out-of-order fixes (GPS clock).
             if (fixMs < st.lastFixMs - 250) {
                 return;
             }
 
             var prev = { lat: st.lastFixLat, lng: st.lastFixLng };
-            var gpsDtS = Math.max(0.001, (fixMs - st.lastFixMs) / 1000);
             var gpsDist = haversineMeters(prev, to);
+            var displayDist = haversineMeters({ lat: st.lat, lng: st.lng }, to);
 
-            // Prefer device speed; if missing/low but position moved, use GPS path speed.
-            var pathMps = gpsDist / gpsDtS;
-            if ((!moving || speedMps < MIN_DR_MPS) && pathMps > MIN_DR_MPS) {
-                speedMps = clamp(pathMps, 0, 50);
-                moving = true;
+            // Genuine movement requires reported speed — GPS park jitter alone must
+            // never restart dead reckoning or heading updates (ignition-ON idle).
+            var genuineMove = flaggedMoving && speedKmh >= IDLE_SPEED_KMH;
+
+            if (!genuineMove) {
+                st.lastFixMs = fixMs;
+                st.lastFixReceivedAt = now;
+                if (fix.color != null) st.color = fix.color;
+                if (fix.meta !== undefined) st.meta = fix.meta;
+
+                if (!st.idle) {
+                    var stopAt = displayDist <= IDLE_MAX_DIST_M
+                        ? { lat: st.lat, lng: st.lng }
+                        : to;
+                    enterIdle(st, stopAt, now);
+                    emitPose(id, st, { snap: true });
+                    return;
+                }
+
+                // Stay idle: ignore heading entirely. Snap only on large relocate.
+                if (displayDist >= IDLE_RELOCATE_M || gpsDist >= IDLE_RELOCATE_M) {
+                    st.lat = to.lat;
+                    st.lng = to.lng;
+                    st.targetLat = to.lat;
+                    st.targetLng = to.lng;
+                    st.lastFixLat = to.lat;
+                    st.lastFixLng = to.lng;
+                    emitPose(id, st, { snap: true });
+                }
+                return;
             }
 
+            leaveIdle(st);
+
             var toH = heading;
-            if (toH == null || (!moving && speedMps < MIN_DR_MPS * 2)) {
+            if (toH == null) {
                 if (gpsDist > 1.5) toH = bearingDegrees(prev, to);
                 else toH = st.heading;
             }
             toH = normalizeHeading(toH);
 
-            // Continuous retarget — sample current display pose as-is (no ease restart).
+            var headingJump = Math.abs(shortestHeadingDelta(st.heading, toH));
+            if (headingJump > 120 && gpsDist < 6) {
+                toH = gpsDist > 1.5
+                    ? normalizeHeading(bearingDegrees({ lat: st.lat, lng: st.lng }, to))
+                    : normalizeHeading(st.heading);
+            }
+
             st.hasTarget = true;
             st.targetLat = to.lat;
             st.targetLng = to.lng;
             st.targetHeading = toH;
-            st.targetSpeedMps = moving ? speedMps : 0;
-            // When stopped intentionally, bleed DR quickly toward standstill.
-            if (!moving) {
-                st.targetSpeedMps = 0;
-            } else if (st.speedMps < MIN_DR_MPS) {
-                // Seed DR so the nose starts coasting immediately.
-                st.speedMps = speedMps;
-                st.courseHeading = toH;
+            st.targetSpeedMps = Math.max(speedMps, MIN_DR_MPS);
+            if (st.speedMps < MIN_DR_MPS) {
+                st.speedMps = st.targetSpeedMps;
             }
 
             st.lastFixLat = to.lat;
@@ -430,9 +524,10 @@
                 color: st.color,
                 meta: st.meta,
                 fixTimeMs: st.lastFixMs,
-                deadReckoning: !st.hasTarget && st.speedMps > MIN_DR_MPS,
+                idle: !!st.idle,
+                deadReckoning: !st.idle && !st.hasTarget && st.speedMps > MIN_DR_MPS,
                 t: st.hasTarget ? 0.5 : 1,
-                done: !st.hasTarget && st.speedMps <= MIN_DR_MPS,
+                done: !!st.idle || (!st.hasTarget && st.speedMps <= MIN_DR_MPS),
             };
         }
 
@@ -469,8 +564,15 @@
             }));
             var st = vehicles.get(id);
             if (st) {
-                st.hasTarget = false;
-                st.speedMps = kmhToMps(pose.speedKmh != null ? pose.speedKmh : pose.speed);
+                enterIdle(st, {
+                    lat: Number(pose.lat),
+                    lng: Number(pose.lng),
+                }, getNow());
+                if (Number.isFinite(Number(pose.heading))) {
+                    st.heading = normalizeHeading(pose.heading);
+                    st.courseHeading = st.heading;
+                    st.targetHeading = st.heading;
+                }
             }
         }
 
@@ -492,7 +594,8 @@
         haversineMeters: haversineMeters,
         bearingDegrees: bearingDegrees,
         offsetMeters: offsetMeters,
-        lerpHeading: lerpHeading,
+        turnToward: turnToward,
+        shortestHeadingDelta: shortestHeadingDelta,
         normalizeHeading: normalizeHeading,
         easeInOutCubic: easeInOutCubic,
         lerp: lerp,

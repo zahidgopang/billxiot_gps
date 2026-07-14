@@ -41,7 +41,9 @@
     function shortestPathHeading(from, to) {
         const a = normalizeHeading(from);
         const b = normalizeHeading(to);
-        let delta = ((b - a + 540) % 360) - 180;
+        let delta = (b - a) % 360;
+        if (delta > 180) delta -= 360;
+        if (delta < -180) delta += 360;
         return a + delta;
     }
 

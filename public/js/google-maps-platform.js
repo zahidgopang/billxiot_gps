@@ -278,42 +278,66 @@
             return null;
         }
         const { w, h } = scaledSizePx(icon);
-        const img = document.createElement('img');
+        const baked = !!(icon.meta?.baked);
+        const flat = !baked && !!(icon.meta?.flat ?? state.flat);
+        const rotation = Number(icon.meta?.rotation ?? state.rotation ?? 0) || 0;
         const fallbackUrl = icon.meta?.fallbackUrl
             || global.BuiltinMapIcons?.fallbackUrl?.()
             || '/icons/builtin/Vehicles/car.svg';
+
+        const img = document.createElement('img');
         img.src = icon.url;
         img.alt = '';
         img.draggable = false;
-        img.style.width = `${w}px`;
-        img.style.height = `${h}px`;
+        img.style.width = '100%';
+        img.style.height = '100%';
         img.style.display = 'block';
         img.style.userSelect = 'none';
+        img.style.pointerEvents = 'none';
+        // Never rotate the <img> itself — Maps + CSS rotate on the same visual
+        // geometry causes GPS orbit/zoom drift. Spin the wrapper instead.
+        img.style.transform = 'none';
+        img.style.transformOrigin = 'center center';
 
-        const baked = !!(icon.meta?.baked);
-        const rotation = Number(icon.meta?.rotation ?? state.rotation ?? 0) || 0;
-        const flat = !baked && !!(icon.meta?.flat ?? state.flat);
-        if (flat) {
-            img.style.transformOrigin = 'center center';
-            img.style.transform = `rotate(${rotation}deg)`;
-        }
-
-        // Missing/broken uploaded icons must never leave an empty marker.
         img.onerror = () => {
             if (!fallbackUrl || img.dataset.fallbackApplied === '1' || img.src === fallbackUrl) {
                 return;
             }
             img.dataset.fallbackApplied = '1';
             img.src = fallbackUrl;
-            if (flat || baked) {
-                img.style.transformOrigin = 'center center';
-                const heading = Number(icon.meta?.heading ?? state.rotation ?? 0) || 0;
-                img.style.transform = `rotate(${heading}deg)`;
-            }
         };
 
+        if (flat) {
+            // Spin box is square and centered on the AdvancedMarker LatLng so
+            // rotation/zoom never shift the GPS point.
+            const size = Math.max(w, h);
+            const spin = document.createElement('div');
+            spin.className = 'gmap-adv-marker-spin';
+            spin.style.position = 'absolute';
+            spin.style.left = `${-size / 2}px`;
+            spin.style.top = `${-size / 2}px`;
+            spin.style.width = `${size}px`;
+            spin.style.height = `${size}px`;
+            spin.style.display = 'flex';
+            spin.style.alignItems = 'center';
+            spin.style.justifyContent = 'center';
+            spin.style.transformOrigin = '50% 50%';
+            spin.style.transition = 'none';
+            spin.style.willChange = 'transform';
+            spin.style.pointerEvents = 'none';
+            spin.style.transform = `rotate(${rotation}deg)`;
+
+            img.style.width = `${w}px`;
+            img.style.height = `${h}px`;
+            spin.appendChild(img);
+            parent.appendChild(spin);
+            return { img, spin };
+        }
+
+        img.style.width = `${w}px`;
+        img.style.height = `${h}px`;
         parent.appendChild(img);
-        return img;
+        return { img, spin: null };
     }
 
     function compositeMarkerContent(icon, label, state, focused) {
@@ -327,13 +351,23 @@
         }
 
         const { w, h } = scaledSizePx(icon || {});
-        const { x: ax, y: ay } = anchorPx(icon || {}, w, h);
+        const flat = !!(icon?.meta?.flat) && !icon?.meta?.baked;
+        // Flat CSS-rotated icons always use geometric center as the GPS point.
+        const ax = flat ? w / 2 : anchorPx(icon || {}, w, h).x;
+        const ay = flat ? h / 2 : anchorPx(icon || {}, w, h).y;
         const labelStack = labelOpt && hasIcon ? estimateLabelStackPx(labelOpt) : 0;
 
         return createAnchoredContent((inner, outer) => {
-            inner.style.left = `${-ax}px`;
-            inner.style.top = `${-(ay + labelStack)}px`;
-            inner.style.display = 'flex';
+            // Outer is 0×0 at LatLng. Flat icons: spin layer is centered on LatLng.
+            // Non-flat (pins): keep classic tip/anchor offset for the static image.
+            if (flat) {
+                inner.style.left = '0';
+                inner.style.top = '0';
+            } else {
+                inner.style.left = `${-ax}px`;
+                inner.style.top = `${-(ay + labelStack)}px`;
+            }
+            inner.style.display = flat ? 'block' : 'flex';
             inner.style.flexDirection = 'column';
             inner.style.alignItems = 'center';
             inner.style.pointerEvents = 'auto';
@@ -343,34 +377,58 @@
             }
 
             if (labelOpt) {
-                outer._labelEl = appendLabelElement(inner, labelOpt, focused);
+                if (flat) {
+                    // Label sits above the GPS point, does not participate in rotation.
+                    const labelHost = document.createElement('div');
+                    labelHost.style.position = 'absolute';
+                    labelHost.style.left = '0';
+                    labelHost.style.top = '0';
+                    labelHost.style.transform = `translate(-50%, calc(-50% - ${Math.max(h, w) / 2 + 4}px))`;
+                    labelHost.style.pointerEvents = 'none';
+                    outer._labelEl = appendLabelElement(labelHost, labelOpt, focused);
+                    inner.appendChild(labelHost);
+                } else {
+                    outer._labelEl = appendLabelElement(inner, labelOpt, focused);
+                }
             }
             if (hasIcon) {
-                outer._img = appendIconElement(inner, icon, state || { flat: false, rotation: 0 });
-                if (outer._img) {
-                    outer._img.style.flexShrink = '0';
-                    if (icon?.meta?.baked) {
-                        outer._img.dataset.baked = '1';
-                    }
+                const parts = appendIconElement(inner, icon, state || { flat: false, rotation: 0 });
+                outer._img = parts?.img || null;
+                outer._spin = parts?.spin || null;
+                if (outer._img && icon?.meta?.baked) {
+                    outer._img.dataset.baked = '1';
                 }
             }
         });
     }
 
     function updateContentRotation(content, rotation, flat) {
-        if (!content?._img) {
+        if (!content) {
             return;
         }
-        if (content._img.dataset?.baked === '1') {
+        if (content._img?.dataset?.baked === '1') {
+            if (content._spin) content._spin.style.transform = '';
             content._img.style.transform = '';
             return;
         }
-        if (flat && Number.isFinite(Number(rotation))) {
+        const deg = Number.isFinite(Number(rotation)) ? Number(rotation) : 0;
+        // Prefer dedicated spin wrapper (GPS-centered). Fall back to img only
+        // for legacy content built before this change.
+        if (flat && content._spin) {
+            content._spin.style.transition = 'none';
+            content._spin.style.transformOrigin = '50% 50%';
+            content._spin.style.transform = `rotate(${deg}deg)`;
+            if (content._img) content._img.style.transform = 'none';
+            return;
+        }
+        if (flat && content._img) {
             content._img.style.transformOrigin = 'center center';
-            content._img.style.transform = `rotate(${Number(rotation) || 0}deg)`;
-        } else {
-            content._img.style.transform = '';
+            content._img.style.transition = 'none';
+            content._img.style.transform = `rotate(${deg}deg)`;
+            return;
         }
+        if (content._spin) content._spin.style.transform = '';
+        if (content._img) content._img.style.transform = '';
     }
 
     function labelToContent(label) {
@@ -500,18 +558,30 @@
                 ctx.icon = icon;
                 if (icon.meta) {
                     ctx.state.flat = nextFlat;
-                    ctx.state.rotation = nextRot;
                 } else {
                     ctx.state.flat = false;
-                    ctx.state.rotation = 0;
                 }
                 // Heading-only updates: keep AdvancedMarkerElement content alive and
                 // rotate via CSS — rebuilding DOM each tick causes visible hops.
                 if (sameAsset && ctx.content) {
-                    updateContentRotation(ctx.content, ctx.state.rotation, ctx.state.flat);
+                    // Route through setRotation so continuous unwrap stays consistent.
+                    if (icon.meta) {
+                        compat.setRotation(nextRot);
+                    } else {
+                        ctx._visualHeading = 0;
+                        ctx.state.rotation = 0;
+                        updateContentRotation(ctx.content, 0, false);
+                    }
                     return;
                 }
                 rebuildContent();
+                if (icon.meta) {
+                    ctx._visualHeading = null; // re-seed unwrap after DOM rebuild
+                    compat.setRotation(nextRot);
+                } else {
+                    ctx._visualHeading = 0;
+                    ctx.state.rotation = 0;
+                }
             },
             /** Position + CSS rotation without touching marker content. */
             setPose(pos, rotation) {
@@ -536,7 +606,26 @@
                 updateContentRotation(ctx.content, ctx.state.rotation, ctx.state.flat);
             },
             setRotation(rotation) {
-                ctx.state.rotation = Number(rotation) || 0;
+                // Keep a continuous (unwrapped) CSS angle so the icon always turns
+                // the shortest way — never 350→10 the long way through a full spin.
+                const nextNorm = ((Number(rotation) % 360) + 360) % 360;
+                if (!Number.isFinite(nextNorm)) {
+                    return;
+                }
+                if (ctx._visualHeading == null || !Number.isFinite(ctx._visualHeading)) {
+                    ctx._visualHeading = nextNorm;
+                } else {
+                    const prevNorm = ((ctx._visualHeading % 360) + 360) % 360;
+                    let delta = (nextNorm - prevNorm) % 360;
+                    if (delta > 180) delta -= 360;
+                    if (delta < -180) delta += 360;
+                    // Ignore sub-degree noise (stationary GPS course jitter).
+                    if (Math.abs(delta) < 0.35) {
+                        return;
+                    }
+                    ctx._visualHeading += delta;
+                }
+                ctx.state.rotation = ctx._visualHeading;
                 updateContentRotation(ctx.content, ctx.state.rotation, ctx.state.flat);
             },
             setZIndex(zIndex) {
