@@ -63,7 +63,9 @@ class DashboardController extends Controller
      */
     private function buildHomePayload(User $user): array
     {
-        $stats = $this->dashboard->getStats($user);
+        // Shell only — full getStats() (distance/charts) regularly exceeds the
+        // mobile client's receive timeout on large fleets.
+        $stats = $this->dashboard->getDashboardShell($user);
         $devices = $stats['devices'];
         $fleet = $this->mapStatus->fleetCounts($devices);
         $alertIds = $stats['alertDeviceIds'] ?? $this->dashboard->alertDeviceIds($devices);
@@ -98,7 +100,11 @@ class DashboardController extends Controller
             }
         }
 
-        $parkedTotal = $fleet['parked'] + $fleet['stopped'] + $fleet['idle'];
+        $parkedTotal = $fleet['parked']
+            + $fleet['stopped']
+            + $fleet['idle']
+            + $fleet['delayed']
+            + $fleet['stale'];
 
         return [
             'total_devices' => $stats['totalDevices'],
