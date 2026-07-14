@@ -111,18 +111,94 @@
         return colSets[type] || colSets.summary || [];
     }
 
-    function queryParamsForIds(ids, runId) {
+    function queryParamsForIds(ids, runId, fromOverride, toOverride) {
         const p = queryParams();
         if (!ids.length) {
             p.set('ids', '');
         } else {
             p.set('ids', ids.join(','));
         }
+        if (fromOverride) p.set('from', fromOverride);
+        if (toOverride) p.set('to', toOverride);
         if (runId != null) {
             p.set('_nonce', String(runId));
         }
         p.set('_ts', String(Date.now()));
         return p;
+    }
+
+    function dateWindowsFromInputs() {
+        const fromRaw = (dateTimeParam('gtReportFrom') || '').slice(0, 10);
+        const toRaw = (dateTimeParam('gtReportTo') || '').slice(0, 10);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(fromRaw) || !/^\d{4}-\d{2}-\d{2}$/.test(toRaw)) {
+            return [{ from: dateTimeParam('gtReportFrom'), to: dateTimeParam('gtReportTo') }];
+        }
+        let start = new Date(`${fromRaw}T00:00:00`);
+        let end = new Date(`${toRaw}T00:00:00`);
+        if (end < start) {
+            const tmp = start;
+            start = end;
+            end = tmp;
+        }
+        const windows = [];
+        const maxDays = 2;
+        let cursor = new Date(start);
+        while (cursor <= end) {
+            const windowEnd = new Date(cursor);
+            windowEnd.setDate(windowEnd.getDate() + (maxDays - 1));
+            const clamped = windowEnd > end ? new Date(end) : windowEnd;
+            const fmt = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+            windows.push({ from: fmt(cursor), to: fmt(clamped) });
+            cursor = new Date(clamped);
+            cursor.setDate(cursor.getDate() + 1);
+        }
+        return windows.length ? windows : [{ from: fromRaw, to: toRaw }];
+    }
+
+    function mergeDeviceWindowRows(parts) {
+        if (!parts.length) return null;
+        if (parts.length === 1) return parts[0];
+        const base = { ...parts[0] };
+        const sumN = (key) => parts.reduce((s, d) => s + (Number(d[key]) || 0), 0);
+        const maxN = (key) => Math.max(0, ...parts.map((d) => Number(d[key]) || 0));
+        const cat = (key) => parts.flatMap((d) => (Array.isArray(d[key]) ? d[key] : []));
+
+        base.total_distance_km = round2(sumN('total_distance_km'));
+        base.moving_time_seconds = sumN('moving_time_seconds');
+        base.stopped_time_seconds = sumN('stopped_time_seconds');
+        base.idle_time_seconds = sumN('idle_time_seconds');
+        base.parking_time_seconds = sumN('parking_time_seconds');
+        base.offline_time_seconds = sumN('offline_time_seconds');
+        base.total_duration_seconds = sumN('total_duration_seconds');
+        base.trip_count = sumN('trip_count');
+        base.stop_count = sumN('stop_count');
+        base.overspeed_events = sumN('overspeed_events');
+        base.point_count = sumN('point_count');
+        base.position_count = sumN('position_count');
+        base.event_count = sumN('event_count');
+        base.day_count = sumN('day_count');
+        base.fuel_liters = round2(sumN('fuel_liters'));
+        base.max_speed_kmh = maxN('max_speed_kmh');
+        if (base.moving_time_seconds > 0 && base.total_distance_km > 0) {
+            base.average_speed_kmh = round2(base.total_distance_km / (base.moving_time_seconds / 3600));
+        }
+        base.efficiency = base.total_distance_km > 0 && base.fuel_liters > 0
+            ? round2((base.fuel_liters / base.total_distance_km) * 100)
+            : 0;
+
+        ['trips', 'stops', 'segments', 'days', 'events', 'positions', 'points'].forEach((key) => {
+            const rows = cat(key);
+            if (rows.length) {
+                base[key] = rows;
+                if (key === 'trips') base.trip_count = rows.length;
+                if (key === 'stops') base.stop_count = rows.length;
+                if (key === 'days') base.day_count = rows.length;
+                if (key === 'events') base.event_count = rows.length;
+                if (key === 'positions') base.position_count = rows.length;
+                if (key === 'points') base.point_count = rows.length;
+            }
+        });
+        return base;
     }
 
     function mergeReportPayloads(partials, orderedIds) {
@@ -131,15 +207,18 @@
         const byId = new Map();
         partials.forEach((p) => {
             (p.devices || []).forEach((d) => {
-                if (d.device_id != null) {
-                    byId.set(String(d.device_id), d);
-                }
+                if (d.device_id == null) return;
+                const id = String(d.device_id);
+                if (!byId.has(id)) byId.set(id, []);
+                byId.get(id).push(d);
             });
         });
         const order = orderedIds && orderedIds.length
             ? orderedIds.map(String)
             : [...byId.keys()];
-        const devices = order.map((id) => byId.get(String(id))).filter(Boolean);
+        const devices = order
+            .map((id) => mergeDeviceWindowRows(byId.get(String(id)) || []))
+            .filter(Boolean);
         const totals = { ...(first.totals || {}) };
 
         if (first.type === 'summary' || first.type === 'route') {
@@ -186,18 +265,26 @@
         }
 
         const meta = {
-            devices_requested: partials.reduce((s, p) => s + (Number(p.meta?.devices_requested) || 0), 0),
+            devices_requested: orderedIds?.length || devices.length,
             devices_in_report: devices.length,
             devices_capped: partials.some((p) => p.meta?.devices_capped),
             positions_truncated: partials.some((p) => p.meta?.positions_truncated),
             analytics_downsampled: partials.some((p) => p.meta?.analytics_downsampled),
+            range_windows: partials.length,
         };
+
+        let overallFrom = first.from;
+        let overallTo = first.to;
+        partials.forEach((p) => {
+            if (p.from && (!overallFrom || String(p.from) < String(overallFrom))) overallFrom = p.from;
+            if (p.to && (!overallTo || String(p.to) > String(overallTo))) overallTo = p.to;
+        });
 
         return {
             success: true,
             type: first.type,
-            from: first.from,
-            to: first.to,
+            from: overallFrom,
+            to: overallTo,
             devices,
             totals,
             meta,
@@ -208,8 +295,8 @@
         return Math.round(n * 100) / 100;
     }
 
-    async function fetchReportPayload(ids, signal, runId) {
-        const body = queryParamsForIds(ids, runId);
+    async function fetchReportPayload(ids, signal, runId, fromOverride, toOverride) {
+        const body = queryParamsForIds(ids, runId, fromOverride, toOverride);
         const res = await fetch(cfg.generateUrl, {
             method: 'POST',
             credentials: 'same-origin',
@@ -725,7 +812,14 @@
         state.abortController = abortController;
         const isCurrentRun = () => runId === state.runId;
         const requestedIds = [...ids];
-        const batches = chunkIds(requestedIds, BATCH_DEVICE_SIZE);
+        const deviceBatches = chunkIds(requestedIds, BATCH_DEVICE_SIZE);
+        const windows = dateWindowsFromInputs();
+        const jobs = [];
+        windows.forEach((window) => {
+            deviceBatches.forEach((batch) => {
+                jobs.push({ ids: batch, from: window.from, to: window.to });
+            });
+        });
 
         resetReportView();
         renderHead();
@@ -735,10 +829,11 @@
         try {
             const partials = [];
             let done = 0;
+            const totalJobs = jobs.length;
             const updateProgress = () => {
                 if (!isCurrentRun()) return;
-                const tpl = i18n.loadingProgress || 'Loading :done / :total vehicles…';
-                setLoading(true, tpl.replace(':done', String(Math.min(done, requestedIds.length))).replace(':total', String(requestedIds.length)));
+                const tpl = i18n.loadingProgress || 'Loading :done / :total…';
+                setLoading(true, tpl.replace(':done', String(Math.min(done, totalJobs))).replace(':total', String(totalJobs)));
             };
 
             const consumePayload = (data, batchSize) => {
@@ -758,9 +853,12 @@
             };
 
             updateProgress();
-            await runPool(batches, PARALLEL_DEVICE_LIMIT, async (batch) => {
+            await runPool(jobs, PARALLEL_DEVICE_LIMIT, async (job) => {
                 if (!isCurrentRun()) return;
-                consumePayload(await fetchReportPayload(batch, abortController.signal, runId), batch.length);
+                consumePayload(
+                    await fetchReportPayload(job.ids, abortController.signal, runId, job.from, job.to),
+                    1,
+                );
             });
 
             if (!isCurrentRun()) return;

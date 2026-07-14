@@ -142,43 +142,27 @@ return [
         'badge' => 'MOBILE APP PREVIEW',
         'title' => 'Explore BillX GPS',
         'title_highlight' => 'On Your Phone',
-        'subtitle' => 'Browse real app screens in dark mode — live tracking, fleet dashboard, alerts, geofences, and profile sync before you sign up.',
+        'subtitle' => 'Live fleet map, single-vehicle tracking, dashboard insights, and your device list — the same experience that ships on Google Play.',
         'prev' => 'Previous screenshot',
         'next' => 'Next screenshot',
         'cta_download' => 'Get the Android app',
         'cta_signup' => 'Talk to Our Team',
         'items' => [
-            '01-login' => [
-                'title' => 'Sign in',
-                'description' => 'Secure login with the same account as your web dashboard.',
+            '01-live-map' => [
+                'title' => 'Live Map',
+                'description' => 'See your whole fleet on one map — filter Moving, Stopped, or Offline in a tap.',
+            ],
+            '02-live-track' => [
+                'title' => 'Live Track',
+                'description' => 'Follow one vehicle with live speed, heading, altitude, and satellite status.',
             ],
             '03-dashboard' => [
                 'title' => 'Dashboard',
-                'description' => 'Fleet summary with online vehicles, alerts, and quick navigation.',
+                'description' => 'Fleet counts, live activity, reports, and a one-tap jump to the live map.',
             ],
-            '04-live-tracking-map' => [
-                'title' => 'Live tracking',
-                'description' => 'All vehicles on one map with live status updates.',
-            ],
-            '06-vehicle-details' => [
-                'title' => 'Vehicle details',
-                'description' => 'Location, speed, ignition, and device information per vehicle.',
-            ],
-            '07-live-map-detail' => [
-                'title' => 'Map focus',
-                'description' => 'Follow one vehicle with map controls and live position.',
-            ],
-            '08-history-playback' => [
-                'title' => 'History',
-                'description' => 'Select a date range and play back routes on the map.',
-            ],
-            '09-alerts-reports' => [
-                'title' => 'Alerts',
-                'description' => 'Speed, geofence, and fleet alerts in one list.',
-            ],
-            '02-profile-settings' => [
-                'title' => 'Profile',
-                'description' => 'Update contact details, language, and account preferences.',
+            '04-devices' => [
+                'title' => 'My Devices',
+                'description' => 'Search and filter every vehicle with status, speed, and last update at a glance.',
             ],
         ],
     ],

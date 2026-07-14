@@ -36,16 +36,19 @@ class ReportService
     public const MAX_ROUTE_MAP_POINTS = 3000;
 
     /** Downsample GPS rows above this count for trips/stops analytics (exports). */
-    public const MAX_ANALYTICS_POINTS = 15000;
+    public const MAX_ANALYTICS_POINTS = 25000;
 
-    /** Interactive web/mobile analytics budget (faster multi-vehicle loads). */
-    public const MAX_ANALYTICS_POINTS_WEB = 8000;
+    /** Interactive web/mobile trips/stops analytics budget. */
+    public const MAX_ANALYTICS_POINTS_WEB = 16000;
 
     /** Summary reports use full GPS data up to this count for accurate export totals. */
-    public const MAX_SUMMARY_FULL_POINTS = 50000;
+    public const MAX_SUMMARY_FULL_POINTS = 80000;
 
-    /** Interactive summary/mileage/route point budget. */
-    public const MAX_SUMMARY_WEB_POINTS = 12000;
+    /** Interactive summary/mileage/route point budget (week-long accuracy). */
+    public const MAX_SUMMARY_WEB_POINTS = 30000;
+
+    /** Prefetch tc_positions in day windows when the range is longer than this. */
+    public const PREFETCH_DAY_CHUNK_THRESHOLD = 2;
 
     /** @var array<int, Collection<int, DeviceLocation>> */
     private array $locationCache = [];
@@ -69,7 +72,8 @@ class ReportService
 
     /**
      * PHP execution budget for report generate/export requests.
-     * Previous formula (45 + devices*6) capped 5-vehicle batches at 75s and timed out on week ranges.
+     * Sized for week-long single-vehicle analytics under reverse-proxy soft limits
+     * when the client also windows the range.
      */
     public static function recommendedTimeLimitSeconds(
         int $deviceCount,
@@ -80,14 +84,14 @@ class ReportService
         $deviceCount = max(1, $deviceCount);
         $end = $to ?? now();
         $days = max(1, (int) ceil(max(1, $from->diffInRealSeconds($end)) / 86400));
-        $perDevice = max(45, $days * 20);
-        $seconds = 120 + ($deviceCount * $perDevice);
+        $perDevice = max(60, $days * 35);
+        $seconds = 180 + ($deviceCount * $perDevice);
 
         if ($forExport) {
-            $seconds = (int) round($seconds * 1.5);
+            $seconds = (int) round($seconds * 1.6);
         }
 
-        return min(900, max(180, $seconds));
+        return min(1200, max(240, $seconds));
     }
 
     public static function applyTimeLimit(
@@ -746,6 +750,50 @@ class ReportService
             return;
         }
 
+        $end = $to ?? now();
+        $spanDays = max(1, (int) ceil(max(1, $from->diffInRealSeconds($end)) / 86400));
+
+        // Long ranges: load calendar-day slices so MySQL/Traccar stays within
+        // query budgets and peak memory stays lower than one giant week pull.
+        if ($spanDays > self::PREFETCH_DAY_CHUNK_THRESHOLD) {
+            $tz = (string) config('app.timezone', 'Asia/Riyadh');
+            $cursor = $from->copy()->timezone($tz)->startOfDay();
+            $last = $end->copy()->timezone($tz)->endOfDay();
+            $merged = [];
+            foreach ($missing as $device) {
+                $merged[$device->id] = collect();
+            }
+
+            while ($cursor->lte($last)) {
+                $dayEnd = $cursor->copy()->endOfDay();
+                if ($dayEnd->greaterThan($last)) {
+                    $dayEnd = $last->copy();
+                }
+
+                $batch = $this->positions->historyForDevices($missing, $cursor, $dayEnd, 'asc');
+                foreach ($missing as $device) {
+                    $slice = $batch[$device->id] ?? collect();
+                    if ($slice->isNotEmpty()) {
+                        $merged[$device->id] = $merged[$device->id]->concat($slice);
+                    }
+                }
+
+                // Keep the request alive on long multi-day pulls.
+                if (function_exists('set_time_limit')) {
+                    @set_time_limit(120);
+                }
+
+                $cursor = $cursor->copy()->addDay()->startOfDay();
+            }
+
+            foreach ($missing as $device) {
+                $this->locationCache[$this->locationCacheKey($device->id, $rangeKey)] =
+                    ($merged[$device->id] ?? collect())->values();
+            }
+
+            return;
+        }
+
         $batch = $this->positions->historyForDevices($missing, $from, $to, 'asc');
 
         foreach ($missing as $device) {
@@ -801,8 +849,9 @@ class ReportService
             'minimal_stats' => false,
         ]);
 
-        // Full-collection distance passes are expensive on week-long fleets; reserve for exports.
-        if ($wasDownsampled && $this->forExport) {
+        // Always correct distance + max speed from the full GPS collection when
+        // analytics ran on a downsampled set — keeps week reports accurate.
+        if ($wasDownsampled) {
             $stats['total_distance_km'] = $this->historyAnalytics->distanceKmForPoints($collection);
             $stats['max_speed_kmh'] = $this->maxSpeedKmhFromCollection($collection);
             $movingSec = (int) ($stats['moving_time_seconds'] ?? 0);

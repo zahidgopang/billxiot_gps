@@ -27,42 +27,64 @@ class ReportController extends Controller
     public function generate(Request $request)
     {
         $this->applyReportLocale($request);
-        $range = $this->resolveReportRange($request);
-        $type = (string) $request->query('type', 'summary');
-        $ids = $this->parseTrackingIdList($request);
-        ReportService::applyTimeLimit(max(1, count($ids)), $range['from'], $range['to']);
 
-        $report = $this->reports->generate(
-            $request->user(),
-            $type,
-            $ids,
-            $range['from'],
-            $range['to'],
-        );
+        try {
+            $range = $this->resolveReportRange($request);
+            $type = (string) $request->query('type', 'summary');
+            $ids = $this->parseTrackingIdList($request);
+            ReportService::applyTimeLimit(max(1, count($ids)), $range['from'], $range['to']);
 
-        return $this->mobileSuccess($report)
-            ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+            // Large GPS payloads — raise memory for week windows.
+            @ini_set('memory_limit', '512M');
+
+            $report = $this->reports->generate(
+                $request->user(),
+                $type,
+                $ids,
+                $range['from'],
+                $range['to'],
+            );
+
+            return $this->mobileSuccess($report)
+                ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+        } catch (\Throwable $e) {
+            report($e);
+
+            return $this->mobileError(
+                (string) __('app.tracking.report_load_failed'),
+                500,
+                'report_failed',
+            );
+        }
     }
 
     public function export(Request $request): StreamedResponse|\Illuminate\Http\Response
     {
         $this->applyReportLocale($request);
-        $range = $this->resolveReportRange($request);
-        $type = (string) $request->query('type', 'summary');
-        $format = (string) $request->query('format', 'csv');
-        $ids = $this->parseTrackingIdList($request);
-        ReportService::applyTimeLimit(max(1, count($ids)), $range['from'], $range['to'], forExport: true);
 
-        $report = $this->reports->generate(
-            $request->user(),
-            $type,
-            $ids,
-            $range['from'],
-            $range['to'],
-            forExport: true,
-        );
+        try {
+            $range = $this->resolveReportRange($request);
+            $type = (string) $request->query('type', 'summary');
+            $format = (string) $request->query('format', 'csv');
+            $ids = $this->parseTrackingIdList($request);
+            ReportService::applyTimeLimit(max(1, count($ids)), $range['from'], $range['to'], forExport: true);
+            @ini_set('memory_limit', '512M');
 
-        return $this->export->export($report, $format);
+            $report = $this->reports->generate(
+                $request->user(),
+                $type,
+                $ids,
+                $range['from'],
+                $range['to'],
+                forExport: true,
+            );
+
+            return $this->export->export($report, $format);
+        } catch (\Throwable $e) {
+            report($e);
+
+            abort(500, (string) __('app.tracking.report_export_failed'));
+        }
     }
 
     /**
