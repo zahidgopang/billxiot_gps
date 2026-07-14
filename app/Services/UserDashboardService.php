@@ -57,34 +57,45 @@ class UserDashboardService
      */
     public function getDashboardShell(User $user): array
     {
-        $devices = $this->resolveDashboardDevices($user);
+        $linkedDevices = $this->resolveDashboardDevices($user);
 
-        if ($devices->isEmpty() && ! $this->rbac->canAccessPanel($user)) {
+        if ($linkedDevices->isEmpty() && ! $this->rbac->canAccessPanel($user)) {
             return $this->emptyTrackerStats();
         }
 
-        $this->positionLoader->attachLatestToMany($devices);
-        $deviceIds = $devices->pluck('id');
+        // Live KPIs / distance / map use subscribed vehicles only.
+        // Total device count still includes linked vehicles without a subscription.
+        $metricDevices = $this->subscribedDashboardDevices($user, $linkedDevices);
 
-        $totalDevices = $devices->count();
-        $activeDevices = $devices->where('status', 'active')->count();
-        $onlineNow = $this->countOnlineDevices($devices);
-        $alertDeviceIds = $this->alertDeviceIds($devices);
-        $vehicleStates = $this->getVehicleStateCounts($devices, $alertDeviceIds);
-        $fleetCounts = $this->mapStatus->fleetCounts($devices);
-        $fleetDevices = $devices->sortByDesc(fn (Device $d) => $d->latestLocation?->recorded_at)->values();
-        $pageStats = $this->getDevicePageStats($devices);
+        $this->positionLoader->attachLatestToMany($linkedDevices);
+        if ($metricDevices->count() !== $linkedDevices->count()) {
+            $this->positionLoader->attachLatestToMany($metricDevices);
+        }
+
+        $metricIds = $metricDevices->pluck('id');
+        $totalDevices = $linkedDevices->count();
+        $activeDevices = $linkedDevices->where('status', 'active')->count();
+        $onlineNow = $this->countOnlineDevices($metricDevices);
+        $alertDeviceIds = $this->alertDeviceIds($metricDevices);
+        $vehicleStates = $this->getVehicleStateCounts($metricDevices, $alertDeviceIds);
+        $fleetCounts = $this->mapStatus->fleetCounts($metricDevices);
+        $fleetDevices = $linkedDevices->sortByDesc(fn (Device $d) => $d->latestLocation?->recorded_at)->values();
+        $pageStats = $this->getDevicePageStats($metricDevices);
+        $pageStats['totalDevices'] = $totalDevices;
+        $pageStats['activeDevices'] = $activeDevices;
+        $pageStats['inactiveDevices'] = $linkedDevices->where('status', 'inactive')->count();
+        $pageStats['blockedDevices'] = $linkedDevices->where('status', 'blocked')->count();
 
         $needsSubscriptionCount = 0;
         if (! $this->rbac->bypassesSubscriptionRestrictions($user)) {
             $subscriptionService = app(DeviceSubscriptionService::class);
-            $needsSubscriptionCount = $devices->filter(
+            $needsSubscriptionCount = $linkedDevices->filter(
                 fn (Device $device) => ! $subscriptionService->isActive($device)
             )->count();
         }
 
         try {
-            $activities = $this->getRecentActivities($deviceIds);
+            $activities = $this->getRecentActivities($metricIds);
         } catch (\Throwable $e) {
             report($e);
             $activities = collect();
@@ -100,7 +111,7 @@ class UserDashboardService
         }
 
         return array_merge($pageStats, [
-            'devices' => $devices,
+            'devices' => $linkedDevices,
             'totalDistanceKm' => 0,
             'distanceTodayKm' => 0,
             'activeAlerts' => 0,
@@ -115,7 +126,7 @@ class UserDashboardService
             'alertsPercent' => 0,
             'distancePercent' => 0,
             'chartData' => null,
-            'mapMarkers' => $this->buildMapMarkers($devices),
+            'mapMarkers' => $this->buildMapMarkers($metricDevices),
             'maintenanceDue' => $maintenanceDue,
         ]);
     }
@@ -127,7 +138,8 @@ class UserDashboardService
      */
     public function getDashboardMetrics(User $user): array
     {
-        $devices = $this->resolveDashboardDevices($user);
+        $linkedDevices = $this->resolveDashboardDevices($user);
+        $devices = $this->subscribedDashboardDevices($user, $linkedDevices);
 
         if ($devices->isEmpty() && ! $this->rbac->canAccessPanel($user)) {
             $empty = $this->emptyTrackerStats();
@@ -434,11 +446,30 @@ class UserDashboardService
         }
 
         // List all linked vehicles on the dashboard (including unpaid/expired).
-        // Live map / fleet tracking still require an active subscription elsewhere.
+        // Live map / distance metrics still require an active subscription elsewhere.
         return $this->trackingGate->filterTrackable(
             $user,
             $user->trackerDevicesQuery()->with(['subscription'])->get(),
             requireSubscription: false,
+        );
+    }
+
+    /**
+     * Devices that may contribute to live KPIs / distance / charts.
+     *
+     * @param  Collection<int, Device>  $linkedDevices
+     * @return Collection<int, Device>
+     */
+    private function subscribedDashboardDevices(User $user, Collection $linkedDevices): Collection
+    {
+        if ($this->rbac->bypassesSubscriptionRestrictions($user) || $this->rbac->canAccessPanel($user)) {
+            return $linkedDevices;
+        }
+
+        return $this->trackingGate->filterTrackable(
+            $user,
+            $linkedDevices,
+            requireSubscription: true,
         );
     }
 
