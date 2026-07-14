@@ -76,6 +76,8 @@ Route::middleware([
         ->middleware('permission:mobile.map.open');
     Route::get('/fleet/live', [MobileFleetController::class, 'live'])
         ->middleware('permission:mobile.map.open');
+    Route::get('/company-map-card', [MobileTrackingSettingsController::class, 'companyMapCard'])
+        ->middleware('permission:mobile.map.open');
     Route::get('/devices/{id}', [MobileDeviceController::class, 'show'])
         ->middleware('permission:mobile.map.open')
         ->whereNumber('id');

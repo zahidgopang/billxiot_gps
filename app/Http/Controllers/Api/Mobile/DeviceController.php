@@ -18,6 +18,7 @@ use App\Services\Tracking\DeviceHistoryFetcher;
 use App\Services\Tracking\DevicePositionLoader;
 use App\Services\Tracking\DeviceMapAppearanceService;
 use App\Services\Tracking\GlobalTrackingService;
+use App\Services\Tracking\TripTimelineBuilder;
 use App\Services\UserDashboardService;
 use App\Services\VehicleEventService;
 use Illuminate\Http\Request;
@@ -38,6 +39,7 @@ class DeviceController extends Controller
         private UserDashboardService $dashboard,
         private DeviceHistoryFetcher $historyFetcher,
         private GlobalTrackingService $tracking,
+        private TripTimelineBuilder $tripTimeline,
     ) {}
 
     public function index(Request $request)
@@ -186,6 +188,13 @@ class DeviceController extends Controller
         $locations = $result['locations'];
         $stats = $this->routeAnalytics->analyze($locations);
         $statuses = $this->routeAnalytics->pointStatuses($locations);
+        $events = $this->eventsForTimeline($device, $range['from'], $range['to']);
+        $segments = $this->tripTimeline->build(
+            $locations,
+            $stats['timeline'] ?? [],
+            $stats['stops'] ?? [],
+            $events,
+        );
 
         $points = $locations->values()->map(fn ($loc, int $index) => array_merge([
             'lat' => (float) $loc->lat,
@@ -218,6 +227,8 @@ class DeviceController extends Controller
             'moving_points' => $stats['moving_points'],
             'idle_points' => $stats['idle_points'],
             'timeline' => $stats['timeline'] ?? [],
+            'segments' => $segments,
+            'trip_timeline' => $segments,
             'stats' => [
                 'total_distance_km' => $stats['total_distance_km'],
                 'moving_time_seconds' => max(0, (int) ($stats['moving_time_seconds'] ?? 0)),
@@ -254,6 +265,13 @@ class DeviceController extends Controller
 
         $locations = $result['locations'];
         $stats = $this->routeAnalytics->analyze($locations);
+        $events = $this->eventsForTimeline($device, $range['from'], $range['to']);
+        $segments = $this->tripTimeline->build(
+            $locations,
+            $stats['timeline'] ?? [],
+            $stats['stops'] ?? [],
+            $events,
+        );
 
         $startTime = $stats['start_time'] ?? null;
         $endTime = $stats['end_time'] ?? null;
@@ -278,9 +296,33 @@ class DeviceController extends Controller
             'end_time' => $endTime,
             'stop_count' => $stats['stop_count'] ?? count($stats['stops'] ?? []),
             'timeline' => $stats['timeline'] ?? [],
+            'segments' => $segments,
+            'trip_timeline' => $segments,
             'history_fallback' => $result['used_fallback'] ? $result['fallback_reason'] : null,
             'used_fallback' => $result['used_fallback'],
         ]);
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function eventsForTimeline(Device $device, $from, $to): array
+    {
+        try {
+            $rows = $this->events->forDevice($device, $from, $to, null, 200);
+            $out = [];
+            foreach ($rows as $event) {
+                if ($event instanceof VehicleEvent) {
+                    $out[] = $event->toAlertArray();
+                } elseif (is_array($event)) {
+                    $out[] = $event;
+                }
+            }
+
+            return $out;
+        } catch (\Throwable) {
+            return [];
+        }
     }
 
     public function events(Request $request, int $id)

@@ -30,6 +30,7 @@ class ReportController extends Controller
         $range = $this->resolveReportRange($request);
         $type = (string) $request->query('type', 'summary');
         $ids = $this->parseTrackingIdList($request);
+        ReportService::applyTimeLimit(max(1, count($ids)), $range['from'], $range['to']);
 
         $report = $this->reports->generate(
             $request->user(),
@@ -50,6 +51,7 @@ class ReportController extends Controller
         $type = (string) $request->query('type', 'summary');
         $format = (string) $request->query('format', 'csv');
         $ids = $this->parseTrackingIdList($request);
+        ReportService::applyTimeLimit(max(1, count($ids)), $range['from'], $range['to'], forExport: true);
 
         $report = $this->reports->generate(
             $request->user(),

@@ -169,6 +169,40 @@
             }
         }
 
+        _applyPose(lat, lng, heading, point) {
+            if (!this.vehicleMarker) return;
+            const VM = global.VehicleMarker;
+            if (VM?.applyMarkerPose) {
+                VM.applyMarkerPose(
+                    this.vehicleMarker,
+                    lat,
+                    lng,
+                    heading,
+                    VM.resolveIconRotationOffset?.(point) || 0,
+                    VM.resolveRotationEnabled?.(point) !== false,
+                );
+                return;
+            }
+            this.vehicleMarker.setPosition({ lat, lng });
+            this._applyIconRotation(this._iconFor({ ...point, lat, lng, heading }));
+        }
+
+        ensureMotionEngine() {
+            if (this._motionEngine || !global.VehicleMotion?.createMotionEngine) return;
+            this._motionEngine = global.VehicleMotion.createMotionEngine({
+                onPose: (_id, pose) => {
+                    this._renderPos = { lat: pose.lat, lng: pose.lng };
+                    this._renderHeading = pose.heading;
+                    const point = { ...(this._lastPoint || {}), lat: pose.lat, lng: pose.lng, heading: pose.heading };
+                    this._applyPose(pose.lat, pose.lng, pose.heading, point);
+                    this._updatePulse(point);
+                    if (this.followVehicle) {
+                        this.map?.panTo({ lat: pose.lat, lng: pose.lng });
+                    }
+                },
+            });
+        }
+
         _updatePulse(point) {
             if (!point || this.opts.isHidden(point)) {
                 this.pulse?.hide();
@@ -221,14 +255,35 @@
             }
 
             if (skipAnimation) {
+                this._motionEngine?.clear('v');
                 this.vehicleMarker.setPosition(position);
                 this.vehicleMarker.setIcon(icon);
                 this._applyIconRotation(icon);
                 this.vehicleMarker.setTitle(title);
                 this._updatePulse(point);
+                this._lastPoint = point;
+                this._renderPos = position;
+                this._renderHeading = parseFloat(point.heading || 0) || 0;
                 if (this.followVehicle) {
                     this._panTo(position, options.focusZoom);
                 }
+                options.onComplete?.();
+                return;
+            }
+
+            this._lastPoint = point;
+            this.ensureMotionEngine();
+            if (this._motionEngine) {
+                const key = this.opts.getState?.(point) || point.status_key || '';
+                const moving = key === 'running' || key === 'moving';
+                this._motionEngine.setFix('v', {
+                    lat: point.lat,
+                    lng: point.lng,
+                    heading: point.heading,
+                    speed: point.speed,
+                    moving,
+                    recorded_at: point.recorded_at || point.last_update || point.timestamp || null,
+                });
                 options.onComplete?.();
                 return;
             }
@@ -262,48 +317,77 @@
         _animateTo(point, options = {}) {
             const target = { lat: point.lat, lng: point.lng };
             const startPos = this.vehicleMarker?.getPosition();
-            const duration = options.animDurationMs ?? this.opts.animDurationMs ?? 1200;
+            const VM = global.VehicleMotion;
+            const speedKmh = Math.max(0, parseFloat(point.speed) || 0);
+            const now = performance.now();
+            const interval = this.opts.pollIntervalMs || this.opts.animDurationMs || 2000;
+            const observed = this._lastTargetAt ? (now - this._lastTargetAt) : interval;
+            this._lastTargetAt = now;
 
             if (!startPos) {
                 this.vehicleMarker.setPosition(target);
                 this._applyIconRotation(this._iconFor(point));
                 this._updatePulse(point);
+                this._renderPos = target;
+                this._renderHeading = parseFloat(point.heading || 0) || 0;
                 options.onComplete?.();
                 return;
             }
 
-            this._animFrom = { lat: startPos.lat(), lng: startPos.lng() };
-            this._animFromHeading = parseFloat(point._fromHeading ?? point.heading ?? 0);
-            this._animStart = performance.now();
+            const from = this._renderPos || { lat: startPos.lat(), lng: startPos.lng() };
+            const fromHeading = Number.isFinite(Number(this._renderHeading))
+                ? Number(this._renderHeading)
+                : parseFloat(point._fromHeading ?? point.heading ?? 0);
+            const toHeading = parseFloat(point.heading || fromHeading);
+            const duration = options.animDurationMs
+                ?? (VM?.durationMs
+                    ? VM.durationMs({
+                        from,
+                        to: target,
+                        speedKmh,
+                        intervalMs: interval,
+                        observedIntervalMs: observed,
+                    })
+                    : (this.opts.animDurationMs ?? 1200));
+
+            this._animFrom = from;
+            this._animFromHeading = fromHeading;
+            this._animToHeading = toHeading;
+            this._animStart = now;
+            this._animDuration = duration;
 
             if (this._animFrame) {
                 cancelAnimationFrame(this._animFrame);
             }
 
-            const step = (now) => {
-                const t = Math.min(1, (now - this._animStart) / duration);
-                const eased = 1 - Math.pow(1 - t, 3);
+            const ease = VM?.easeInOutCubic
+                || ((t) => 1 - Math.pow(1 - t, 3));
+            const lerpH = VM?.lerpHeading
+                || ((a, b, t) => this._interpolateHeading(a, b, t));
+
+            const step = (frameNow) => {
+                const rawT = Math.min(1, (frameNow - this._animStart) / this._animDuration);
+                const eased = ease(rawT);
                 const lat = this._animFrom.lat + (target.lat - this._animFrom.lat) * eased;
                 const lng = this._animFrom.lng + (target.lng - this._animFrom.lng) * eased;
-                const heading = this._interpolateHeading(
-                    this._animFromHeading,
-                    parseFloat(point.heading || 0),
-                    eased
-                );
+                const heading = lerpH(this._animFromHeading, this._animToHeading, eased);
                 const framePoint = { ...point, lat, lng, heading };
 
-                this.vehicleMarker.setPosition({ lat, lng });
-                this._applyIconRotation(this._iconFor(framePoint));
+                this._renderPos = { lat, lng };
+                this._renderHeading = heading;
+                this._applyPose(lat, lng, heading, framePoint);
                 this._updatePulse(framePoint);
 
-                if (this.followVehicle && t > 0.4) {
+                if (this.followVehicle && rawT > 0.15) {
                     this.map.panTo({ lat, lng });
                 }
 
-                if (t < 1) {
+                if (rawT < 1) {
                     this._animFrame = requestAnimationFrame(step);
                 } else {
                     this._animFrame = null;
+                    this._renderPos = target;
+                    this._renderHeading = toHeading;
                     this.vehicleMarker.setPosition(target);
                     this._applyIconRotation(this._iconFor(point));
                     this._updatePulse(point);
@@ -335,6 +419,7 @@
                 cancelAnimationFrame(this._animFrame);
                 this._animFrame = null;
             }
+            this._motionEngine?.clear();
         }
 
         _routeMarkerIcon(type) {

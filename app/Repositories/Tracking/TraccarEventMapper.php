@@ -7,6 +7,8 @@ use App\Models\Geofence;
 use App\Models\TraccarEntityMap;
 use App\Models\VehicleEvent;
 use App\Services\Traccar\TraccarIdMap;
+use App\Support\Push\PushNotificationMapper;
+use App\Support\Push\PushNotificationType;
 use App\Support\Traccar\TraccarAttributes;
 use Carbon\Carbon;
 use stdClass;
@@ -79,9 +81,17 @@ class TraccarEventMapper
         return match ($traccarType) {
             'geofenceEnter' => VehicleEvent::TYPE_GEOFENCE_ENTER,
             'geofenceExit' => VehicleEvent::TYPE_GEOFENCE_EXIT,
-            'deviceOverspeed' => VehicleEvent::TYPE_OVERSPEED,
+            'deviceOverspeed', 'overspeed' => VehicleEvent::TYPE_OVERSPEED,
             'maintenance' => VehicleEvent::TYPE_MAINTENANCE,
-            'alarm' => VehicleEvent::TYPE_PANIC,
+            'alarm', 'sos' => VehicleEvent::TYPE_PANIC,
+            'ignitionOn', 'deviceIgnitionOn', 'engineOn' => VehicleEvent::TYPE_RUNNING,
+            'ignitionOff', 'deviceIgnitionOff', 'engineOff' => 'parked',
+            'deviceOnline', 'online' => 'device_online',
+            'deviceOffline', 'offline', 'deviceUnknown' => VehicleEvent::TYPE_OFFLINE,
+            'deviceMoving', 'deviceMovingStart' => VehicleEvent::TYPE_RUNNING,
+            'deviceStopped', 'deviceMovingStop' => VehicleEvent::TYPE_STOPPED,
+            'lowBattery', 'deviceLowBattery' => VehicleEvent::TYPE_LOW_BATTERY,
+            'powerCut', 'devicePowerCut' => VehicleEvent::TYPE_POWER_CUT,
             default => $traccarType,
         };
     }
@@ -116,11 +126,11 @@ class TraccarEventMapper
 
         return match ($laravelType) {
             VehicleEvent::TYPE_GEOFENCE_ENTER => [
-                'Entered geofence',
+                'Geofence Entry',
                 sprintf('%s entered "%s"%s.', $deviceName, $zone, $coords),
             ],
             VehicleEvent::TYPE_GEOFENCE_EXIT => [
-                'Left geofence',
+                'Geofence Exit',
                 sprintf('%s exited "%s"%s.', $deviceName, $zone, $coords),
             ],
             VehicleEvent::TYPE_OVERSPEED => [
@@ -132,17 +142,42 @@ class TraccarEventMapper
                 ),
             ],
             VehicleEvent::TYPE_PANIC => ['SOS / Panic', sprintf('Emergency alert on %s.', $deviceName)],
-            VehicleEvent::TYPE_POWER_CUT => ['Power cut', sprintf('Power cut on %s.', $deviceName)],
-            VehicleEvent::TYPE_LOW_BATTERY => ['Low battery', sprintf('Low battery on %s.', $deviceName)],
-            VehicleEvent::TYPE_STOPPED => ['Vehicle stopped', sprintf('%s has stopped.', $deviceName)],
-            VehicleEvent::TYPE_RUNNING => ['Vehicle running', sprintf('%s is moving.', $deviceName)],
-            VehicleEvent::TYPE_MAINTENANCE => ['Maintenance due', sprintf('%s is due for scheduled maintenance.', $deviceName)],
-            VehicleEvent::TYPE_TRIP_COMPLETED => ['Trip completed', sprintf('%s completed a planned route.', $deviceName)],
-            default => [
-                ucfirst(str_replace('_', ' ', $laravelType)),
-                sprintf('%s event recorded.', $deviceName),
-            ],
+            VehicleEvent::TYPE_POWER_CUT => ['Power Cut', sprintf('Power cut on %s.', $deviceName)],
+            VehicleEvent::TYPE_LOW_BATTERY => ['Low Battery', sprintf('Low battery on %s.', $deviceName)],
+            VehicleEvent::TYPE_STOPPED => ['Engine Off', sprintf('%s has stopped.', $deviceName)],
+            VehicleEvent::TYPE_RUNNING => ['Engine On', sprintf('%s engine is on / moving.', $deviceName)],
+            'idle' => ['Vehicle Idle', sprintf('%s is idle (ignition on).', $deviceName)],
+            'parked' => ['Engine Off', sprintf('%s is parked (engine off).', $deviceName)],
+            'device_online' => ['Device Connected', sprintf('%s is online again.', $deviceName)],
+            VehicleEvent::TYPE_OFFLINE => ['Device Disconnected', sprintf('%s disconnected.', $deviceName)],
+            VehicleEvent::TYPE_MAINTENANCE => ['Maintenance Due', sprintf('%s is due for scheduled maintenance.', $deviceName)],
+            VehicleEvent::TYPE_TRIP_COMPLETED => ['Trip Completed', sprintf('%s completed a planned route.', $deviceName)],
+            VehicleEvent::TYPE_DELAYED => ['Delayed Data', sprintf('%s has delayed GPS updates.', $deviceName)],
+            VehicleEvent::TYPE_GSM_WEAK => ['Weak GSM Signal', sprintf('%s has a weak GSM signal.', $deviceName)],
+            VehicleEvent::TYPE_GPS_WEAK => ['Weak GPS Signal', sprintf('%s has a weak GPS signal.', $deviceName)],
+            VehicleEvent::TYPE_IGNITION => ['Ignition Off While Moving', sprintf('%s ignition is off while moving.', $deviceName)],
+            default => $this->fallbackCopy($laravelType, $deviceName),
         };
+    }
+
+    /**
+     * @return array{0: string, 1: string}
+     */
+    private function fallbackCopy(string $laravelType, string $deviceName): array
+    {
+        $pushType = PushNotificationMapper::fromVehicleEventType($laravelType);
+        $label = $pushType
+            ? PushNotificationType::title($pushType)
+            : trim(ucwords(str_replace(['_', '-', '.'], ' ', $laravelType)));
+
+        if ($label === '' || strcasecmp($label, 'Event') === 0 || strcasecmp($label, 'Unknown') === 0) {
+            $label = 'Fleet Alert';
+        }
+
+        return [
+            $label,
+            sprintf('%s — %s.', $deviceName, $label),
+        ];
     }
 
     private function resolveLaravelGeofenceId(array $data, array $attrs): ?int

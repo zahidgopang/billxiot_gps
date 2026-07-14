@@ -96,7 +96,10 @@
                 <label class="form-label small">{{ __('app.tracking.report_type') }}</label>
                 <select id="gtReportType" class="form-select form-select-sm">
                     <option value="summary">{{ __('app.tracking.report_summary') }}</option>
+                    <option value="mileage">{{ __('app.tracking.report_mileage') }}</option>
+                    <option value="diesel">{{ __('app.tracking.report_diesel') }}</option>
                     <option value="trips">{{ __('app.tracking.report_trips') }}</option>
+                    <option value="trips_stops">{{ __('app.tracking.report_trips_stops') }}</option>
                     <option value="stops">{{ __('app.tracking.report_stops') }}</option>
                     <option value="events">{{ __('app.tracking.report_events') }}</option>
                     <option value="route">{{ __('app.tracking.report_route') }}</option>

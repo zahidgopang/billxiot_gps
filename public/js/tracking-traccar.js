@@ -47,25 +47,27 @@
         return '#ef4444';
     }
 
-    // Traccar-style directional arrow marker (rotates by heading, colored by status).
+    // North-up status arrow — CSS rotation via AdvancedMarker setRotation (no SVG rebuild).
     const arrowIconCache = Object.create(null);
-    function arrowIcon(color, heading) {
+    function arrowIcon(color) {
         const g = global.google;
         if (!g?.maps) return null;
-        const bucket = Math.round((((heading || 0) % 360) + 360) % 360 / 3) * 3;
-        const key = `${color}|${bucket}`;
+        const key = String(color || '#94a3b8');
         if (arrowIconCache[key]) return arrowIconCache[key];
-        const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="52" viewBox="0 0 40 52">
-            <g transform="rotate(${bucket} 20 20)">
-                <path d="M20 3 L31 31 L20 24 L9 31 Z" fill="${color}" stroke="#ffffff" stroke-width="1.8" stroke-linejoin="round"/>
-            </g>
+        const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40">
+            <path d="M20 4 L31 32 L20 25 L9 32 Z" fill="${key}" stroke="#ffffff" stroke-width="1.8" stroke-linejoin="round"/>
         </svg>`;
         const icon = {
             url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
-            scaledSize: new g.maps.Size(40, 52),
-            // Tip of the arrow sits on the GPS coordinate (not the rotation pivot).
-            anchor: new g.maps.Point(20, 3),
-            labelOrigin: new g.maps.Point(20, -2),
+            scaledSize: new g.maps.Size(40, 40),
+            // Body center sits on the GPS coordinate; nose points north at rotation 0.
+            anchor: new g.maps.Point(20, 20),
+            labelOrigin: new g.maps.Point(20, -4),
+            meta: {
+                flat: true,
+                rotation: 0,
+                baked: false,
+            },
         };
         arrowIconCache[key] = icon;
         return icon;
@@ -705,8 +707,8 @@
             this._reverbWatchTimer = null;
             this.echoChannels = new Map();
             this.initialFitDone = false;
-            this.motionRaf = null;
-            this._tick = (t) => this.motionTick(t);
+            this.motionEngine = null;
+            this._followCamAt = 0;
 
             // history
             this.historyLayers = [];
@@ -725,6 +727,7 @@
             this._virtualEventScrollEl = null;
             this._fleetRenderer = null;
             this._historyAutoFitDone = false;
+            this._tripTimeline = null;
 
             // route playback
             this._playbackPoints = [];
@@ -1897,7 +1900,21 @@
             }
             // No upload / broken custom → Google-style status arrow pin.
             if (!icon?.url) {
-                icon = arrowIcon(color, h);
+                icon = arrowIcon(color);
+                if (icon?.meta) {
+                    const VM2 = global.VehicleMarker;
+                    const offset = VM2?.resolveIconRotationOffset?.(point) || 0;
+                    const enabled = VM2?.resolveRotationEnabled?.(point) !== false;
+                    icon = {
+                        ...icon,
+                        meta: {
+                            ...icon.meta,
+                            rotation: enabled
+                                ? (VM2?.finalRotation?.(h, offset, true) ?? h)
+                                : 0,
+                        },
+                    };
+                }
             }
             applyMarkerIcon(st.marker, icon);
             if (typeof st.marker?.setLabel === 'function') {
@@ -1905,18 +1922,51 @@
             }
         }
 
-        /** Rebuild marker bitmap only when heading bucket / status color changes. */
-        _markerIconSignature(v, heading) {
+        /** Rebuild marker asset only when status/color/style changes — never on heading. */
+        _markerIconSignature(v) {
             const VM = global.VehicleMarker;
             const key = v?.status_key || 'offline';
             const offset = VM?.resolveIconRotationOffset?.(v) || 0;
             const enabled = VM?.resolveRotationEnabled?.(v) !== false;
-            const final = VM?.finalRotation?.(heading, offset, enabled) ?? (((heading || 0) + offset + 360) % 360);
-            const bucket = Math.round((((final || 0) % 360) + 360) % 360 / 2) * 2;
             const style = VM?.resolveMarkerStyle?.(v) || 'pin';
             const scale = VM?.resolveMarkerSizeScale?.(v) || 1;
             const custom = VM?.resolveMapIconUrl?.(v) || '';
-            return `${key}|${colorForPoint(v, this.stateColors)}|${bucket}|${style}|${scale}|${custom}|${offset}`;
+            return `${key}|${colorForPoint(v, this.stateColors)}|${style}|${scale}|${custom}|${offset}|${enabled ? 1 : 0}`;
+        }
+
+        ensureMotionEngine() {
+            if (this.motionEngine || !global.VehicleMotion?.createMotionEngine) return;
+            this.motionEngine = global.VehicleMotion.createMotionEngine({
+                onPose: (id, pose) => this.onMotionPose(id, pose),
+            });
+        }
+
+        onMotionPose(id, pose) {
+            if (this.historyActive) return;
+            const st = this.states.get(id);
+            if (!st?.marker || !this.visible.has(id)) return;
+            this.placeVehicleMarker(st, id, pose.lat, pose.lng, pose.color, pose.heading);
+
+            if (this.vehiclePopup?.isOpenFor(id)) {
+                const v = this.vehicles.get(id);
+                if (v) {
+                    this.vehiclePopup.update({
+                        ...v,
+                        id,
+                        lat: pose.lat,
+                        lng: pose.lng,
+                        heading: pose.heading,
+                    });
+                }
+            }
+
+            if (this.followId === id && this.map && pose.lat != null) {
+                const now = performance.now();
+                if (!this._followCamAt || now - this._followCamAt >= 66) {
+                    this._followCamAt = now;
+                    this.map.panTo({ lat: pose.lat, lng: pose.lng });
+                }
+            }
         }
 
         activeClusterBreakId() {
@@ -2145,6 +2195,7 @@
             const st = this.vehicleState(id);
             if (st.animFrame) { cancelAnimationFrame(st.animFrame); st.animFrame = null; }
             st.motion = null;
+            this.motionEngine?.clear(id);
             st.marker?.setMap(null);
             this.clearTrail(st);
             const routeLine = this._vehicleRoutePolylines.get(id);
@@ -2287,7 +2338,7 @@
             line.setMap(showTrail ? this.map : null);
         }
 
-        /** Marker + render cache — always the device GPS lat/lng. */
+        /** Render layer — draw continuous pose (position + CSS rotation only). */
         placeVehicleMarker(st, id, lat, lng, color, heading) {
             const pos = normalizeGps(lat, lng);
             if (!pos || !st.marker) return;
@@ -2297,22 +2348,37 @@
             }
             const show = this.markerShouldShowOnMap(id, true);
             st.marker.setMap(show ? this.map : null);
-            st.marker.setPosition({ lat: pos.lat, lng: pos.lng });
+
             const vehicle = this.vehicles.get(id);
+            const VM = global.VehicleMarker;
             if (vehicle) {
-                const sig = this._markerIconSignature(
-                    { ...vehicle, color: color || colorForPoint(vehicle, this.stateColors) },
-                    st.renderHeading,
-                );
+                const colored = {
+                    ...vehicle,
+                    color: color || colorForPoint(vehicle, this.stateColors),
+                };
+                const sig = this._markerIconSignature(colored);
                 if (st._iconSig !== sig) {
                     st._iconSig = sig;
-                    this.setVehicleMarkerIcon(
-                        st,
-                        { ...vehicle, lat: pos.lat, lng: pos.lng, color: color || colorForPoint(vehicle, this.stateColors) },
-                        st.renderHeading,
+                    this.setVehicleMarkerIcon(st, colored, st.renderHeading);
+                } else if (VM?.applyMarkerPose) {
+                    VM.applyMarkerPose(
+                        st.marker,
+                        pos.lat,
+                        pos.lng,
+                        st.renderHeading || 0,
+                        VM.resolveIconRotationOffset?.(colored) || 0,
+                        VM.resolveRotationEnabled?.(colored) !== false,
                     );
+                } else {
+                    st.marker.setPosition({ lat: pos.lat, lng: pos.lng });
+                    if (typeof st.marker.setRotation === 'function') {
+                        st.marker.setRotation(st.renderHeading || 0);
+                    }
                 }
+            } else {
+                st.marker.setPosition({ lat: pos.lat, lng: pos.lng });
             }
+
             const key = st.lastPoint?.status_key || vehicle?.status_key || '';
             if (MOVING_KEYS.has(key)) {
                 this.syncTrailPolyline(st, pos.lat, pos.lng, color || colorForPoint(vehicle || {}, this.stateColors), id);
@@ -2385,123 +2451,33 @@
             const moving = MOVING_KEYS.has(key);
             const spd = Math.max(0, parseFloat(merged.speed) || 0);
 
-            // Single source of truth: marker always on the device GPS fix (no drift / dead-reckon).
-            st.motion = null;
-            st.lastPoint = merged;
             let h = parseFloat(merged.heading);
             if (!Number.isFinite(h) || (!moving && spd < 3)) {
                 h = st.renderHeading != null ? st.renderHeading : 0;
             }
+            merged.heading = h;
+            st.lastPoint = merged;
             if (moving) this.commitGpsTrailPoint(st, merged.lat, merged.lng);
             else this.clearTrail(st);
-            this.placeVehicleMarker(st, id, merged.lat, merged.lng, liveColor, h);
-            this.renderLiveClusters();
-        }
 
-        /**
-         * Glide from the current rendered position to the latest GPS fix.
-         * Stops exactly on the fix — no dead-reckoning past the target.
-         */
-        startMotion(id, to) {
-            const st = this.vehicleState(id);
-            const toLL = normalizeGps(to.lat, to.lng);
-            if (!toLL) return;
-            const from = st.renderPos
-                || (st.lastPoint ? normalizeGps(st.lastPoint.lat, st.lastPoint.lng) : toLL)
-                || toLL;
-            const fromH = st.renderHeading != null ? st.renderHeading : parseFloat(to.heading || 0);
-            const moving = MOVING_KEYS.has(to.status_key || 'offline');
-            const speedKmh = Math.max(0, parseFloat(to.speed) || 0);
-            const interval = this.cfg.pollIntervalMs || 2000;
-            const segMeters = distMeters(from, toLL);
-
-            let toH = parseFloat(to.heading);
-            if (!Number.isFinite(toH) || (!moving && speedKmh < 3)) toH = fromH;
-
-            let catchupMs = Math.min(interval * 0.85, 1800);
-            if (segMeters > 400) catchupMs = Math.min(catchupMs, 900);
-            else if (segMeters < 4) catchupMs = Math.min(catchupMs, 450);
-
-            st.dupSince = null;
-            if (moving) this.commitGpsTrailPoint(st, toLL.lat, toLL.lng);
-            else this.clearTrail(st);
-            st.motion = {
-                from,
-                to: toLL,
-                fromH,
-                toH,
-                speedKmh,
-                color: colorForPoint(to, this.stateColors),
-                catchupMs: Math.max(200, catchupMs),
-                staleCruise: false,
-                start: performance.now(),
-            };
-            st.lastPoint = to;
-            this.startMotionLoop();
-        }
-
-        startMotionLoop() {
-            if (!this.motionRaf) this.motionRaf = requestAnimationFrame(this._tick);
-        }
-
-        motionTick(now) {
-            if (this.historyActive) {
-                this.states.forEach((st) => { st.motion = null; });
-                this.motionRaf = null;
-                return;
+            this.ensureMotionEngine();
+            if (this.motionEngine) {
+                this.motionEngine.setFix(id, {
+                    lat: merged.lat,
+                    lng: merged.lng,
+                    heading: h,
+                    speed: spd,
+                    moving,
+                    color: liveColor,
+                    recorded_at: merged.recorded_at
+                        || merged.last_update
+                        || merged.timestamp
+                        || null,
+                });
+            } else {
+                this.placeVehicleMarker(st, id, merged.lat, merged.lng, liveColor, h);
             }
-
-            let active = false;
-            this.states.forEach((st, id) => {
-                const m = st.motion;
-                if (!m || !st.marker || !this.visible.has(id)) return;
-
-                const elapsed = now - m.start;
-                let lat;
-                let lng;
-                let heading;
-                let done = false;
-
-                if (elapsed <= m.catchupMs) {
-                    const rawT = m.catchupMs > 0 ? Math.min(1, elapsed / m.catchupMs) : 1;
-                    const t = easeInOutQuad(rawT);
-                    lat = m.from.lat + (m.to.lat - m.from.lat) * t;
-                    lng = m.from.lng + (m.to.lng - m.from.lng) * t;
-                    heading = lerpHeading(m.fromH, m.toH, t);
-                    if (rawT >= 1) done = true;
-                } else {
-                    lat = m.to.lat;
-                    lng = m.to.lng;
-                    heading = m.toH;
-                    done = true;
-                }
-
-                this.placeVehicleMarker(st, id, lat, lng, m.color, heading);
-
-                if (this.vehiclePopup?.isOpenFor(id)) {
-                    const v = this.vehicles.get(id);
-                    if (v) {
-                        this.vehiclePopup.update({
-                            ...v,
-                            id,
-                            lat,
-                            lng,
-                            heading,
-                        });
-                    }
-                }
-
-                if (done) {
-                    st.motion = null;
-                    if (!m.staleCruise && MOVING_KEYS.has(st.lastPoint?.status_key || '')) {
-                        this.syncTrailPolyline(st, m.to.lat, m.to.lng, m.color, id);
-                    }
-                } else {
-                    active = true;
-                }
-            });
-
-            this.motionRaf = active ? requestAnimationFrame(this._tick) : null;
+            this.renderLiveClusters();
         }
 
         showLiveLayer(show) {
@@ -3084,18 +3060,102 @@
         bindHistory() {
             document.getElementById('tcHistShow')?.addEventListener('click', () => this.loadHistory());
             document.getElementById('tcHistHide')?.addEventListener('click', () => this.exitHistory());
+            this.initTripTimelineUi();
             document.getElementById('tcFooterClose')?.addEventListener('click', () => {
-                const f = document.getElementById('tcFooter');
-                if (f) f.hidden = true;
-                this._stopPanelDurationTick();
-                this._panelAbort?.abort();
-                this._footerMode = null;
-                this._panelDeviceId = null;
-                this._focusedVehicleId = null;
-                this.clearRouteTripSelection();
-                this.renderLiveClusters();
-                this.resizeMapSoon();
+                this.hideFooterPanel();
             });
+        }
+
+        initTripTimelineUi() {
+            if (this._tripTimeline || !global.HistoryTripTimeline?.create) return;
+            const summaryEl = document.getElementById('tcHistSummary');
+            const listEl = document.getElementById('tcHistResults');
+            if (!summaryEl || !listEl) return;
+
+            this._tripTimeline = global.HistoryTripTimeline.create({
+                summaryEl,
+                listEl,
+                dayEl: document.getElementById('tcHistDayNav'),
+                exportEl: document.getElementById('tcHistExport'),
+                vehicleEl: document.getElementById('tcHistVehicleLabel'),
+                geocodeUrl: this.cfg.historyGeocodeUrl || null,
+                i18n: this.cfg.i18n || {},
+                onDayChange: (ymd) => {
+                    const fromDate = document.getElementById('tcHistDateFrom');
+                    const toDate = document.getElementById('tcHistDateTo');
+                    const fromTime = document.getElementById('tcHistTimeFrom');
+                    const toTime = document.getElementById('tcHistTimeTo');
+                    if (fromDate) fromDate.value = ymd;
+                    if (toDate) toDate.value = ymd;
+                    if (fromTime) fromTime.value = '00:00';
+                    if (toTime) toTime.value = '23:59';
+                    this.loadHistory();
+                },
+                onExport: (format) => this.exportHistoryTimeline(format),
+                onSelect: (seg) => this.onTripTimelineSelect(seg),
+            });
+
+            const fromDate = document.getElementById('tcHistDateFrom')?.value;
+            if (fromDate) this._tripTimeline.setDay(fromDate);
+        }
+
+        exportHistoryTimeline(format) {
+            const id = parseInt(document.getElementById('tcHistVehicle')?.value, 10);
+            if (!id || !this.cfg.historyExportUrl) {
+                this.toast(this.mi('selectVehicle', 'Select a vehicle.'), 'warning');
+                return;
+            }
+            const fromDate = document.getElementById('tcHistDateFrom')?.value || '';
+            const toDate = document.getElementById('tcHistDateTo')?.value || fromDate;
+            const tFrom = document.getElementById('tcHistTimeFrom')?.value || '00:00';
+            const tTo = document.getElementById('tcHistTimeTo')?.value || '23:59';
+            const params = new URLSearchParams();
+            params.set('ids', String(id));
+            if (fromDate) params.set('from', `${fromDate} ${tFrom}`);
+            if (toDate) params.set('to', `${toDate} ${tTo}`);
+            params.set('format', format || 'xlsx');
+            window.open(`${this.cfg.historyExportUrl}?${params.toString()}`, '_blank');
+        }
+
+        onTripTimelineSelect(seg) {
+            if (!seg) return;
+            const lat = seg.lat ?? seg.start_lat;
+            const lng = seg.lng ?? seg.start_lng;
+            if (hasGeo(lat, lng)) {
+                this.map.panTo({ lat: parseFloat(lat), lng: parseFloat(lng) });
+                if (this.map.getZoom() < 14) this.map.setZoom(15);
+            }
+            if (seg.start && this._playbackPoints?.length) {
+                const targetMs = Date.parse(seg.start);
+                if (!Number.isNaN(targetMs)) {
+                    let best = 0;
+                    let bestDiff = Infinity;
+                    this._playbackPoints.forEach((p, idx) => {
+                        const ms = Date.parse(p.recorded_at || p.time || '');
+                        if (Number.isNaN(ms)) return;
+                        const diff = Math.abs(ms - targetMs);
+                        if (diff < bestDiff) {
+                            bestDiff = diff;
+                            best = idx;
+                        }
+                    });
+                    this.pausePlayback?.();
+                    this._playbackIndex = best;
+                    this.updatePlaybackAtIndex?.(best);
+                    this.setPlaybackPanelOpen?.(true);
+                }
+            }
+            this.onHistoryEventClick({
+                lat,
+                lng,
+                event_type: seg.kind,
+                title: seg.kind_label || seg.title,
+                message: seg.message || seg.address,
+                duration_seconds: seg.duration_seconds,
+                time: seg.start_display || seg.start,
+                recorded_at: seg.start,
+                end: seg.end,
+            }, this._historyName);
         }
 
         mi(key, fallback) {
@@ -3687,7 +3747,7 @@
             this.setHistoryLoadBanner('stops', 'loading');
             this.setHistoryLoadBanner('events', 'loading');
 
-            this.renderHistoryEventList(historyEvents, name, stats);
+            this.renderTripTimeline(vehicle, stats);
             this.setHistoryLoadBanner('timeline', 'done');
             this.setHistoryLoadBanner('stats', 'done');
 
@@ -3701,10 +3761,8 @@
             this.scheduleIdleWork(() => {
                 if (seq !== this._historyLoadSeq) return;
                 this.renderGraph(points);
-                this.renderHistoryEventsChunked(historyEvents, name, () => {
-                    if (seq !== this._historyLoadSeq) return;
-                    this.setHistoryLoadBanner('events', 'done');
-                });
+                // Trip timeline already rendered; keep alert markers via status/footer.
+                this.setHistoryLoadBanner('events', 'done');
             });
         }
 
@@ -3767,6 +3825,7 @@
             this._historyAbort = new AbortController();
             const signal = this._historyAbort.signal;
             this.historyActive = true;
+            this.motionEngine?.clear();
             this.showLiveLayer(false);
             this.beginHistoryLoadBanner();
             if (wrap) wrap.hidden = false;
@@ -3909,6 +3968,7 @@
             const loadSeq = (this._historyLoadSeq = (this._historyLoadSeq || 0) + 1);
             this.clearHistory();
             this.historyActive = true;
+            this.motionEngine?.clear();
             this.showLiveLayer(false);
             this.beginHistoryLoadBanner();
             this.applyHistoryPoints(vehicle, loadSeq).then((ok) => {
@@ -4036,6 +4096,23 @@
             }, name, marker || stop._marker);
         }
 
+        renderTripTimeline(vehicle, stats) {
+            this.initTripTimelineUi();
+            const wrap = document.getElementById('tcHistResultsWrap');
+            if (wrap) wrap.hidden = false;
+            const segments = vehicle?.segments || vehicle?.trip_timeline || [];
+            if (this._tripTimeline) {
+                this._tripTimeline.setData({
+                    ...(vehicle || {}),
+                    stats: vehicle?.stats || stats,
+                    segments,
+                });
+                return;
+            }
+            // Fallback if shared module missing
+            this.renderHistoryEventList(vehicle?.history_events || vehicle?.events || [], vehicle?.name || '', stats);
+        }
+
         renderHistoryEventList(events, name, stats) {
             const res = document.getElementById('tcHistResults');
             const wrap = document.getElementById('tcHistResultsWrap');
@@ -4150,14 +4227,31 @@
         bindFooterResize() {
             const footer = document.getElementById('tcFooter');
             const handle = document.getElementById('tcFooterResize');
+            const head = footer?.querySelector('.tc-footer-head');
             if (!footer || !handle) return;
 
-            const minH = 120;
-            const maxRatio = 0.72;
+            /** Drag below this collapses/hides the sheet completely. */
+            const collapseH = 72;
+            /** Smallest open height when not collapsing. */
+            const minOpenH = 100;
+            const defaultH = 250;
+            const maxRatio = () => {
+                const landscape = window.matchMedia('(orientation: landscape)').matches
+                    && window.innerWidth <= 900;
+                return landscape ? 0.42 : 0.85;
+            };
 
-            const applyHeight = (px) => {
-                const maxH = Math.max(minH, Math.floor(window.innerHeight * maxRatio));
-                const h = Math.min(Math.max(px, minH), maxH);
+            const maxHeightPx = () => Math.max(minOpenH, Math.floor(window.innerHeight * maxRatio()));
+
+            const applyHeight = (px, { allowCollapse = false } = {}) => {
+                const maxH = maxHeightPx();
+                let h = Number(px);
+                if (!Number.isFinite(h)) h = defaultH;
+                if (allowCollapse && h < collapseH) {
+                    h = Math.max(0, h);
+                } else {
+                    h = Math.min(Math.max(h, minOpenH), maxH);
+                }
                 footer.style.setProperty('--tc-footer-height', `${h}px`);
                 this.resizeMapSoon();
                 return h;
@@ -4165,44 +4259,112 @@
 
             try {
                 const stored = parseInt(localStorage.getItem('tcFooterHeight'), 10);
-                if (Number.isFinite(stored) && stored >= minH) {
+                if (Number.isFinite(stored) && stored >= minOpenH) {
                     applyHeight(stored);
                 }
             } catch (_) { /* ignore */ }
 
             let startY = null;
             let startH = 0;
+            let activePointerId = null;
 
-            handle.addEventListener('pointerdown', (e) => {
+            const onPointerDown = (e) => {
+                // Don't steal clicks from tabs / close button.
+                if (e.target?.closest?.('.tc-ftab, .tc-footer-close, a, button')) return;
                 startY = e.clientY;
                 startH = footer.getBoundingClientRect().height;
-                handle.setPointerCapture?.(e.pointerId);
-                e.preventDefault();
-            });
-
-            handle.addEventListener('pointermove', (e) => {
-                if (startY == null) return;
-                applyHeight(startH + (startY - e.clientY));
-            });
-
-            const finishDrag = () => {
-                if (startY == null) return;
-                const h = footer.getBoundingClientRect().height;
+                activePointerId = e.pointerId;
+                footer.classList.add('is-dragging');
                 try {
-                    localStorage.setItem('tcFooterHeight', String(Math.round(h)));
+                    e.currentTarget.setPointerCapture?.(e.pointerId);
                 } catch (_) { /* ignore */ }
+                e.preventDefault();
+            };
+
+            const onPointerMove = (e) => {
+                if (startY == null) return;
+                if (activePointerId != null && e.pointerId !== activePointerId) return;
+                // Drag up → taller sheet; drag down → shorter / hide.
+                applyHeight(startH + (startY - e.clientY), { allowCollapse: true });
+            };
+
+            const finishDrag = (e) => {
+                if (startY == null) return;
+                if (e && activePointerId != null && e.pointerId !== activePointerId) return;
+                footer.classList.remove('is-dragging');
+                const h = footer.getBoundingClientRect().height;
                 startY = null;
+                activePointerId = null;
+                if (h < collapseH) {
+                    this.hideFooterPanel({ keepHeight: false });
+                    try {
+                        // Remember preferred size for next open, not 0.
+                        const prev = parseInt(localStorage.getItem('tcFooterHeight'), 10);
+                        if (!Number.isFinite(prev) || prev < minOpenH) {
+                            localStorage.setItem('tcFooterHeight', String(defaultH));
+                        }
+                    } catch (_) { /* ignore */ }
+                    applyHeight(defaultH);
+                    return;
+                }
+                const saved = applyHeight(h);
+                try {
+                    localStorage.setItem('tcFooterHeight', String(Math.round(saved)));
+                } catch (_) { /* ignore */ }
                 this.resizeMapSoon();
             };
 
-            handle.addEventListener('pointerup', finishDrag);
-            handle.addEventListener('pointercancel', finishDrag);
+            [handle, head].filter(Boolean).forEach((el) => {
+                el.addEventListener('pointerdown', onPointerDown);
+                el.addEventListener('pointermove', onPointerMove);
+                el.addEventListener('pointerup', finishDrag);
+                el.addEventListener('pointercancel', finishDrag);
+            });
+
+            // Double-click / double-tap the grabber to expand or collapse.
+            handle.addEventListener('dblclick', () => {
+                const cur = footer.getBoundingClientRect().height;
+                const maxH = maxHeightPx();
+                if (cur > maxH * 0.55) {
+                    this.hideFooterPanel();
+                } else {
+                    applyHeight(maxH);
+                    try {
+                        localStorage.setItem('tcFooterHeight', String(maxH));
+                    } catch (_) { /* ignore */ }
+                }
+            });
+        }
+
+        hideFooterPanel(options = {}) {
+            const footer = document.getElementById('tcFooter');
+            if (footer) {
+                footer.hidden = true;
+                footer.classList.remove('is-dragging');
+            }
+            this._stopPanelDurationTick();
+            this._panelAbort?.abort();
+            this._footerMode = null;
+            this._panelDeviceId = null;
+            this._focusedVehicleId = null;
+            this.clearRouteTripSelection();
+            this.renderLiveClusters();
+            this.resizeMapSoon();
         }
 
         showFooter(title) {
             const footer = document.getElementById('tcFooter');
             const wasHidden = footer ? footer.hidden : true;
-            if (footer) footer.hidden = false;
+            if (footer) {
+                footer.hidden = false;
+                // Restore last dragged height when reopening.
+                try {
+                    const stored = parseInt(localStorage.getItem('tcFooterHeight'), 10);
+                    if (Number.isFinite(stored) && stored >= 100) {
+                        footer.style.setProperty('--tc-footer-height', `${stored}px`);
+                    }
+                } catch (_) { /* ignore */ }
+            }
             const t = document.getElementById('tcFooterTitle');
             if (t) t.textContent = title || '';
             if (wasHidden) this.resizeMapSoon();

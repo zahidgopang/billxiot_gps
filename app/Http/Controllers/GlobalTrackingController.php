@@ -425,6 +425,76 @@ class GlobalTrackingController extends Controller
     }
 
     /**
+     * Export history day as trips+stops (xlsx/csv/pdf) via ReportService.
+     */
+    public function historyExport(Request $request): \Symfony\Component\HttpFoundation\StreamedResponse|\Illuminate\Http\Response
+    {
+        $this->prepareHeavyHistoryRequest();
+
+        $user = $request->user();
+        $ids = $this->tracking->filterAllowedIds($user, $this->parseTrackingIdList($request));
+        if ($ids === []) {
+            abort(422, (string) __('app.tracking.report_select_vehicle'));
+        }
+
+        $range = $this->resolveGlobalHistoryRange($request);
+        $format = strtolower((string) $request->input('format', $request->query('format', 'xlsx')));
+        if (! in_array($format, ['csv', 'xlsx', 'xls', 'pdf'], true)) {
+            $format = 'xlsx';
+        }
+
+        try {
+            $reports = app(\App\Services\Tracking\Reports\ReportService::class);
+            $export = app(\App\Services\Tracking\Reports\ReportExportService::class);
+            \App\Services\Tracking\Reports\ReportService::applyTimeLimit(
+                count($ids),
+                $range['from'],
+                $range['to'] ?? $range['from']->copy()->endOfDay(),
+                forExport: true,
+            );
+            $request->session()->save();
+
+            $report = $reports->generate(
+                $user,
+                'trips_stops',
+                $ids,
+                $range['from'],
+                $range['to'] ?? $range['from']->copy()->endOfDay(),
+                forExport: true,
+            );
+
+            return $export->export($report, $format);
+        } catch (\Throwable $e) {
+            report($e);
+            abort(500, (string) __('app.tracking.report_export_failed'));
+        }
+    }
+
+    /**
+     * Lazy reverse-geocode for history stop addresses (cached).
+     */
+    public function historyGeocode(Request $request): JsonResponse
+    {
+        $lat = (float) $request->query('lat', $request->input('lat', 0));
+        $lng = (float) $request->query('lng', $request->input('lng', 0));
+        if ($lat == 0.0 && $lng == 0.0) {
+            return $this->noStoreJson(['success' => false, 'address' => null], 422);
+        }
+
+        $cacheKey = 'history.geocode.'.round($lat, 5).'.'.round($lng, 5);
+        $address = Cache::remember($cacheKey, now()->addDays(7), function () use ($lat, $lng) {
+            return app(\App\Support\Geo\GeoLocalityResolver::class)->reverseGeocode($lat, $lng);
+        });
+
+        return $this->noStoreJson([
+            'success' => $address !== null && $address !== '',
+            'address' => $address,
+            'lat' => $lat,
+            'lng' => $lng,
+        ]);
+    }
+
+    /**
      * @param  list<int>  $ids
      * @param  array{from: Carbon, to: Carbon|null}  $range
      * @return list<array<string, mixed>>
@@ -579,6 +649,8 @@ class GlobalTrackingController extends Controller
             'historyJson' => 'tracking.history-json',
             'historyPoints' => 'tracking.history-points-json',
             'historyAnalytics' => 'tracking.history-analytics-json',
+            'historyExport' => 'tracking.history-export',
+            'historyGeocode' => 'tracking.history-geocode',
             'eventsJson' => 'tracking.events.json',
             'geofencesJson' => 'tracking.geofences.json',
             'devicePanel' => 'tracking.device-panel',

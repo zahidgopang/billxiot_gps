@@ -115,6 +115,13 @@
             this.selectedId = null;
             this.layers = [];
             this.legendEl = null;
+            this._tripTimeline = null;
+            this._playbackPoints = [];
+            this._playbackIndex = 0;
+            this._playbackSpeed = 1;
+            this._playbackTimer = null;
+            this._isPlaying = false;
+            this._vehicleMarker = null;
         }
 
         showError(message) {
@@ -233,8 +240,164 @@
             document.getElementById('gtHistoryFit')?.addEventListener('click', () => this.fitRoutes(true));
             document.getElementById('gtHistoryClear')?.addEventListener('click', () => {
                 this.clearMap();
+                this._tripTimeline?.clear();
+                this.stopPlayback(true);
                 this.toggleEmpty(true);
             });
+            this.initTripTimeline();
+            this.bindPlayback();
+        }
+
+        initTripTimeline() {
+            if (this._tripTimeline || !global.HistoryTripTimeline?.create) return;
+            this._tripTimeline = global.HistoryTripTimeline.create({
+                summaryEl: document.getElementById('gtHistSummary'),
+                listEl: document.getElementById('gtHistTimeline'),
+                dayEl: document.getElementById('gtHistDayNav'),
+                exportEl: document.getElementById('gtHistExport'),
+                vehicleEl: document.getElementById('gtHistVehicleLabel'),
+                geocodeUrl: this.cfg.historyGeocodeUrl || null,
+                i18n: this.cfg.i18n || {},
+                onDayChange: (ymd) => {
+                    const fromDate = document.getElementById('gtDateFrom');
+                    const toDate = document.getElementById('gtDateTo');
+                    const fromTime = document.getElementById('gtTimeFrom');
+                    const toTime = document.getElementById('gtTimeTo');
+                    if (fromDate) fromDate.value = ymd;
+                    if (toDate) toDate.value = ymd;
+                    if (fromTime) fromTime.value = '00:00';
+                    if (toTime) toTime.value = '23:59';
+                    this.loadHistory();
+                },
+                onExport: (format) => this.exportHistory(format),
+                onSelect: (seg) => this.focusSegment(seg),
+            });
+            const fromDate = document.getElementById('gtDateFrom')?.value;
+            if (fromDate) this._tripTimeline.setDay(fromDate);
+        }
+
+        exportHistory(format) {
+            if (!this.selectedId || !this.cfg.historyExportUrl) {
+                notify(this.cfg.i18n?.selectVehicle || 'Select a vehicle.', 'warning');
+                return;
+            }
+            const params = this.buildQuery();
+            params.set('format', format || 'xlsx');
+            window.open(`${this.cfg.historyExportUrl}?${params.toString()}`, '_blank');
+        }
+
+        focusSegment(seg) {
+            if (!seg) return;
+            const lat = parseFloat(seg.lat ?? seg.start_lat);
+            const lng = parseFloat(seg.lng ?? seg.start_lng);
+            if (Number.isFinite(lat) && Number.isFinite(lng) && this.map) {
+                this.map.panTo({ lat, lng });
+                if (this.map.getZoom() < 15) this.map.setZoom(15);
+            }
+            if (seg.start && this._playbackPoints.length) {
+                const targetMs = Date.parse(seg.start);
+                if (!Number.isNaN(targetMs)) {
+                    let best = 0;
+                    let bestDiff = Infinity;
+                    this._playbackPoints.forEach((p, idx) => {
+                        const ms = Date.parse(p.recorded_at || '');
+                        if (Number.isNaN(ms)) return;
+                        const diff = Math.abs(ms - targetMs);
+                        if (diff < bestDiff) {
+                            bestDiff = diff;
+                            best = idx;
+                        }
+                    });
+                    this.pausePlayback();
+                    this.setPlaybackIndex(best);
+                }
+            }
+        }
+
+        bindPlayback() {
+            document.getElementById('gtPbPlay')?.addEventListener('click', () => {
+                if (this._isPlaying) this.pausePlayback();
+                else this.startPlayback();
+            });
+            document.getElementById('gtPbStop')?.addEventListener('click', () => this.stopPlayback(true));
+            document.querySelectorAll('[data-gt-speed]').forEach((btn) => {
+                btn.addEventListener('click', () => {
+                    this._playbackSpeed = parseFloat(btn.dataset.gtSpeed || '1') || 1;
+                    document.querySelectorAll('[data-gt-speed]').forEach((b) => b.classList.toggle('active', b === btn));
+                });
+            });
+            document.getElementById('gtPlaybackProgress')?.addEventListener('click', (e) => {
+                if (!this._playbackPoints.length) return;
+                const rect = e.currentTarget.getBoundingClientRect();
+                const ratio = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
+                this.setPlaybackIndex(Math.round(ratio * (this._playbackPoints.length - 1)));
+            });
+        }
+
+        startPlayback() {
+            if (!this._playbackPoints.length) return;
+            this._isPlaying = true;
+            const icon = document.querySelector('#gtPbPlay i');
+            if (icon) icon.className = 'fas fa-pause';
+            const tick = () => {
+                if (!this._isPlaying) return;
+                if (this._playbackIndex >= this._playbackPoints.length - 1) {
+                    this.pausePlayback();
+                    return;
+                }
+                this.setPlaybackIndex(this._playbackIndex + 1);
+                this._playbackTimer = setTimeout(tick, Math.max(80, 500 / this._playbackSpeed));
+            };
+            tick();
+        }
+
+        pausePlayback() {
+            this._isPlaying = false;
+            if (this._playbackTimer) {
+                clearTimeout(this._playbackTimer);
+                this._playbackTimer = null;
+            }
+            const icon = document.querySelector('#gtPbPlay i');
+            if (icon) icon.className = 'fas fa-play';
+        }
+
+        stopPlayback(reset) {
+            this.pausePlayback();
+            if (reset) this.setPlaybackIndex(0);
+        }
+
+        setPlaybackIndex(idx) {
+            if (!this._playbackPoints.length) return;
+            this._playbackIndex = Math.max(0, Math.min(this._playbackPoints.length - 1, idx));
+            const p = this._playbackPoints[this._playbackIndex];
+            const total = this._playbackPoints.length;
+            const bar = document.getElementById('gtPlaybackBar');
+            if (bar) bar.style.width = `${(this._playbackIndex / Math.max(1, total - 1)) * 100}%`;
+            const speedEl = document.getElementById('gtPbLiveSpeed');
+            if (speedEl) speedEl.textContent = String(Math.round(parseFloat(p.speed || 0)));
+            const pointEl = document.getElementById('gtPbPointLabel');
+            if (pointEl) pointEl.textContent = `${this._playbackIndex + 1} / ${total}`;
+            const cur = document.getElementById('gtPbTimeCurrent');
+            if (cur) cur.textContent = String(p.recorded_at || '').slice(11, 16) || '00:00';
+            const end = this._playbackPoints[total - 1];
+            const tot = document.getElementById('gtPbTimeTotal');
+            if (tot) tot.textContent = String(end?.recorded_at || '').slice(11, 16) || '00:00';
+
+            if (this.map && p.lat != null && p.lng != null) {
+                const pos = { lat: parseFloat(p.lat), lng: parseFloat(p.lng) };
+                if (!this._vehicleMarker) {
+                    this._vehicleMarker = new google.maps.Marker({
+                        map: this.map,
+                        position: pos,
+                        title: 'Vehicle',
+                        zIndex: 999,
+                    });
+                    this.layers.push(this._vehicleMarker);
+                } else {
+                    this._vehicleMarker.setPosition(pos);
+                }
+                this.map.panTo(pos);
+            }
         }
 
         buildQuery() {
@@ -294,6 +457,8 @@
                         ...(pointsVehicle || {}),
                         points: pointsVehicle?.points || [],
                         events: analyticsVehicle?.events || analyticsVehicle?.history_events || pointsVehicle?.events || [],
+                        segments: analyticsVehicle?.segments || analyticsVehicle?.trip_timeline || [],
+                        stats: analyticsVehicle?.stats || pointsVehicle?.stats || null,
                     };
                 } else {
                     const res = await fetch(`${this.cfg.historyJsonUrl}?${qs}`, {
@@ -381,7 +546,15 @@
             });
             routeEvents.forEach((ev) => this.addEventMarker(ev));
 
-            this.renderSpeedLegend(vehicle.name);
+            this.renderSpeedLegend(vehicle.name || vehicle.title);
+            this._playbackPoints = points;
+            this._vehicleMarker = null;
+            this.setPlaybackIndex(0);
+            this._tripTimeline?.setData({
+                ...vehicle,
+                segments: vehicle.segments || vehicle.trip_timeline || [],
+                stats: vehicle.stats || null,
+            });
             this.fitRoutes(true);
         }
 

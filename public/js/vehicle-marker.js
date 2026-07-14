@@ -457,6 +457,10 @@
             const finalHeading = showDirection && rotationEnabled
                 ? finalRotation(heading, rotationOffset, true)
                 : 0;
+            // Flat / CSS-rotated assets share one cache entry per appearance — heading
+            // is applied via AdvancedMarker setRotation, not a new data-URL.
+            const usesCssRotation = !!(mapIconUrl || customUrl)
+                || (style === 'body');
             const cacheKey = [
                 identity.title,
                 identity.plate || '',
@@ -466,7 +470,7 @@
                 sizeScale,
                 customUrl || '',
                 mapIconUrl || '',
-                Math.round(finalHeading / step),
+                usesCssRotation ? 'css' : Math.round(finalHeading / step),
                 rotationOffset,
                 showDirection ? 1 : 0,
                 showLiveBadge ? 1 : 0,
@@ -534,7 +538,7 @@
             }
 
             const sized = style === 'body'
-                ? bodyOnlyVehicleSvg(color, heading, showDirection, vehicleType, sizedOpts)
+                ? bodyOnlyVehicleSvg(color, 0, false, vehicleType, sizedOpts)
                 : labeledVehicleSvg(identity, color, heading, showDirection, vehicleType, {
                     ...sizedOpts,
                     showLiveBadge,
@@ -549,6 +553,14 @@
                 url: sized.url,
                 scaledSize: new google.maps.Size(w, h),
                 anchor: new google.maps.Point(anchorX, anchorY),
+                meta: style === 'body'
+                    ? {
+                        flat: true,
+                        rotation: finalHeading,
+                        baked: false,
+                        heading: finalHeading,
+                    }
+                    : undefined,
             };
             cache[cacheKey] = icon;
             return icon;
@@ -756,23 +768,46 @@
         if (!marker || !icon) {
             return;
         }
+        // Prefer pose-only rotation when the platform supports it; setIcon itself
+        // skips DOM rebuild when the asset URL/size/anchor is unchanged.
         if (typeof marker.setIcon === 'function') {
             marker.setIcon(icon);
         }
-        if (typeof marker.setFlat === 'function') {
-            if (icon.meta) {
+        if (icon.meta) {
+            if (typeof marker.setFlat === 'function') {
                 marker.setFlat(!!icon.meta.flat);
-                if (typeof marker.setRotation === 'function') {
-                    marker.setRotation(Number(icon.meta.rotation) || 0);
-                }
-            } else {
-                marker.setFlat(false);
-                if (typeof marker.setRotation === 'function') {
-                    marker.setRotation(0);
-                }
             }
+            if (typeof marker.setRotation === 'function') {
+                marker.setRotation(Number(icon.meta.rotation) || 0);
+            }
+        } else if (typeof marker.setRotation === 'function') {
+            if (typeof marker.setFlat === 'function') {
+                marker.setFlat(false);
+            }
+            marker.setRotation(0);
         }
         ensureExternalIconLoads(marker, icon);
+    }
+
+    /**
+     * Update only GPS position + CSS heading rotation (no AdvancedMarker DOM rebuild).
+     * `rotationOffset` is artwork alignment (nose vs bitmap).
+     */
+    function applyMarkerPose(marker, lat, lng, heading, rotationOffset, rotationEnabled) {
+        if (!marker) return;
+        const rot = rotationEnabled === false
+            ? 0
+            : finalRotation(heading, rotationOffset || 0, true);
+        if (typeof marker.setPose === 'function') {
+            marker.setPose({ lat, lng }, rot);
+            return;
+        }
+        if (typeof marker.setPosition === 'function') {
+            marker.setPosition({ lat, lng });
+        }
+        if (typeof marker.setRotation === 'function') {
+            marker.setRotation(rot);
+        }
     }
 
     const iconLoadCache = Object.create(null);
@@ -980,6 +1015,7 @@
         createIconBuilder,
         createMarker,
         applyMarkerIcon,
+        applyMarkerPose,
         clearIconLoadCache,
         getPulseOverlayClass,
         createPulseController,

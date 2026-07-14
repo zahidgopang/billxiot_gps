@@ -12,6 +12,7 @@ use App\Models\User;
 use App\Services\AdminAuditService;
 use App\Services\Inventory\InventoryService;
 use App\Services\Stock\ClientStockBalanceService;
+use App\Services\Tracking\DeviceFuelService;
 use App\Services\Tracking\DeviceOdometerService;
 use App\Support\Traccar\TraccarSchema;
 use Illuminate\Http\Request;
@@ -27,6 +28,7 @@ class DeviceController extends Controller
         private ClientStockBalanceService $clientStock,
         private InventoryService $inventory,
         private DeviceOdometerService $odometer,
+        private DeviceFuelService $fuel,
     ) {}
 
     public function index(Request $request)
@@ -136,6 +138,7 @@ class DeviceController extends Controller
         });
 
         $this->syncOdometerBaseline($device, $request);
+        $this->syncFuelSettings($device, $request);
 
         // Central inventory: consume 1 unit from client inventory for this install.
         // (Sell invoice transfers to client, install consumes client stock.)
@@ -208,6 +211,7 @@ class DeviceController extends Controller
 
         $device->refresh();
         $this->syncOdometerBaseline($device, $request);
+        $this->syncFuelSettings($device, $request);
 
         $this->audit->logUpdated($device, "device {$device->imei}", array_merge($data, ['client_id' => $clientId]));
 
@@ -310,6 +314,10 @@ class DeviceController extends Controller
             'sim_number' => 'nullable|string|max:40',
             'plate_type' => ['nullable', Rule::in(array_keys(Device::PLATE_TYPES))],
             'odometer_base_km' => 'nullable|numeric|min:0|max:9999999',
+            'fuel_consumption_l_per_100km' => 'nullable|numeric|min:0.1|max:100',
+            'fuel_efficiency_unit' => 'nullable|in:l_per_100km,km_per_l',
+            'fuel_tank_capacity_l' => 'nullable|numeric|min:1|max:2000',
+            'fuel_sensor_unit' => 'nullable|in:liters,percent',
         ];
 
         if (! $this->isClientPanel()) {
@@ -335,6 +343,25 @@ class DeviceController extends Controller
 
         if ($previous === null || abs($previous - $km) > 0.05) {
             $this->odometer->setBaseline($device, $km);
+        }
+    }
+
+    private function syncFuelSettings(Device $device, Request $request): void
+    {
+        $keys = [
+            'fuel_consumption_l_per_100km',
+            'fuel_efficiency_unit',
+            'fuel_tank_capacity_l',
+            'fuel_sensor_unit',
+        ];
+        $payload = [];
+        foreach ($keys as $key) {
+            if ($request->has($key)) {
+                $payload[$key] = $request->input($key);
+            }
+        }
+        if ($payload !== []) {
+            $this->fuel->syncSettings($device, $payload);
         }
     }
 

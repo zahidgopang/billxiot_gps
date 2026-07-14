@@ -252,9 +252,12 @@ class PushNotificationDispatcher
 
         $eventType = (string) ($extra['event_type'] ?? $pushType);
 
+        // Always prefer the clear, user-facing push type title (Engine On, Overspeed, …).
+        // Stored event titles were sometimes generic ("Event", "… event recorded").
         $displayTitle = PushNotificationType::title($pushType);
-        if ($title !== '' && $title !== $displayTitle) {
-            $displayTitle = $title;
+        $incoming = trim($title);
+        if ($incoming !== '' && ! $this->isGenericEventTitle($incoming)) {
+            $displayTitle = $incoming;
         }
 
         $occurredAt = isset($extra['occurred_at'])
@@ -385,6 +388,29 @@ class PushNotificationDispatcher
             PushNotificationType::GEOFENCE_EXIT => 'map',
             default => 'device',
         };
+    }
+
+    private function isGenericEventTitle(string $title): bool
+    {
+        $normalized = strtolower(trim($title));
+        if ($normalized === '') {
+            return true;
+        }
+
+        return in_array($normalized, [
+            'event',
+            'event record',
+            'event recorded',
+            'fleet alert',
+            'fleet notification',
+            'notification',
+            'alert',
+            'vehicle update',
+            'unknown',
+        ], true)
+            || str_ends_with($normalized, ' event recorded')
+            || str_ends_with($normalized, 'event recorded.')
+            || preg_match('/\bevent recorded\b/', $normalized) === 1;
     }
 
     private function userAllowsPush(int $userId, string $eventType): bool

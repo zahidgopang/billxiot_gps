@@ -297,6 +297,7 @@
     @include('partials.google-maps-platform')
     <script src="{{ protected_js('builtin-map-icons.js') }}"></script>
     <script src="{{ protected_js('vehicle-marker.js') }}"></script>
+    <script src="{{ protected_js('vehicle-motion.js') }}"></script>
     <script src="{{ protected_js('route-trip-progress.js') }}"></script>
     <script src="{{ protected_js('vehicle-map-popup.js') }}"></script>
     <script src="{{ protected_js('global-tracking.js') }}"></script>

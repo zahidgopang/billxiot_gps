@@ -384,6 +384,10 @@
                                                 data-vehicle-number="{{ $d->vehicle_number ?? '' }}"
                                                 data-odometer-base-km="{{ $d->odometerBaselineKm() ?? '' }}"
                                                 data-odometer-display-km="{{ $d->odometerDisplayKm() ?? '' }}"
+                                                data-fuel-rate="{{ $d->fuelConsumptionLPer100km() ?? '' }}"
+                                                data-fuel-unit="{{ $d->fuelEfficiencyUnit() }}"
+                                                data-fuel-tank="{{ $d->fuelTankCapacityL() ?? '' }}"
+                                                data-fuel-sensor-unit="{{ $d->fuelSensorUnit() }}"
                                                 data-update-url="{{ route('user.devices.vehicle-label', $d) }}"
                                                 title="{{ __('app.user.devices.edit_vehicle') }}">
                                             <i class="fas fa-pen"></i><span class="btn-label">{{ __('app.user.devices.edit_vehicle') }}</span>
@@ -532,6 +536,32 @@
                             <div class="form-text">{{ __('app.odometer.hint') }}</div>
                             <div class="form-text d-none" id="editVehicleOdometerLive"></div>
                         </div>
+                        <div class="mb-3 mt-3">
+                            <label for="editVehicleFuelRate" class="form-label">{{ __('app.fuel.consumption_rate') }}</label>
+                            <input type="number" class="form-control admin-ltr" dir="ltr" id="editVehicleFuelRate" name="fuel_consumption_l_per_100km"
+                                   step="0.1" min="0.1" max="100" placeholder="{{ __('app.fuel.consumption_placeholder') }}">
+                            <div class="form-text">{{ __('app.fuel.consumption_hint') }}</div>
+                        </div>
+                        <div class="mb-3">
+                            <label for="editVehicleFuelUnit" class="form-label">{{ __('app.fuel.efficiency_unit') }}</label>
+                            <select class="form-select" id="editVehicleFuelUnit" name="fuel_efficiency_unit">
+                                <option value="l_per_100km">{{ __('app.fuel.unit_l_100') }}</option>
+                                <option value="km_per_l">{{ __('app.fuel.unit_km_l') }}</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="editVehicleFuelTank" class="form-label">{{ __('app.fuel.tank_capacity') }}</label>
+                            <input type="number" class="form-control admin-ltr" dir="ltr" id="editVehicleFuelTank" name="fuel_tank_capacity_l"
+                                   step="0.1" min="1" max="2000" placeholder="{{ __('app.fuel.tank_placeholder') }}">
+                            <div class="form-text">{{ __('app.fuel.tank_hint') }}</div>
+                        </div>
+                        <div class="mb-0">
+                            <label for="editVehicleFuelSensorUnit" class="form-label">{{ __('app.fuel.sensor_unit') }}</label>
+                            <select class="form-select" id="editVehicleFuelSensorUnit" name="fuel_sensor_unit">
+                                <option value="liters">{{ __('app.fuel.sensor_liters') }}</option>
+                                <option value="percent">{{ __('app.fuel.sensor_percent') }}</option>
+                            </select>
+                        </div>
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-outline-premium" data-bs-dismiss="modal">{{ __('app.common.cancel') }}</button>
@@ -622,6 +652,10 @@
                 const numberInput = document.getElementById('editVehicleNumber');
                 const odometerInput = document.getElementById('editVehicleOdometer');
                 const odometerLive = document.getElementById('editVehicleOdometerLive');
+                const fuelRateInput = document.getElementById('editVehicleFuelRate');
+                const fuelUnitInput = document.getElementById('editVehicleFuelUnit');
+                const fuelTankInput = document.getElementById('editVehicleFuelTank');
+                const fuelSensorUnitInput = document.getElementById('editVehicleFuelSensorUnit');
                 const errorBox = document.getElementById('editVehicleError');
                 const saveBtn = document.getElementById('editVehicleSaveBtn');
                 const i18n = window.USER_DEVICES_EDIT || {};
@@ -650,6 +684,10 @@
                         if (odometerInput) {
                             odometerInput.value = btn.getAttribute('data-odometer-base-km') || '';
                         }
+                        if (fuelRateInput) fuelRateInput.value = btn.getAttribute('data-fuel-rate') || '';
+                        if (fuelUnitInput) fuelUnitInput.value = btn.getAttribute('data-fuel-unit') || 'l_per_100km';
+                        if (fuelTankInput) fuelTankInput.value = btn.getAttribute('data-fuel-tank') || '';
+                        if (fuelSensorUnitInput) fuelSensorUnitInput.value = btn.getAttribute('data-fuel-sensor-unit') || 'liters';
                         setOdometerLive(btn.getAttribute('data-odometer-display-km'));
                         errorBox.classList.add('d-none');
                         errorBox.textContent = '';
@@ -682,6 +720,10 @@
                                 vehicle_name: nameInput.value.trim(),
                                 vehicle_number: numberInput.value.trim(),
                                 odometer_base_km: odometerInput ? odometerInput.value.trim() : '',
+                                fuel_consumption_l_per_100km: fuelRateInput ? fuelRateInput.value.trim() : '',
+                                fuel_efficiency_unit: fuelUnitInput ? fuelUnitInput.value : 'l_per_100km',
+                                fuel_tank_capacity_l: fuelTankInput ? fuelTankInput.value.trim() : '',
+                                fuel_sensor_unit: fuelSensorUnitInput ? fuelSensorUnitInput.value : 'liters',
                             }),
                         });
 
@@ -736,6 +778,18 @@
                                 }
                                 if (labels.odometer_display_km !== undefined && labels.odometer_display_km !== null) {
                                     btn.setAttribute('data-odometer-display-km', labels.odometer_display_km);
+                                }
+                                if (labels.fuel_consumption_l_per_100km !== undefined) {
+                                    btn.setAttribute('data-fuel-rate', labels.fuel_consumption_l_per_100km ?? '');
+                                }
+                                if (labels.fuel_efficiency_unit) {
+                                    btn.setAttribute('data-fuel-unit', labels.fuel_efficiency_unit);
+                                }
+                                if (labels.fuel_tank_capacity_l !== undefined) {
+                                    btn.setAttribute('data-fuel-tank', labels.fuel_tank_capacity_l ?? '');
+                                }
+                                if (labels.fuel_sensor_unit) {
+                                    btn.setAttribute('data-fuel-sensor-unit', labels.fuel_sensor_unit);
                                 }
                             }
                         });

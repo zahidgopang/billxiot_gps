@@ -85,18 +85,18 @@ class VehicleEventService
 
         [$title, $message] = match ($mapKey) {
             'running' => [
-                'Vehicle running',
-                sprintf('%s is running.', $device->notificationDisplayName()),
+                'Engine On',
+                sprintf('%s engine is on / moving.', $device->notificationDisplayName()),
             ],
             'idle' => [
-                'Vehicle idle',
+                'Vehicle Idle',
                 sprintf('%s is idle (ignition on).', $device->notificationDisplayName()),
             ],
             'parked' => [
-                'Vehicle parked',
-                sprintf('%s is parked.', $device->notificationDisplayName()),
+                'Engine Off',
+                sprintf('%s is parked (engine off).', $device->notificationDisplayName()),
             ],
-            default => ['Vehicle update', "{$device->notificationDisplayName()} status changed."],
+            default => ['Fleet Alert', "{$device->notificationDisplayName()} status changed."],
         };
 
         $eventType = match ($mapKey) {

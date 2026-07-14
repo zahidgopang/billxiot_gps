@@ -67,9 +67,13 @@ class ReportExportService
                         $this->coord($trip['start_lng'] ?? null),
                         $this->coord($trip['end_lat'] ?? null),
                         $this->coord($trip['end_lng'] ?? null),
+                        (string) ($trip['start_maps_url'] ?? ''),
+                        (string) ($trip['end_maps_url'] ?? ''),
                         $this->num($trip['distance_km'] ?? 0),
                         ReportLabels::formatDuration((int) ($trip['duration_seconds'] ?? 0)),
                         ReportLabels::formatDuration((int) ($trip['moving_time_seconds'] ?? 0)),
+                        (int) ($trip['stop_count'] ?? 0),
+                        (int) ($trip['route_point_count'] ?? 0),
                         $this->num($trip['max_speed_kmh'] ?? 0),
                         $this->num($trip['average_speed_kmh'] ?? 0),
                     ];
@@ -85,6 +89,91 @@ class ReportExportService
                         ReportLabels::formatDuration((int) ($stop['duration_seconds'] ?? 0)),
                         $this->coord($stop['lat'] ?? null),
                         $this->coord($stop['lng'] ?? null),
+                        (string) ($stop['maps_url'] ?? ''),
+                    ];
+                }
+            } elseif ($type === 'trips_stops') {
+                foreach ($device['segments'] ?? [] as $segment) {
+                    $kind = (string) ($segment['kind'] ?? '');
+                    $isTrip = $kind === 'trip';
+                    $rows[] = [
+                        $name,
+                        $plate,
+                        (string) ($segment['kind_label'] ?? $kind),
+                        (string) ($segment['start_time'] ?? $segment['start_display'] ?? $segment['start'] ?? ''),
+                        (string) ($segment['end_time'] ?? $segment['end_display'] ?? $segment['end'] ?? ''),
+                        ReportLabels::formatDuration((int) ($segment['duration_seconds'] ?? 0)),
+                        $isTrip ? $this->num($segment['distance_km'] ?? 0) : '',
+                        $this->coord($isTrip ? ($segment['start_lat'] ?? null) : ($segment['lat'] ?? null)),
+                        $this->coord($isTrip ? ($segment['start_lng'] ?? null) : ($segment['lng'] ?? null)),
+                        (string) ($segment['maps_url'] ?? $segment['start_maps_url'] ?? ''),
+                        $isTrip ? (int) ($segment['stop_count'] ?? 0) : '',
+                    ];
+                }
+            } elseif ($type === 'mileage') {
+                foreach ($device['days'] ?? [] as $day) {
+                    $rows[] = [
+                        $name,
+                        $plate,
+                        (string) ($day['date'] ?? ''),
+                        $this->num($day['distance_km'] ?? 0),
+                        ReportLabels::formatDuration((int) ($day['duration_seconds'] ?? 0)),
+                        (int) ($day['point_count'] ?? 0),
+                        (string) ($day['start_time'] ?? ''),
+                        (string) ($day['end_time'] ?? ''),
+                        (string) ($day['start_maps_url'] ?? ''),
+                        (string) ($day['end_maps_url'] ?? ''),
+                    ];
+                }
+            } elseif ($type === 'diesel') {
+                $effUnit = (string) ($device['efficiency_label'] ?? $device['efficiency_unit'] ?? '');
+                $rows[] = [
+                    $name,
+                    $plate,
+                    (string) __('app.tracking.report_seg_period'),
+                    (string) ($device['start_time'] ?? ''),
+                    (string) ($device['end_time'] ?? ''),
+                    $this->num($device['total_distance_km'] ?? 0),
+                    $this->num($device['fuel_liters'] ?? ''),
+                    $device['efficiency'] !== null && $device['efficiency'] !== ''
+                        ? $this->num($device['efficiency']).($effUnit !== '' ? ' '.$effUnit : '')
+                        : '',
+                    (string) ($device['fuel_method_label'] ?? $device['fuel_method'] ?? ''),
+                    $this->num($device['rate_l_per_100km'] ?? ''),
+                    '',
+                ];
+                foreach ($device['trips'] ?? [] as $trip) {
+                    $rows[] = [
+                        $name,
+                        $plate,
+                        (string) __('app.tracking.report_seg_trip'),
+                        (string) ($trip['start_time'] ?? ''),
+                        (string) ($trip['end_time'] ?? ''),
+                        $this->num($trip['distance_km'] ?? 0),
+                        $this->num($trip['fuel_liters'] ?? ''),
+                        $trip['efficiency'] !== null && $trip['efficiency'] !== ''
+                            ? $this->num($trip['efficiency'])
+                            : '',
+                        (string) ($trip['fuel_method'] ?? ''),
+                        '',
+                        (string) ($trip['maps_url'] ?? $trip['start_maps_url'] ?? ''),
+                    ];
+                }
+                foreach ($device['days'] ?? [] as $day) {
+                    $rows[] = [
+                        $name,
+                        $plate,
+                        (string) __('app.tracking.report_seg_day'),
+                        (string) ($day['date'] ?? $day['start_time'] ?? ''),
+                        (string) ($day['end_time'] ?? ''),
+                        $this->num($day['distance_km'] ?? 0),
+                        $this->num($day['fuel_liters'] ?? ''),
+                        $day['efficiency'] !== null && $day['efficiency'] !== ''
+                            ? $this->num($day['efficiency'])
+                            : '',
+                        (string) ($day['fuel_method'] ?? ''),
+                        '',
+                        (string) ($day['maps_url'] ?? $day['start_maps_url'] ?? ''),
                     ];
                 }
             } elseif ($type === 'events') {
@@ -99,6 +188,7 @@ class ReportExportService
                         (string) ($event['geofence'] ?? ''),
                         $this->coord($event['lat'] ?? null),
                         $this->coord($event['lng'] ?? null),
+                        (string) ($event['maps_url'] ?? ''),
                         $this->num($event['speed'] ?? ''),
                     ];
                 }
@@ -110,6 +200,7 @@ class ReportExportService
                         (string) ($position['time_display'] ?? $position['time'] ?? ''),
                         $this->coord($position['lat'] ?? null),
                         $this->coord($position['lng'] ?? null),
+                        (string) ($position['maps_url'] ?? ''),
                         $this->num($position['speed'] ?? 0),
                         $this->coord($position['heading'] ?? null),
                         ReportLabels::formatIgnition($position['ignition'] ?? null),

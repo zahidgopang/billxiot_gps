@@ -486,12 +486,39 @@
                 if (!icon) {
                     return;
                 }
+                const prev = ctx.icon;
+                const nextFlat = !!(icon.meta && icon.meta.flat);
+                const nextRot = icon.meta ? (Number(icon.meta.rotation) || 0) : 0;
+                const sameAsset = !!(
+                    prev
+                    && prev.url === icon.url
+                    && String(prev.scaledSize?.width) === String(icon.scaledSize?.width)
+                    && String(prev.scaledSize?.height) === String(icon.scaledSize?.height)
+                    && String(prev.anchor?.x ?? prev.anchor?.getX?.()) === String(icon.anchor?.x ?? icon.anchor?.getX?.())
+                    && String(prev.anchor?.y ?? prev.anchor?.getY?.()) === String(icon.anchor?.y ?? icon.anchor?.getY?.())
+                );
                 ctx.icon = icon;
                 if (icon.meta) {
-                    ctx.state.flat = !!icon.meta.flat;
-                    ctx.state.rotation = Number(icon.meta.rotation) || 0;
+                    ctx.state.flat = nextFlat;
+                    ctx.state.rotation = nextRot;
+                } else {
+                    ctx.state.flat = false;
+                    ctx.state.rotation = 0;
+                }
+                // Heading-only updates: keep AdvancedMarkerElement content alive and
+                // rotate via CSS — rebuilding DOM each tick causes visible hops.
+                if (sameAsset && ctx.content) {
+                    updateContentRotation(ctx.content, ctx.state.rotation, ctx.state.flat);
+                    return;
                 }
                 rebuildContent();
+            },
+            /** Position + CSS rotation without touching marker content. */
+            setPose(pos, rotation) {
+                compat.setPosition(pos);
+                if (rotation != null && Number.isFinite(Number(rotation))) {
+                    compat.setRotation(Number(rotation));
+                }
             },
             setTitle(title) {
                 native.title = title;

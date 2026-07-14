@@ -82,6 +82,18 @@ final class TraccarAppFields
 
     public const KEY_ODOMETER_LAST_ACCUM_LNG = 'odometer_last_accum_lng';
 
+    /** Average diesel use in liters per 100 km (estimated consumption). */
+    public const KEY_FUEL_CONSUMPTION_L_PER_100KM = 'fuel_consumption_l_per_100km';
+
+    /** Display preference: l_per_100km | km_per_l */
+    public const KEY_FUEL_EFFICIENCY_UNIT = 'fuel_efficiency_unit';
+
+    /** Optional tank capacity in liters (helps interpret % fuel sensors). */
+    public const KEY_FUEL_TANK_CAPACITY_L = 'fuel_tank_capacity_l';
+
+    /** Fuel sensor reading unit: liters | percent */
+    public const KEY_FUEL_SENSOR_UNIT = 'fuel_sensor_unit';
+
     public const KEY_SIM_TYPE = 'sim_type';
 
     public const KEY_SIM_NUMBER = 'sim_number';

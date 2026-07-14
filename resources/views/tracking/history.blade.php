@@ -90,12 +90,13 @@
         }
 
         .gt-sidebar {
-            width: min(320px, 92vw);
+            width: min(380px, 94vw);
             flex-shrink: 0;
             display: flex;
             flex-direction: column;
             background: var(--apple-bg-sidebar);
             border-inline-end: 0.5px solid var(--apple-separator);
+            max-height: 100%;
         }
 
         .gt-sidebar-head {
@@ -207,10 +208,91 @@
             .gt-body { flex-direction: column; }
             .gt-sidebar {
                 width: 100%;
-                max-height: 36vh;
+                max-height: 48vh;
                 border-inline-end: none;
                 border-bottom: 0.5px solid var(--apple-separator);
             }
+            .gt-map-wrap { min-height: 42vh; }
+        }
+
+        @media (max-width: 900px) and (orientation: landscape) {
+            .gt-page { min-height: 0; }
+            body.gt-page-active .content-wrap {
+                height: calc(100dvh - var(--tracking-topbar-height, 52px));
+                max-height: calc(100dvh - var(--tracking-topbar-height, 52px));
+            }
+            .gt-filters {
+                flex-wrap: nowrap;
+                overflow-x: auto;
+                padding: 0.45rem 0.65rem;
+                gap: 0.4rem;
+            }
+            .gt-filters > div { flex-shrink: 0; }
+            .gt-body {
+                flex-direction: row;
+                min-height: 0;
+                flex: 1;
+            }
+            .gt-sidebar {
+                width: min(42vw, 340px);
+                max-height: none;
+                height: 100%;
+                border-inline-end: 0.5px solid var(--apple-separator);
+                border-bottom: none;
+            }
+            .gt-map-wrap {
+                min-height: 0;
+                flex: 1;
+            }
+            .gt-playback {
+                padding: 0.35rem 0.5rem;
+            }
+            .gt-playback-row { margin-top: 0.2rem; }
+            .htt-summary {
+                grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+                gap: 0.3rem;
+            }
+            .htt-list { max-height: none; }
+        }
+
+        .gt-sidebar-panel {
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+            flex: 1;
+            padding: 0.55rem 0.65rem 0.75rem;
+            gap: 0.25rem;
+        }
+
+        .gt-playback {
+            flex-shrink: 0;
+            border-top: 0.5px solid var(--apple-separator);
+            padding: 0.55rem 0.65rem;
+            background: var(--apple-bg-primary);
+        }
+
+        .gt-playback-row {
+            display: flex;
+            align-items: center;
+            gap: 0.35rem;
+            flex-wrap: wrap;
+            margin-top: 0.35rem;
+        }
+
+        .gt-playback-progress {
+            height: 6px;
+            background: rgba(0,0,0,.08);
+            border-radius: 99px;
+            position: relative;
+            cursor: pointer;
+            margin: 0.35rem 0;
+        }
+
+        .gt-playback-bar {
+            height: 100%;
+            width: 0;
+            border-radius: 99px;
+            background: #007aff;
         }
     </style>
 @endpush
@@ -258,6 +340,40 @@
         </div>
 
         <div class="gt-body">
+            <aside class="gt-sidebar">
+                <div class="gt-sidebar-panel">
+                    <div id="gtHistVehicleLabel"></div>
+                    <div id="gtHistDayNav"></div>
+                    <div id="gtHistExport"></div>
+                    <div id="gtHistSummary" class="tc-hist-summary" hidden></div>
+                    <div class="tc-list-head">
+                        <span class="tc-head-label">{{ __('app.tracking.trip_timeline') }}</span>
+                    </div>
+                    <div id="gtHistTimeline" class="htt-list"></div>
+                </div>
+                <div class="gt-playback" id="gtPlaybackPanel">
+                    <div class="small fw-semibold mb-1">{{ __('app.map.route_playback') }}</div>
+                    <div class="gt-playback-progress" id="gtPlaybackProgress">
+                        <div class="gt-playback-bar" id="gtPlaybackBar"></div>
+                    </div>
+                    <div class="d-flex justify-content-between small text-muted">
+                        <span id="gtPbTimeCurrent">00:00</span>
+                        <span id="gtPbPointLabel">0 / 0</span>
+                        <span id="gtPbTimeTotal">00:00</span>
+                    </div>
+                    <div class="gt-playback-row">
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="gtPbPlay" title="Play/Pause"><i class="fas fa-play"></i></button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="gtPbStop" title="Stop"><i class="fas fa-stop"></i></button>
+                        <div class="btn-group btn-group-sm" role="group">
+                            <button type="button" class="btn btn-outline-secondary active" data-gt-speed="1">1×</button>
+                            <button type="button" class="btn btn-outline-secondary" data-gt-speed="2">2×</button>
+                            <button type="button" class="btn btn-outline-secondary" data-gt-speed="4">4×</button>
+                            <button type="button" class="btn btn-outline-secondary" data-gt-speed="8">8×</button>
+                        </div>
+                        <span class="small"><span id="gtPbLiveSpeed">0</span> km/h</span>
+                    </div>
+                </div>
+            </aside>
             <div class="gt-map-wrap">
                 <div id="gtHistoryMap" aria-label="{{ __('app.tracking.history_map_aria') }}"></div>
                 <div id="gtHistoryLegend" class="gt-legend"></div>
@@ -295,6 +411,8 @@
             historyJsonUrl: @json(route($routes['historyJson'])),
             historyPointsJsonUrl: @json(Route::has($routes['historyPoints'] ?? '') ? route($routes['historyPoints']) : null),
             historyAnalyticsJsonUrl: @json(Route::has($routes['historyAnalytics'] ?? '') ? route($routes['historyAnalytics']) : null),
+            historyExportUrl: @json(Route::has($routes['historyExport'] ?? '') ? route($routes['historyExport']) : null),
+            historyGeocodeUrl: @json(Route::has($routes['historyGeocode'] ?? '') ? route($routes['historyGeocode']) : null),
             multiColors: @json($multiColors),
             appTimezone: @json(config('app.timezone')),
             vehicles: @json($vehicles),
@@ -311,6 +429,11 @@
                 mapApiKeyMissing: @json(__('app.map.map_api_key_missing')),
                 routeStart: @json(__('app.map.route_start')),
                 routeEnd: @json(__('app.map.route_end')),
+                exportExcel: 'Excel',
+                exportPdf: 'PDF',
+                exportCsv: 'CSV',
+                today: 'Today',
+                noTimeline: 'No trips for this day',
             },
         };
     </script>
@@ -318,5 +441,6 @@
 @include('partials.google-maps-platform')
 <script src="{{ protected_js('builtin-map-icons.js') }}"></script>
 <script src="{{ protected_js('vehicle-marker.js') }}"></script>
+<script src="{{ protected_js('history-trip-timeline.js') }}"></script>
 <script src="{{ protected_js('global-tracking-history.js') }}"></script>
 @endpush

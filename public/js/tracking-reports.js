@@ -5,8 +5,9 @@
 
     const PAGE_SIZES = [50, 100, 250, 500];
     const PARALLEL_DEVICE_LIMIT = 3;
-    const BATCH_DEVICE_SIZE = 5;
-    const EXPORT_BATCH_SIZE = 8;
+    // One vehicle per request keeps week-long analytics under the PHP time budget.
+    const BATCH_DEVICE_SIZE = 1;
+    const EXPORT_BATCH_SIZE = 4;
     const i18n = cfg.i18n || {};
     const colSets = i18n.columns || {};
 
@@ -29,6 +30,16 @@
             .replace(/</g, '&lt;')
             .replace(/>/g, '&gt;')
             .replace(/"/g, '&quot;');
+    }
+
+    function escapeAttr(value) {
+        return escapeHtml(value).replace(/'/g, '&#39;');
+    }
+
+    function isMapsUrl(value) {
+        if (typeof value !== 'string' || value === '') return false;
+        return /^https:\/\/(www\.)?google\.com\/maps\b/i.test(value)
+            || /^https:\/\/maps\.google\./i.test(value);
     }
 
     function formatDuration(sec) {
@@ -144,9 +155,25 @@
             totals.overspeed_events = devices.reduce((s, d) => s + (Number(d.overspeed_events) || 0), 0);
             totals.point_count = devices.reduce((s, d) => s + (Number(d.point_count) || 0), 0);
             totals.max_speed_kmh = Math.max(0, ...devices.map((d) => Number(d.max_speed_kmh) || 0));
-        } else if (first.type === 'trips') {
+        } else if (first.type === 'trips' || first.type === 'trips_stops') {
             totals.device_count = devices.length;
             totals.trip_count = devices.reduce((s, d) => s + (Number(d.trip_count) || 0), 0);
+            totals.stop_count = devices.reduce((s, d) => s + (Number(d.stop_count) || 0), 0);
+            totals.total_distance_km = round2(devices.reduce((s, d) => s + (Number(d.total_distance_km) || 0), 0));
+        } else if (first.type === 'mileage') {
+            totals.device_count = devices.length;
+            totals.total_distance_km = round2(devices.reduce((s, d) => s + (Number(d.total_distance_km) || 0), 0));
+            totals.day_count = devices.reduce((s, d) => s + (Number(d.day_count) || 0), 0);
+            totals.trip_count = devices.reduce((s, d) => s + (Number(d.trip_count) || 0), 0);
+        } else if (first.type === 'diesel') {
+            totals.device_count = devices.length;
+            totals.total_distance_km = round2(devices.reduce((s, d) => s + (Number(d.total_distance_km) || 0), 0));
+            totals.fuel_liters = round2(devices.reduce((s, d) => s + (Number(d.fuel_liters) || 0), 0));
+            totals.trip_count = devices.reduce((s, d) => s + (Number(d.trip_count) || 0), 0);
+            totals.day_count = devices.reduce((s, d) => s + (Number(d.day_count) || 0), 0);
+            totals.efficiency = totals.total_distance_km > 0 && totals.fuel_liters > 0
+                ? round2((totals.fuel_liters / totals.total_distance_km) * 100)
+                : 0;
         } else if (first.type === 'stops') {
             totals.device_count = devices.length;
             totals.stop_count = devices.reduce((s, d) => s + (Number(d.stop_count) || 0), 0);
@@ -223,7 +250,7 @@
         const meta = flat.meta || {};
         const parts = [];
         if (meta.devices_capped) {
-            parts.push(i18n.devicesCapped || 'Showing first 50 vehicles. Narrow the selection for faster results.');
+            parts.push(i18n.devicesCapped || 'Showing the first 200 vehicles. Narrow the selection for faster results.');
         }
         if (meta.positions_truncated) {
             parts.push(i18n.positionsTruncated || 'Large GPS datasets were trimmed per vehicle. Use CSV export for full data.');
@@ -274,22 +301,50 @@
                 formatDuration(d.total_duration_seconds),
             ]));
         } else if (type === 'trips') {
-            devices.forEach((d) => (d.trips || []).forEach((t) => rows.push([
-                d.device_name,
-                d.plate || '',
-                d.driver || '',
-                t.start_time || '',
-                t.end_time || '',
-                formatCoord(t.start_lat),
-                formatCoord(t.start_lng),
-                formatCoord(t.end_lat),
-                formatCoord(t.end_lng),
-                t.distance_km,
-                formatDuration(t.duration_seconds),
-                formatDuration(t.moving_time_seconds),
-                t.max_speed_kmh,
-                t.average_speed_kmh,
-            ])));
+            devices.forEach((d) => (d.trips || []).forEach((t) => {
+                rows.push([
+                    d.device_name,
+                    d.plate || '',
+                    d.driver || '',
+                    t.start_time || '',
+                    t.end_time || '',
+                    formatCoord(t.start_lat),
+                    formatCoord(t.start_lng),
+                    formatCoord(t.end_lat),
+                    formatCoord(t.end_lng),
+                    t.start_maps_url || '',
+                    t.end_maps_url || '',
+                    t.distance_km,
+                    formatDuration(t.duration_seconds),
+                    formatDuration(t.moving_time_seconds),
+                    t.stop_count ?? 0,
+                    t.route_point_count ?? 0,
+                    t.max_speed_kmh,
+                    t.average_speed_kmh,
+                ]);
+                (t.stops || []).forEach((s) => {
+                    rows.push([
+                        d.device_name,
+                        d.plate || '',
+                        '',
+                        s.start_display || s.start || '',
+                        s.end_display || s.end || '',
+                        formatCoord(s.lat),
+                        formatCoord(s.lng),
+                        '',
+                        '',
+                        s.maps_url || '',
+                        '',
+                        '',
+                        formatDuration(s.duration_seconds),
+                        '',
+                        s.status_label || 'Stop',
+                        '',
+                        '',
+                        '',
+                    ]);
+                });
+            }));
         } else if (type === 'stops') {
             devices.forEach((d) => (d.stops || []).forEach((s) => rows.push([
                 d.device_name,
@@ -300,7 +355,86 @@
                 formatDuration(s.duration_seconds),
                 formatCoord(s.lat),
                 formatCoord(s.lng),
+                s.maps_url || '',
             ])));
+        } else if (type === 'trips_stops') {
+            devices.forEach((d) => (d.segments || []).forEach((seg) => {
+                const isTrip = seg.kind === 'trip';
+                rows.push([
+                    d.device_name,
+                    d.plate || '',
+                    seg.kind_label || seg.kind || '',
+                    seg.start_time || seg.start_display || seg.start || '',
+                    seg.end_time || seg.end_display || seg.end || '',
+                    formatDuration(seg.duration_seconds),
+                    isTrip ? (seg.distance_km ?? 0) : '',
+                    formatCoord(isTrip ? seg.start_lat : seg.lat),
+                    formatCoord(isTrip ? seg.start_lng : seg.lng),
+                    seg.maps_url || seg.start_maps_url || '',
+                    isTrip ? (seg.stop_count ?? 0) : '',
+                ]);
+            }));
+        } else if (type === 'mileage') {
+            devices.forEach((d) => (d.days || []).forEach((day) => rows.push([
+                d.device_name,
+                d.plate || '',
+                day.date || '',
+                day.distance_km ?? 0,
+                formatDuration(day.duration_seconds),
+                day.point_count ?? 0,
+                day.start_time || '',
+                day.end_time || '',
+                day.start_maps_url || '',
+                day.end_maps_url || '',
+            ])));
+        } else if (type === 'diesel') {
+            const periodLabel = i18n.segPeriod || 'Period total';
+            const tripLabel = i18n.segTrip || 'Trip';
+            const dayLabel = i18n.segDay || 'Day';
+            devices.forEach((d) => {
+                const eff = d.efficiency != null && d.efficiency !== ''
+                    ? `${d.efficiency}${d.efficiency_label ? ` ${d.efficiency_label}` : ''}`
+                    : '';
+                rows.push([
+                    d.device_name,
+                    d.plate || '',
+                    periodLabel,
+                    d.start_time || '',
+                    d.end_time || '',
+                    d.total_distance_km ?? 0,
+                    d.fuel_liters ?? '',
+                    eff,
+                    d.fuel_method_label || d.fuel_method || '',
+                    d.rate_l_per_100km ?? '',
+                    '',
+                ]);
+                (d.trips || []).forEach((t) => rows.push([
+                    d.device_name,
+                    d.plate || '',
+                    tripLabel,
+                    t.start_time || '',
+                    t.end_time || '',
+                    t.distance_km ?? 0,
+                    t.fuel_liters ?? '',
+                    t.efficiency ?? '',
+                    t.fuel_method || '',
+                    '',
+                    t.maps_url || t.start_maps_url || '',
+                ]));
+                (d.days || []).forEach((day) => rows.push([
+                    d.device_name,
+                    d.plate || '',
+                    dayLabel,
+                    day.date || day.start_time || '',
+                    day.end_time || '',
+                    day.distance_km ?? 0,
+                    day.fuel_liters ?? '',
+                    day.efficiency ?? '',
+                    day.fuel_method || '',
+                    '',
+                    day.maps_url || day.start_maps_url || '',
+                ]));
+            });
         } else if (type === 'events') {
             devices.forEach((d) => (d.events || []).forEach((e) => rows.push([
                 d.device_name,
@@ -312,6 +446,7 @@
                 e.geofence || '',
                 formatCoord(e.lat),
                 formatCoord(e.lng),
+                e.maps_url || '',
                 e.speed ?? '',
             ])));
         } else if (type === 'positions') {
@@ -321,6 +456,7 @@
                 p.time_display || p.time || '',
                 formatCoord(p.lat),
                 formatCoord(p.lng),
+                p.maps_url || '',
                 p.speed ?? 0,
                 formatCoord(p.heading),
                 formatIgnition(p.ignition),
@@ -370,10 +506,27 @@
             if (type === 'route') {
                 items.push([i18n.kpiPoints, totals.point_count ?? 0]);
             }
-        } else if (type === 'trips') {
+        } else if (type === 'trips' || type === 'trips_stops') {
             items = [
                 [i18n.kpiDevices, totals.device_count ?? flat.devices.length],
-                [i18n.kpiTrips, totals.trip_count ?? flat.rows.length],
+                [i18n.kpiTrips, totals.trip_count ?? 0],
+                [i18n.kpiStops, totals.stop_count ?? 0],
+                [i18n.kpiDistance, `${totals.total_distance_km ?? 0} km`],
+            ];
+        } else if (type === 'mileage') {
+            items = [
+                [i18n.kpiDevices, totals.device_count ?? flat.devices.length],
+                [i18n.kpiDistance, `${totals.total_distance_km ?? 0} km`],
+                [i18n.kpiDays || 'Days', totals.day_count ?? flat.rows.length],
+                [i18n.kpiTrips, totals.trip_count ?? 0],
+            ];
+        } else if (type === 'diesel') {
+            items = [
+                [i18n.kpiDevices, totals.device_count ?? flat.devices.length],
+                [i18n.kpiDistance, `${totals.total_distance_km ?? 0} km`],
+                [i18n.kpiFuel || 'Diesel used', `${totals.fuel_liters ?? 0} L`],
+                [i18n.kpiEfficiency || 'Efficiency', `${totals.efficiency ?? 0} L/100km`],
+                [i18n.kpiTrips, totals.trip_count ?? 0],
             ];
         } else if (type === 'stops') {
             items = [
@@ -425,6 +578,11 @@
             html += '<tr>';
             for (let c = 0; c < cells.length; c++) {
                 const val = cells[c];
+                if (isMapsUrl(val)) {
+                    const label = escapeHtml(i18n.openMaps || 'Open in Maps');
+                    html += `<td><a class="gt-report-maps-link" href="${escapeAttr(String(val))}" target="_blank" rel="noopener noreferrer">${label}</a></td>`;
+                    continue;
+                }
                 const isNum = typeof val === 'number' || (c > 0 && /^-?\d/.test(String(val)));
                 html += `<td>${isNum ? numCell(val) : escapeHtml(val)}</td>`;
             }

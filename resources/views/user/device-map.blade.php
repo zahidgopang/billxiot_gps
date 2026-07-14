@@ -3254,6 +3254,7 @@
     @include('partials.google-maps-platform')
     <script src="{{ protected_js('builtin-map-icons.js') }}"></script>
     <script src="{{ protected_js('vehicle-marker.js') }}"></script>
+    <script src="{{ protected_js('vehicle-motion.js') }}"></script>
     @if($canEditMapAppearance)
         <script src="{{ protected_js('map-marker-appearance.js') }}"></script>
     @endif

@@ -6,6 +6,7 @@ use App\Models\ClientDevice;
 use App\Models\Concerns\HasTraccarUserAssignment;
 use App\Models\Concerns\UsesTcTable;
 use App\Services\Traccar\TraccarDeviceAccessService;
+use App\Services\Tracking\DeviceFuelService;
 use App\Services\Tracking\DeviceOdometerService;
 use App\Support\Traccar\TraccarAppFields;
 use App\Support\Traccar\TraccarAttributes;
@@ -376,6 +377,26 @@ class Device extends Model
     {
         // DeviceOdometerService resolves positions via Traccar PositionReader (tc_positions).
         return app(DeviceOdometerService::class)->displayKm($this, $reportedOdometerMeters);
+    }
+
+    public function fuelConsumptionLPer100km(): ?float
+    {
+        return app(DeviceFuelService::class)->consumptionLPer100km($this);
+    }
+
+    public function fuelEfficiencyUnit(): string
+    {
+        return app(DeviceFuelService::class)->efficiencyUnit($this);
+    }
+
+    public function fuelTankCapacityL(): ?float
+    {
+        return app(DeviceFuelService::class)->tankCapacityL($this);
+    }
+
+    public function fuelSensorUnit(): string
+    {
+        return app(DeviceFuelService::class)->sensorUnit($this);
     }
 
     public function getMapMarkerStyleAttribute(): string

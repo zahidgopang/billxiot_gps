@@ -25,6 +25,10 @@
     $plateType = old('plate_type', optional($device)->plate_type ?? '');
     $odometerBaseKm = old('odometer_base_km', optional($device)->odometerBaselineKm());
     $odometerDisplayKm = isset($device) ? $device->odometerDisplayKm() : null;
+    $fuelRate = old('fuel_consumption_l_per_100km', optional($device)->fuelConsumptionLPer100km());
+    $fuelUnit = old('fuel_efficiency_unit', optional($device)->fuelEfficiencyUnit() ?? 'l_per_100km');
+    $fuelTank = old('fuel_tank_capacity_l', optional($device)->fuelTankCapacityL());
+    $fuelSensorUnit = old('fuel_sensor_unit', optional($device)->fuelSensorUnit() ?? 'liters');
     $allowedDeviceTypes = $allowedDeviceTypes ?? array_keys(Device::DEVICE_TYPES);
     $formClientId = $formClientId ?? ($panel === 'client' ? $selectedClient : ($selectedClient ?: null));
     $needsClient = $panel === 'admin' && ! $formClientId;
@@ -222,6 +226,44 @@
             </p>
         @endif
         @error('odometer_base_km') <p class="admin-field__error text-danger">{{ $message }}</p> @enderror
+    </x-admin.form-col>
+
+    <x-admin.form-col>
+        <label class="admin-label" for="fuel-consumption-rate">{{ __('app.fuel.consumption_rate') }}</label>
+        <input type="number" name="fuel_consumption_l_per_100km" id="fuel-consumption-rate" step="0.1" min="0.1" max="100"
+               value="{{ $fuelRate !== null ? $fuelRate : '' }}"
+               class="form-control form-control-sm admin-ltr" dir="ltr"
+               placeholder="{{ __('app.fuel.consumption_placeholder') }}">
+        <p class="admin-hint">{{ __('app.fuel.consumption_hint') }}</p>
+        @error('fuel_consumption_l_per_100km') <p class="admin-field__error text-danger">{{ $message }}</p> @enderror
+    </x-admin.form-col>
+
+    <x-admin.form-col>
+        <label class="admin-label" for="fuel-efficiency-unit">{{ __('app.fuel.efficiency_unit') }}</label>
+        <select name="fuel_efficiency_unit" id="fuel-efficiency-unit" class="form-select form-select-sm" data-search="false">
+            <option value="l_per_100km" @selected($fuelUnit === 'l_per_100km')>{{ __('app.fuel.unit_l_100') }}</option>
+            <option value="km_per_l" @selected($fuelUnit === 'km_per_l')>{{ __('app.fuel.unit_km_l') }}</option>
+        </select>
+        @error('fuel_efficiency_unit') <p class="admin-field__error text-danger">{{ $message }}</p> @enderror
+    </x-admin.form-col>
+
+    <x-admin.form-col>
+        <label class="admin-label" for="fuel-tank-capacity">{{ __('app.fuel.tank_capacity') }}</label>
+        <input type="number" name="fuel_tank_capacity_l" id="fuel-tank-capacity" step="0.1" min="1" max="2000"
+               value="{{ $fuelTank !== null ? $fuelTank : '' }}"
+               class="form-control form-control-sm admin-ltr" dir="ltr"
+               placeholder="{{ __('app.fuel.tank_placeholder') }}">
+        <p class="admin-hint">{{ __('app.fuel.tank_hint') }}</p>
+        @error('fuel_tank_capacity_l') <p class="admin-field__error text-danger">{{ $message }}</p> @enderror
+    </x-admin.form-col>
+
+    <x-admin.form-col>
+        <label class="admin-label" for="fuel-sensor-unit">{{ __('app.fuel.sensor_unit') }}</label>
+        <select name="fuel_sensor_unit" id="fuel-sensor-unit" class="form-select form-select-sm" data-search="false">
+            <option value="liters" @selected($fuelSensorUnit === 'liters')>{{ __('app.fuel.sensor_liters') }}</option>
+            <option value="percent" @selected($fuelSensorUnit === 'percent')>{{ __('app.fuel.sensor_percent') }}</option>
+        </select>
+        @error('fuel_sensor_unit') <p class="admin-field__error text-danger">{{ $message }}</p> @enderror
     </x-admin.form-col>
 
     <x-admin.form-col>

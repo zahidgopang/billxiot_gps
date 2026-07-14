@@ -59,6 +59,45 @@
             this.routeTripKit = null;
             this._routeTripDeviceId = null;
             this._routeBoundsFitted = false;
+            this.motionEngine = null;
+            this._lastEchoAt = new Map();
+        }
+
+        ensureMotionEngine() {
+            if (this.motionEngine || !global.VehicleMotion?.createMotionEngine) return;
+            this.motionEngine = global.VehicleMotion.createMotionEngine({
+                onPose: (id, pose) => this.onMotionPose(id, pose),
+            });
+        }
+
+        onMotionPose(id, pose) {
+            const st = this.vehicleState(id);
+            if (!st?.marker || !this.selected.has(id)) return;
+            st.renderPos = { lat: pose.lat, lng: pose.lng };
+            st.renderHeading = pose.heading;
+            st.marker.setMap(this.map);
+            const VM = global.VehicleMarker;
+            const v = this.vehicles.get(id);
+            if (VM?.applyMarkerPose && v) {
+                VM.applyMarkerPose(
+                    st.marker,
+                    pose.lat,
+                    pose.lng,
+                    pose.heading,
+                    VM.resolveIconRotationOffset?.(v) || 0,
+                    VM.resolveRotationEnabled?.(v) !== false,
+                );
+            } else {
+                st.marker.setPosition({ lat: pose.lat, lng: pose.lng });
+                if (typeof st.marker.setRotation === 'function') {
+                    st.marker.setRotation(pose.heading || 0);
+                }
+            }
+            const frame = { ...(v || {}), id, lat: pose.lat, lng: pose.lng, heading: pose.heading };
+            st.pulse?.update(frame);
+            if (this.vehiclePopup?.isOpenFor(id)) {
+                this.vehiclePopup.update(frame);
+            }
         }
 
         toast(message, type = 'info') {
@@ -629,47 +668,122 @@
                 this.clearTrail(st);
             }
 
-            if (!prev || samePosition(prev, merged)) {
-                st.marker.setMap(this.map);
-                st.marker.setPosition({ lat: merged.lat, lng: merged.lng });
-                applyMarkerIcon(st.marker, this.markerIconFor(merged, merged.heading || 0));
-                st.pulse.update(merged);
-                st.lastPoint = merged;
-                if (shouldKeepTrail(key)) this.pushTrailPoint(st, merged);
-                return;
+            const moving = MOVING_KEYS.has(key);
+            const spd = Math.max(0, parseFloat(merged.speed) || 0);
+            let h = parseFloat(merged.heading);
+            if (!Number.isFinite(h)) h = st.renderHeading || 0;
+
+            // Deduplicate HTTP poll against a fresher Echo fix (same second).
+            const fixMs = global.VehicleMotion?.parseFixTimeMs?.(merged) || Date.now();
+            const lastEcho = this._lastEchoAt.get(id) || 0;
+            if (merged._fromPoll && lastEcho && (Date.now() - lastEcho) < 1500) {
+                if (prev && samePosition(prev, merged)) {
+                    st.lastPoint = merged;
+                    return;
+                }
             }
 
-            this.animateTo(id, prev, merged);
+            this.ensureMotionEngine();
+            st.lastPoint = merged;
+            if (shouldKeepTrail(key)) this.pushTrailPoint(st, merged);
+
+            if (this.motionEngine) {
+                this.motionEngine.setFix(id, {
+                    lat: merged.lat,
+                    lng: merged.lng,
+                    heading: h,
+                    speed: spd,
+                    moving,
+                    color: colorForPoint(merged, this.stateColors),
+                    recorded_at: merged.recorded_at
+                        || merged.last_update
+                        || merged.timestamp
+                        || null,
+                });
+            } else if (!prev || samePosition(prev, merged)) {
+                st.renderPos = { lat: merged.lat, lng: merged.lng };
+                st.renderHeading = h;
+                st.marker.setMap(this.map);
+                st.marker.setPosition({ lat: merged.lat, lng: merged.lng });
+                applyMarkerIcon(st.marker, this.markerIconFor(merged, h));
+                st.pulse.update(merged);
+            } else {
+                this.animateTo(id, st.renderPos || prev, merged);
+            }
         }
 
-        animateTo(id, from, to) {
+        animateTo(id, fromRaw, to) {
+            // Legacy fallback if VehicleMotion is unavailable.
             const st = this.vehicleState(id);
             if (st.animFrame) cancelAnimationFrame(st.animFrame);
 
-            const duration = this.cfg.animDurationMs || 1200;
-            const start = performance.now();
-            const fromHeading = parseFloat(from.heading || 0);
-            const toHeading = parseFloat(to.heading || 0);
+            const from = st.renderPos || {
+                lat: Number(fromRaw.lat),
+                lng: Number(fromRaw.lng),
+            };
+            const toLL = { lat: Number(to.lat), lng: Number(to.lng) };
+            const fromHeading = Number.isFinite(Number(st.renderHeading))
+                ? Number(st.renderHeading)
+                : parseFloat(fromRaw.heading || 0);
+            const toHeading = parseFloat(to.heading || fromHeading);
+            const speedKmh = Math.max(0, parseFloat(to.speed) || 0);
+            const now = performance.now();
+            const interval = this.cfg.pollIntervalMs || this.cfg.animDurationMs || 2000;
+            const observed = st._lastTargetAt ? (now - st._lastTargetAt) : interval;
+            st._lastTargetAt = now;
+            st.lastPoint = to;
 
-            const step = (now) => {
-                const t = Math.min(1, (now - start) / duration);
-                const eased = 1 - Math.pow(1 - t, 3);
-                const lat = from.lat + (to.lat - from.lat) * eased;
-                const lng = from.lng + (to.lng - from.lng) * eased;
-                let delta = ((toHeading - fromHeading + 540) % 360) - 180;
-                const heading = (fromHeading + delta * eased + 360) % 360;
+            const VM = global.VehicleMotion;
+            const duration = VM?.durationMs
+                ? VM.durationMs({
+                    from,
+                    to: toLL,
+                    speedKmh,
+                    intervalMs: interval,
+                    observedIntervalMs: observed,
+                })
+                : (this.cfg.animDurationMs || 1200);
+            const start = now;
+            const ease = VM?.easeInOutCubic
+                || ((t) => 1 - Math.pow(1 - t, 3));
+            const lerpH = VM?.lerpHeading
+                || ((a, b, t) => {
+                    const delta = ((b - a + 540) % 360) - 180;
+                    return (a + delta * t + 360) % 360;
+                });
+
+            const step = (frameNow) => {
+                const rawT = Math.min(1, (frameNow - start) / duration);
+                const t = ease(rawT);
+                const lat = from.lat + (toLL.lat - from.lat) * t;
+                const lng = from.lng + (toLL.lng - from.lng) * t;
+                const heading = lerpH(fromHeading, toHeading, t);
                 const frame = { ...to, lat, lng, heading };
 
+                st.renderPos = { lat, lng };
+                st.renderHeading = heading;
                 st.marker.setMap(this.map);
-                st.marker.setPosition({ lat, lng });
-                applyMarkerIcon(st.marker, this.markerIconFor(frame, heading));
+                if (global.VehicleMarker?.applyMarkerPose) {
+                    global.VehicleMarker.applyMarkerPose(
+                        st.marker, lat, lng, heading,
+                        global.VehicleMarker.resolveIconRotationOffset?.(to) || 0,
+                        global.VehicleMarker.resolveRotationEnabled?.(to) !== false,
+                    );
+                } else {
+                    st.marker.setPosition({ lat, lng });
+                    applyMarkerIcon(st.marker, this.markerIconFor(frame, heading));
+                }
                 st.pulse.update(frame);
+                if (this.vehiclePopup?.isOpenFor(id)) {
+                    this.vehiclePopup.update(frame);
+                }
 
-                if (t < 1) {
+                if (rawT < 1) {
                     st.animFrame = requestAnimationFrame(step);
                 } else {
                     st.animFrame = null;
-                    st.lastPoint = to;
+                    st.renderPos = toLL;
+                    st.renderHeading = toHeading;
                     if (shouldKeepTrail(to.status_key || 'offline')) {
                         this.pushTrailPoint(st, to);
                     }
@@ -706,7 +820,7 @@
                 const res = await fetch(url, { credentials: 'same-origin', cache: 'no-store' });
                 if (!res.ok) return;
                 const data = await res.json();
-                (data.devices || []).forEach((d) => this.applyPoint(d.id, d));
+                (data.devices || []).forEach((d) => this.applyPoint(d.id, { ...d, _fromPoll: true }));
             } catch (err) {
                 console.warn('[global-tracking] poll failed', err);
             } finally {
@@ -723,6 +837,7 @@
                 channel.listen('.DeviceLocationUpdated', (payload) => {
                     const loc = payload.location || payload;
                     if (loc && loc.id == null) loc.id = id;
+                    this._lastEchoAt.set(id, Date.now());
                     this.applyPoint(id, loc);
                 });
                 this.echoChannels.set(id, channel);

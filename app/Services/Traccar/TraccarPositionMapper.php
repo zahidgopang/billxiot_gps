@@ -57,6 +57,7 @@ class TraccarPositionMapper
             'gps_signal' => $gpsSignal,
             'satellites' => $satellites,
             'odometer' => $fields['odometer'],
+            'fuel' => $fields['fuel'],
             'altitude' => isset($data['altitude']) && is_numeric($data['altitude'])
                 ? (float) $data['altitude']
                 : null,

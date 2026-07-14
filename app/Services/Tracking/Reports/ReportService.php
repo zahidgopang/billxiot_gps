@@ -8,6 +8,7 @@ use App\Models\DeviceLocation;
 use App\Models\User;
 use App\Models\VehicleEvent;
 use App\Services\Mobile\VehicleStatusSpec;
+use App\Services\Tracking\DeviceFuelService;
 use App\Services\Tracking\DeviceHistoryFetcher;
 use App\Services\Tracking\GlobalTrackingService;
 use App\Services\Tracking\HistoryAnalyticsService;
@@ -17,7 +18,7 @@ use Illuminate\Support\Collection;
 
 class ReportService
 {
-    public const MAX_DEVICES = 50;
+    public const MAX_DEVICES = 200;
 
     /** Max GPS rows returned per device in web JSON (table paginates client-side). */
     public const MAX_POSITIONS_WEB_PER_DEVICE = 2500;
@@ -34,11 +35,17 @@ class ReportService
     /** Max route polyline points for the map widget. */
     public const MAX_ROUTE_MAP_POINTS = 3000;
 
-    /** Downsample GPS rows above this count for trips/stops analytics. */
+    /** Downsample GPS rows above this count for trips/stops analytics (exports). */
     public const MAX_ANALYTICS_POINTS = 15000;
 
-    /** Summary reports use full GPS data up to this count for accurate totals. */
+    /** Interactive web/mobile analytics budget (faster multi-vehicle loads). */
+    public const MAX_ANALYTICS_POINTS_WEB = 8000;
+
+    /** Summary reports use full GPS data up to this count for accurate export totals. */
     public const MAX_SUMMARY_FULL_POINTS = 50000;
+
+    /** Interactive summary/mileage/route point budget. */
+    public const MAX_SUMMARY_WEB_POINTS = 12000;
 
     /** @var array<int, Collection<int, DeviceLocation>> */
     private array $locationCache = [];
@@ -57,7 +64,42 @@ class ReportService
         private EventReaderInterface $events,
         private GlobalTrackingService $tracking,
         private \App\Contracts\Tracking\PositionReaderInterface $positions,
+        private DeviceFuelService $fuel,
     ) {}
+
+    /**
+     * PHP execution budget for report generate/export requests.
+     * Previous formula (45 + devices*6) capped 5-vehicle batches at 75s and timed out on week ranges.
+     */
+    public static function recommendedTimeLimitSeconds(
+        int $deviceCount,
+        Carbon $from,
+        ?Carbon $to,
+        bool $forExport = false,
+    ): int {
+        $deviceCount = max(1, $deviceCount);
+        $end = $to ?? now();
+        $days = max(1, (int) ceil(max(1, $from->diffInRealSeconds($end)) / 86400));
+        $perDevice = max(45, $days * 20);
+        $seconds = 120 + ($deviceCount * $perDevice);
+
+        if ($forExport) {
+            $seconds = (int) round($seconds * 1.5);
+        }
+
+        return min(900, max(180, $seconds));
+    }
+
+    public static function applyTimeLimit(
+        int $deviceCount,
+        Carbon $from,
+        ?Carbon $to,
+        bool $forExport = false,
+    ): void {
+        $seconds = self::recommendedTimeLimitSeconds($deviceCount, $from, $to, $forExport);
+        set_time_limit($seconds);
+        @ini_set('max_execution_time', (string) $seconds);
+    }
 
     /**
      * @param  list<int>  $deviceIds
@@ -105,6 +147,9 @@ class ReportService
                 'positions' => $this->positionsReport($device, $from, $to),
                 'trips' => $this->tripsReport($device, $from, $to, $type),
                 'stops' => $this->stopsReport($device, $from, $to, $type),
+                'trips_stops' => $this->tripsStopsReport($device, $from, $to, $type),
+                'mileage' => $this->mileageReport($device, $from, $to, $type),
+                'diesel' => $this->dieselReport($device, $from, $to, $type),
                 'summary' => $this->summaryReport($device, $from, $to, $type),
                 'events' => $this->eventsReport($device, $from, $to),
                 default => $this->summaryReport($device, $from, $to, 'summary'),
@@ -122,7 +167,7 @@ class ReportService
 
             $results[] = $row;
 
-            if (count($ids) > 3 && ! $this->forExport) {
+            if (count($ids) > 1 && ! $this->forExport) {
                 $rangeKey = $from->toIso8601String().'|'.($to?->toIso8601String() ?? '');
                 unset($this->locationCache[$this->locationCacheKey($id, $rangeKey)]);
                 unset($this->statsCache[$this->statsCacheKey($id, $from, $to, $type)]);
@@ -209,11 +254,14 @@ class ReportService
                 $statusLabel = VehicleStatusSpec::motionLabel($statusKey);
             }
 
+            $lat = (float) $loc->lat;
+            $lng = (float) $loc->lng;
             $positions[] = [
                 'time' => AppDateTime::toApi($loc->recorded_at),
                 'time_display' => app_datetime_format($loc->recorded_at),
-                'lat' => (float) $loc->lat,
-                'lng' => (float) $loc->lng,
+                'lat' => $lat,
+                'lng' => $lng,
+                'maps_url' => $this->googleMapsUrl($lat, $lng),
                 'speed' => round((float) ($loc->speed ?? 0), 1),
                 'heading' => isset($loc->heading) ? (float) $loc->heading : null,
                 'ignition' => (bool) $loc->ignition,
@@ -238,11 +286,17 @@ class ReportService
         $collection = $this->loadLocationCollection($device, $from, $to);
         $stats = $this->statsFor($device, $collection, $reportType, $from, $to);
         $sorted = $this->sortedPointsForDevice($device, $collection);
-        $trips = $this->tripsFromTimeline($sorted, $stats['timeline'] ?? []);
+        $stops = $this->decorateStopsWithMaps($stats['stops'] ?? []);
+        $trips = array_map(
+            fn (array $trip) => $this->enrichTrip($trip, $sorted, $stops),
+            $this->tripsFromTimeline($sorted, $stats['timeline'] ?? [])
+        );
 
         return array_merge($this->deviceMeta($device), [
             'trips' => $trips,
             'trip_count' => count($trips),
+            'stop_count' => count($stops),
+            'total_distance_km' => $stats['total_distance_km'] ?? 0,
             'analytics_downsampled' => $stats['analytics_downsampled'] ?? false,
         ]);
     }
@@ -254,12 +308,190 @@ class ReportService
     {
         $collection = $this->loadLocationCollection($device, $from, $to);
         $stats = $this->statsFor($device, $collection, $reportType, $from, $to);
+        $stops = $this->decorateStopsWithMaps($stats['stops'] ?? []);
 
         return array_merge($this->deviceMeta($device), [
-            'stops' => $stats['stops'] ?? [],
-            'stop_count' => $stats['stop_count'] ?? 0,
+            'stops' => $stops,
+            'stop_count' => count($stops),
             'analytics_downsampled' => $stats['analytics_downsampled'] ?? false,
         ]);
+    }
+
+    /**
+     * Combined moving trips + stops timeline (with Google Maps links and stop durations).
+     *
+     * @return array<string, mixed>
+     */
+    private function tripsStopsReport(Device $device, Carbon $from, ?Carbon $to, string $reportType): array
+    {
+        $collection = $this->loadLocationCollection($device, $from, $to);
+        $stats = $this->statsFor($device, $collection, 'trips', $from, $to);
+        $sorted = $this->sortedPointsForDevice($device, $collection);
+        $stops = $this->decorateStopsWithMaps($stats['stops'] ?? []);
+        $trips = array_map(
+            fn (array $trip) => $this->enrichTrip($trip, $sorted, $stops),
+            $this->tripsFromTimeline($sorted, $stats['timeline'] ?? [])
+        );
+
+        $segments = [];
+        foreach ($trips as $trip) {
+            $segments[] = array_merge(['kind' => 'trip', 'kind_label' => (string) __('app.tracking.report_seg_trip')], $trip);
+        }
+        foreach ($stops as $stop) {
+            $segments[] = array_merge(['kind' => 'stop', 'kind_label' => (string) __('app.tracking.report_seg_stop')], $stop);
+        }
+
+        usort($segments, function (array $a, array $b): int {
+            $aTime = (string) ($a['start_time'] ?? $a['start_display'] ?? $a['start'] ?? '');
+            $bTime = (string) ($b['start_time'] ?? $b['start_display'] ?? $b['start'] ?? '');
+
+            return strcmp($aTime, $bTime);
+        });
+
+        return array_merge($this->deviceMeta($device), [
+            'trips' => $trips,
+            'stops' => $stops,
+            'segments' => $segments,
+            'trip_count' => count($trips),
+            'stop_count' => count($stops),
+            'total_distance_km' => $stats['total_distance_km'] ?? 0,
+            'moving_time_seconds' => $stats['moving_time_seconds'] ?? 0,
+            'stopped_time_seconds' => $stats['stopped_time_seconds'] ?? 0,
+            'analytics_downsampled' => $stats['analytics_downsampled'] ?? false,
+        ]);
+    }
+
+    /**
+     * Daily mileage breakdown for the selected range.
+     *
+     * @return array<string, mixed>
+     */
+    private function mileageReport(Device $device, Carbon $from, ?Carbon $to, string $reportType): array
+    {
+        $collection = $this->loadLocationCollection($device, $from, $to);
+        $stats = $this->statsFor($device, $collection, 'summary', $from, $to);
+        $sorted = $this->sortedPointsForDevice($device, $collection);
+        $days = $this->dailyMileageFromPoints($sorted);
+
+        return array_merge($this->deviceMeta($device), [
+            'total_distance_km' => $stats['total_distance_km'] ?? 0,
+            'moving_time_seconds' => $stats['moving_time_seconds'] ?? 0,
+            'stopped_time_seconds' => $stats['stopped_time_seconds'] ?? 0,
+            'trip_count' => $this->countTripsFromTimeline($stats['timeline'] ?? []),
+            'stop_count' => $stats['stop_count'] ?? 0,
+            'max_speed_kmh' => $stats['max_speed_kmh'] ?? 0,
+            'average_speed_kmh' => $stats['average_speed_kmh'] ?? 0,
+            'start_time' => $stats['start_time'] ?? null,
+            'end_time' => $stats['end_time'] ?? null,
+            'days' => $days,
+            'day_count' => count($days),
+            'analytics_downsampled' => $stats['analytics_downsampled'] ?? false,
+        ]);
+    }
+
+    /**
+     * Diesel consumption: period totals, per-trip fuel, and daily breakdown.
+     * Uses fuel-sensor drops when available; otherwise rate × distance.
+     *
+     * @return array<string, mixed>
+     */
+    private function dieselReport(Device $device, Carbon $from, ?Carbon $to, string $reportType): array
+    {
+        $collection = $this->loadLocationCollection($device, $from, $to);
+        $stats = $this->statsFor($device, $collection, 'summary', $from, $to);
+        $sorted = $this->sortedPointsForDevice($device, $collection);
+        $settings = $this->fuel->settings($device);
+        $distanceKm = (float) ($stats['total_distance_km'] ?? 0);
+        $resolved = $this->fuel->resolveConsumption($device, $distanceKm, $sorted);
+
+        $trips = array_map(
+            function (array $trip) use ($device, $sorted): array {
+                $tripDistance = (float) ($trip['distance_km'] ?? 0);
+                $tripStart = $this->parseReportTime((string) ($trip['start_time'] ?? ''));
+                $tripEnd = $this->parseReportTime((string) ($trip['end_time'] ?? ''));
+                $slice = [];
+                if ($tripStart && $tripEnd && $sorted !== []) {
+                    $startIdx = $this->pointIndexAtOrAfter($sorted, $tripStart);
+                    $endIdx = $this->pointIndexAtOrBefore($sorted, $tripEnd);
+                    if ($startIdx !== null && $endIdx !== null && $endIdx >= $startIdx) {
+                        $slice = array_slice($sorted, $startIdx, $endIdx - $startIdx + 1);
+                    }
+                }
+                $fuel = $this->fuel->resolveConsumption($device, $tripDistance, $slice);
+
+                return array_merge($trip, [
+                    'distance_km' => round($tripDistance, 2),
+                    'fuel_liters' => $fuel['fuel_liters'],
+                    'fuel_method' => $fuel['method'],
+                    'efficiency' => $fuel['efficiency'],
+                    'efficiency_unit' => $fuel['efficiency_unit'],
+                    'maps_url' => $trip['maps_url'] ?? $trip['start_maps_url'] ?? null,
+                ]);
+            },
+            $this->tripsFromTimeline($sorted, $stats['timeline'] ?? [])
+        );
+
+        $days = [];
+        foreach ($this->dailyMileageFromPoints($sorted) as $day) {
+            $dayDistance = (float) ($day['distance_km'] ?? 0);
+            $dayStart = $this->parseReportTime((string) ($day['start_time'] ?? ''));
+            $dayEnd = $this->parseReportTime((string) ($day['end_time'] ?? ''));
+            $slice = [];
+            if ($dayStart && $dayEnd && $sorted !== []) {
+                $startIdx = $this->pointIndexAtOrAfter($sorted, $dayStart);
+                $endIdx = $this->pointIndexAtOrBefore($sorted, $dayEnd);
+                if ($startIdx !== null && $endIdx !== null && $endIdx >= $startIdx) {
+                    $slice = array_slice($sorted, $startIdx, $endIdx - $startIdx + 1);
+                }
+            }
+            $fuel = $this->fuel->resolveConsumption($device, $dayDistance, $slice);
+            $days[] = array_merge($day, [
+                'fuel_liters' => $fuel['fuel_liters'],
+                'fuel_method' => $fuel['method'],
+                'efficiency' => $fuel['efficiency'],
+                'efficiency_unit' => $fuel['efficiency_unit'],
+            ]);
+        }
+
+        return array_merge($this->deviceMeta($device), [
+            'total_distance_km' => round($distanceKm, 2),
+            'fuel_liters' => $resolved['fuel_liters'],
+            'fuel_method' => $resolved['method'],
+            'fuel_method_label' => $this->fuelMethodLabel($resolved['method']),
+            'efficiency' => $resolved['efficiency'],
+            'efficiency_unit' => $resolved['efficiency_unit'],
+            'efficiency_label' => $this->efficiencyUnitLabel($resolved['efficiency_unit']),
+            'estimated_liters' => $resolved['estimated_liters'],
+            'sensor_liters' => $resolved['sensor_liters'],
+            'sensor_samples' => $resolved['sensor_samples'],
+            'refill_count' => $resolved['refill_count'],
+            'rate_l_per_100km' => $resolved['rate_l_per_100km'],
+            'tank_capacity_l' => $settings['tank_capacity_l'],
+            'moving_time_seconds' => $stats['moving_time_seconds'] ?? 0,
+            'trip_count' => count($trips),
+            'day_count' => count($days),
+            'start_time' => $stats['start_time'] ?? null,
+            'end_time' => $stats['end_time'] ?? null,
+            'trips' => $trips,
+            'days' => $days,
+            'analytics_downsampled' => $stats['analytics_downsampled'] ?? false,
+        ]);
+    }
+
+    private function fuelMethodLabel(string $method): string
+    {
+        return match ($method) {
+            'sensor' => (string) __('app.tracking.report_fuel_method_sensor'),
+            'estimated' => (string) __('app.tracking.report_fuel_method_estimated'),
+            default => (string) __('app.tracking.report_fuel_method_unconfigured'),
+        };
+    }
+
+    private function efficiencyUnitLabel(string $unit): string
+    {
+        return $unit === DeviceFuelService::UNIT_KM_PER_L
+            ? (string) __('app.tracking.report_col_efficiency_km_l')
+            : (string) __('app.tracking.report_col_efficiency_l_100');
     }
 
     /**
@@ -306,10 +538,16 @@ class ReportService
                     ? self::MAX_EVENTS_EXPORT_PER_DEVICE
                     : self::MAX_EVENTS_WEB_PER_DEVICE,
             )
-            ->map(fn (VehicleEvent $event) => array_merge($event->toAlertArray(), [
-                'lat' => $event->lat !== null ? (float) $event->lat : null,
-                'lng' => $event->lng !== null ? (float) $event->lng : null,
-            ]))
+            ->map(function (VehicleEvent $event) {
+                $lat = $event->lat !== null ? (float) $event->lat : null;
+                $lng = $event->lng !== null ? (float) $event->lng : null;
+
+                return array_merge($event->toAlertArray(), [
+                    'lat' => $lat,
+                    'lng' => $lng,
+                    'maps_url' => $this->googleMapsUrl($lat, $lng),
+                ]);
+            })
             ->values()
             ->all();
 
@@ -392,13 +630,67 @@ class ReportService
             ];
         }
 
-        if ($type === 'trips') {
+        if ($type === 'trips' || $type === 'trips_stops') {
             return [
                 'device_count' => count($devices),
                 'trip_count' => array_sum(array_map(
                     fn (array $d) => (int) ($d['trip_count'] ?? 0),
                     $devices
                 )),
+                'stop_count' => array_sum(array_map(
+                    fn (array $d) => (int) ($d['stop_count'] ?? 0),
+                    $devices
+                )),
+                'total_distance_km' => round(array_sum(array_map(
+                    fn (array $d) => (float) ($d['total_distance_km'] ?? 0),
+                    $devices
+                )), 2),
+            ];
+        }
+
+        if ($type === 'mileage') {
+            return [
+                'device_count' => count($devices),
+                'total_distance_km' => round(array_sum(array_map(
+                    fn (array $d) => (float) ($d['total_distance_km'] ?? 0),
+                    $devices
+                )), 2),
+                'day_count' => array_sum(array_map(
+                    fn (array $d) => (int) ($d['day_count'] ?? 0),
+                    $devices
+                )),
+                'trip_count' => array_sum(array_map(
+                    fn (array $d) => (int) ($d['trip_count'] ?? 0),
+                    $devices
+                )),
+            ];
+        }
+
+        if ($type === 'diesel') {
+            $totalDistance = round(array_sum(array_map(
+                fn (array $d) => (float) ($d['total_distance_km'] ?? 0),
+                $devices
+            )), 2);
+            $totalFuel = round(array_sum(array_map(
+                fn (array $d) => (float) ($d['fuel_liters'] ?? 0),
+                $devices
+            )), 2);
+
+            return [
+                'device_count' => count($devices),
+                'total_distance_km' => $totalDistance,
+                'fuel_liters' => $totalFuel,
+                'trip_count' => array_sum(array_map(
+                    fn (array $d) => (int) ($d['trip_count'] ?? 0),
+                    $devices
+                )),
+                'day_count' => array_sum(array_map(
+                    fn (array $d) => (int) ($d['day_count'] ?? 0),
+                    $devices
+                )),
+                'efficiency' => $totalDistance > 0 && $totalFuel > 0
+                    ? round(($totalFuel / $totalDistance) * 100, 2)
+                    : 0,
             ];
         }
 
@@ -509,7 +801,8 @@ class ReportService
             'minimal_stats' => false,
         ]);
 
-        if ($wasDownsampled) {
+        // Full-collection distance passes are expensive on week-long fleets; reserve for exports.
+        if ($wasDownsampled && $this->forExport) {
             $stats['total_distance_km'] = $this->historyAnalytics->distanceKmForPoints($collection);
             $stats['max_speed_kmh'] = $this->maxSpeedKmhFromCollection($collection);
             $movingSec = (int) ($stats['moving_time_seconds'] ?? 0);
@@ -558,9 +851,13 @@ class ReportService
     private function collectionForAnalytics(Collection $collection, string $reportType): Collection
     {
         $count = $collection->count();
-        $max = $reportType === 'summary' || $reportType === 'route'
-            ? self::MAX_SUMMARY_FULL_POINTS
-            : self::MAX_ANALYTICS_POINTS;
+        $isSummaryLike = $reportType === 'summary'
+            || $reportType === 'route'
+            || $reportType === 'mileage'
+            || $reportType === 'diesel';
+        $max = $this->forExport
+            ? ($isSummaryLike ? self::MAX_SUMMARY_FULL_POINTS : self::MAX_ANALYTICS_POINTS)
+            : ($isSummaryLike ? self::MAX_SUMMARY_WEB_POINTS : self::MAX_ANALYTICS_POINTS_WEB);
 
         if ($count <= $max) {
             return $collection;
@@ -841,12 +1138,221 @@ class ReportService
             'start_lng' => $first['start_lng'] ?? null,
             'end_lat' => $last['end_lat'] ?? null,
             'end_lng' => $last['end_lng'] ?? null,
+            'start_maps_url' => $this->googleMapsUrl(
+                isset($first['start_lat']) ? (float) $first['start_lat'] : null,
+                isset($first['start_lng']) ? (float) $first['start_lng'] : null,
+            ),
+            'end_maps_url' => $this->googleMapsUrl(
+                isset($last['end_lat']) ? (float) $last['end_lat'] : null,
+                isset($last['end_lng']) ? (float) $last['end_lng'] : null,
+            ),
+            'maps_url' => $this->googleMapsUrl(
+                isset($first['start_lat']) ? (float) $first['start_lat'] : null,
+                isset($first['start_lng']) ? (float) $first['start_lng'] : null,
+            ),
             'distance_km' => $distance,
             'duration_seconds' => $duration > 0 ? $duration : $movingSec,
             'moving_time_seconds' => $movingSec,
             'max_speed_kmh' => round($maxSpeed, 1),
             'average_speed_kmh' => $avgSpeed,
         ];
+    }
+
+    /**
+     * Attach Google Maps links, in-trip stops, and a downsampled route polyline to a trip row.
+     *
+     * @param  array<string, mixed>  $trip
+     * @param  list<DeviceLocation>  $sortedPoints
+     * @param  list<array<string, mixed>>  $stops
+     * @return array<string, mixed>
+     */
+    private function enrichTrip(array $trip, array $sortedPoints, array $stops): array
+    {
+        $startLat = isset($trip['start_lat']) ? (float) $trip['start_lat'] : null;
+        $startLng = isset($trip['start_lng']) ? (float) $trip['start_lng'] : null;
+        $endLat = isset($trip['end_lat']) ? (float) $trip['end_lat'] : null;
+        $endLng = isset($trip['end_lng']) ? (float) $trip['end_lng'] : null;
+
+        $trip['start_maps_url'] = $trip['start_maps_url'] ?? $this->googleMapsUrl($startLat, $startLng);
+        $trip['end_maps_url'] = $trip['end_maps_url'] ?? $this->googleMapsUrl($endLat, $endLng);
+        $trip['maps_url'] = $trip['maps_url'] ?? $trip['start_maps_url'];
+
+        $tripStart = $this->parseReportTime((string) ($trip['start_time'] ?? ''));
+        $tripEnd = $this->parseReportTime((string) ($trip['end_time'] ?? ''));
+
+        $tripStops = [];
+        if ($tripStart && $tripEnd) {
+            foreach ($stops as $stop) {
+                $stopStart = $this->parseReportTime((string) ($stop['start_display'] ?? $stop['start'] ?? ''));
+                if (! $stopStart) {
+                    continue;
+                }
+                if ($stopStart->greaterThanOrEqualTo($tripStart) && $stopStart->lessThanOrEqualTo($tripEnd)) {
+                    $tripStops[] = $stop;
+                }
+            }
+        }
+        $trip['stops'] = $tripStops;
+        $trip['stop_count'] = count($tripStops);
+
+        // Polyline payloads are heavy for multi-vehicle week reports; keep for exports only.
+        if ($this->forExport && $tripStart && $tripEnd && $sortedPoints !== []) {
+            $startIdx = $this->pointIndexAtOrAfter($sortedPoints, $tripStart);
+            $endIdx = $this->pointIndexAtOrBefore($sortedPoints, $tripEnd);
+            if ($startIdx !== null && $endIdx !== null && $endIdx >= $startIdx) {
+                $slice = array_slice($sortedPoints, $startIdx, $endIdx - $startIdx + 1);
+                $routePoints = $this->downsampleRoutePoints($slice, 200);
+                $trip['route_points'] = $routePoints;
+                $trip['route_point_count'] = count($routePoints);
+            } else {
+                $trip['route_points'] = [];
+                $trip['route_point_count'] = 0;
+            }
+        } else {
+            $trip['route_points'] = [];
+            $trip['route_point_count'] = 0;
+        }
+
+        return $trip;
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $stops
+     * @return list<array<string, mixed>>
+     */
+    private function decorateStopsWithMaps(array $stops): array
+    {
+        return array_map(function (array $stop): array {
+            $lat = isset($stop['lat']) ? (float) $stop['lat'] : null;
+            $lng = isset($stop['lng']) ? (float) $stop['lng'] : null;
+            $stop['maps_url'] = $this->googleMapsUrl($lat, $lng);
+
+            return $stop;
+        }, $stops);
+    }
+
+    private function googleMapsUrl(?float $lat, ?float $lng): ?string
+    {
+        if ($lat === null || $lng === null) {
+            return null;
+        }
+        if (! is_finite($lat) || ! is_finite($lng)) {
+            return null;
+        }
+        if (abs($lat) > 90 || abs($lng) > 180 || ($lat == 0.0 && $lng == 0.0)) {
+            return null;
+        }
+
+        return 'https://www.google.com/maps/search/?api=1&query='
+            .rawurlencode(number_format($lat, 6, '.', '').','.number_format($lng, 6, '.', ''));
+    }
+
+    private function parseReportTime(string $value): ?Carbon
+    {
+        $value = trim($value);
+        if ($value === '') {
+            return null;
+        }
+
+        try {
+            return Carbon::parse($value);
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * @param  list<DeviceLocation>  $points
+     * @return list<array{lat: float, lng: float, speed: float|null, recorded_at: string|null}>
+     */
+    private function downsampleRoutePoints(array $points, int $max): array
+    {
+        $count = count($points);
+        if ($count === 0) {
+            return [];
+        }
+
+        $step = $count <= $max ? 1 : (int) ceil($count / $max);
+        $out = [];
+        for ($i = 0; $i < $count; $i += $step) {
+            $p = $points[$i];
+            $out[] = [
+                'lat' => (float) $p->lat,
+                'lng' => (float) $p->lng,
+                'speed' => $p->speed !== null ? (float) $p->speed : null,
+                'recorded_at' => $p->recorded_at ? app_datetime_api($p->recorded_at) : null,
+            ];
+        }
+
+        $last = $points[$count - 1];
+        $lastRow = [
+            'lat' => (float) $last->lat,
+            'lng' => (float) $last->lng,
+            'speed' => $last->speed !== null ? (float) $last->speed : null,
+            'recorded_at' => $last->recorded_at ? app_datetime_api($last->recorded_at) : null,
+        ];
+        if ($out === [] || $out[count($out) - 1]['recorded_at'] !== $lastRow['recorded_at']) {
+            $out[] = $lastRow;
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  list<DeviceLocation>  $sortedPoints
+     * @return list<array<string, mixed>>
+     */
+    private function dailyMileageFromPoints(array $sortedPoints): array
+    {
+        if ($sortedPoints === []) {
+            return [];
+        }
+
+        $tz = (string) config('app.timezone', 'UTC');
+        /** @var array<string, list<DeviceLocation>> $byDay */
+        $byDay = [];
+
+        foreach ($sortedPoints as $point) {
+            $at = $this->pointRecordedAt($point);
+            if (! $at) {
+                continue;
+            }
+            $day = $at->copy()->timezone($tz)->toDateString();
+            $byDay[$day][] = $point;
+        }
+
+        ksort($byDay);
+        $rows = [];
+        foreach ($byDay as $date => $points) {
+            $dist = $this->historyAnalytics->distanceKmForPoints(collect($points));
+            $first = $points[0] ?? null;
+            $last = $points[count($points) - 1] ?? null;
+            $firstAt = $first ? $this->pointRecordedAt($first) : null;
+            $lastAt = $last ? $this->pointRecordedAt($last) : null;
+            $duration = ($firstAt && $lastAt) ? max(0, (int) $firstAt->diffInSeconds($lastAt)) : 0;
+            $startLat = $first ? (float) $first->lat : null;
+            $startLng = $first ? (float) $first->lng : null;
+            $endLat = $last ? (float) $last->lat : null;
+            $endLng = $last ? (float) $last->lng : null;
+
+            $rows[] = [
+                'date' => $date,
+                'distance_km' => round($dist, 2),
+                'point_count' => count($points),
+                'duration_seconds' => $duration,
+                'start_time' => $firstAt ? app_datetime_api($firstAt) : null,
+                'end_time' => $lastAt ? app_datetime_api($lastAt) : null,
+                'start_lat' => $startLat,
+                'start_lng' => $startLng,
+                'end_lat' => $endLat,
+                'end_lng' => $endLng,
+                'start_maps_url' => $this->googleMapsUrl($startLat, $startLng),
+                'end_maps_url' => $this->googleMapsUrl($endLat, $endLng),
+                'maps_url' => $this->googleMapsUrl($startLat, $startLng),
+            ];
+        }
+
+        return $rows;
     }
 
     /**

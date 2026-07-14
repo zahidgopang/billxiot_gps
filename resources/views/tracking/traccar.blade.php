@@ -63,6 +63,10 @@
             background: var(--tc-bg);
             position: relative;
             --tc-chrome-panel: 0px;
+        }
+        @media (max-height: 520px), ((max-width: 900px) and (orientation: landscape)) {
+            .tc-app { min-height: 0; }
+        }
             font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', 'Helvetica Neue', sans-serif;
             letter-spacing: -0.018em;
         }
@@ -1381,8 +1385,8 @@
         /* Footer info panel (Data / Graph / Messages) — Apple elevated sheet */
         .tc-footer {
             height: var(--tc-footer-height, 250px);
-            min-height: 120px;
-            max-height: 72vh;
+            min-height: 0;
+            max-height: 85vh;
             flex-shrink: 0;
             display: flex;
             flex-direction: column;
@@ -1392,10 +1396,16 @@
             z-index: 5;
             color: #1d1d1f;
             position: relative;
+            overflow: hidden;
+            transition: height 0.18s ease;
+        }
+        .tc-footer.is-dragging {
+            transition: none;
+            user-select: none;
         }
         .tc-footer-resize {
             flex-shrink: 0;
-            height: 10px;
+            height: 16px;
             cursor: ns-resize;
             touch-action: none;
             background: transparent;
@@ -1406,14 +1416,15 @@
         }
         .tc-footer-resize::after {
             content: '';
-            width: 36px;
+            width: 40px;
             height: 5px;
             border-radius: 999px;
-            background: rgba(60, 60, 67, 0.18);
+            background: rgba(60, 60, 67, 0.22);
         }
         .tc-footer-resize:hover::after,
-        .tc-footer-resize:active::after {
-            background: rgba(60, 60, 67, 0.32);
+        .tc-footer-resize:active::after,
+        .tc-footer.is-dragging .tc-footer-resize::after {
+            background: rgba(60, 60, 67, 0.4);
         }
         .tc-footer[hidden] { display: none !important; }
         .tc-footer-head {
@@ -1427,6 +1438,8 @@
             font-weight: 600;
             color: #1d1d1f;
             background: transparent;
+            cursor: ns-resize;
+            touch-action: none;
         }
         .tc-footer-tabs {
             display: flex;
@@ -1446,6 +1459,7 @@
             border-radius: 7px;
             border-bottom: none;
             cursor: pointer;
+            touch-action: manipulation;
             transition: background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
         }
         .tc-ftab:hover { color: #1d1d1f; }
@@ -1526,11 +1540,16 @@
         .tc-footer .tc-kv .tc-kv-v { color: #1d1d1f; font-weight: 600; font-size: 0.75rem; }
         .tc-footer .tc-kv { padding: 0.08rem 0; }
         .tc-footer .tc-muted { color: #86868b; font-size: 0.6875rem; font-weight: 500; }
-        .tc-fbody { position: absolute; inset: 0; padding: 0.4rem 0.65rem; overflow: auto; display: none; }
+        .tc-fbody { position: absolute; inset: 0; padding: 0.4rem 0.65rem; overflow: auto; display: none; -webkit-overflow-scrolling: touch; }
         .tc-fbody.active { display: block; }
-        /* Data tab scrolls horizontally (Traccar-style strip), never grows the footer height. */
-        .tc-fbody[data-fbody="data"] { overflow-x: scroll; overflow-y: hidden; scrollbar-width: thin; scrollbar-color: var(--tc-text-faint) var(--tc-border-soft); }
-        .tc-fbody[data-fbody="data"]::-webkit-scrollbar { height: 11px; }
+        /* Data tab: scroll horizontally across cards and vertically through all fields. */
+        .tc-fbody[data-fbody="data"] {
+            overflow-x: auto;
+            overflow-y: auto;
+            scrollbar-width: thin;
+            scrollbar-color: var(--tc-text-faint) var(--tc-border-soft);
+        }
+        .tc-fbody[data-fbody="data"]::-webkit-scrollbar { width: 10px; height: 11px; }
         .tc-fbody[data-fbody="data"]::-webkit-scrollbar-track { background: var(--tc-border-soft); border-radius: 6px; }
         .tc-fbody[data-fbody="data"]::-webkit-scrollbar-thumb { background: var(--tc-text-faint); border-radius: 6px; border: 2px solid var(--tc-border-soft); }
         .tc-fbody[data-fbody="data"]::-webkit-scrollbar-thumb:hover { background: var(--tc-text-muted); }
@@ -1557,7 +1576,18 @@
         #tcSpeedChart { width: 100% !important; height: 100% !important; }
 
         /* Data tab: Traccar-style horizontally-scrollable widget cards */
-        .tc-data-grid { display: flex; flex-wrap: nowrap; gap: 0.45rem; align-items: stretch; height: 100%; }
+        .tc-data-grid {
+            display: flex;
+            flex-wrap: nowrap;
+            gap: 0.45rem;
+            align-items: flex-start;
+            width: max-content;
+            min-width: 100%;
+            min-height: 100%;
+            height: auto;
+            padding-bottom: 0.35rem;
+            box-sizing: border-box;
+        }
         .tc-data-col {
             box-sizing: border-box;
             flex: 0 0 200px;
@@ -1566,7 +1596,9 @@
             border-radius: var(--tc-radius);
             background: var(--tc-surface-2);
             padding: 0.45rem 0.6rem;
-            overflow-y: auto;
+            overflow: visible;
+            height: auto;
+            max-height: none;
         }
         .tc-data-col h6 { font-size: 0.625rem; text-transform: none; letter-spacing: -0.01em; color: var(--tc-primary); margin: 0 0 0.28rem; font-weight: 600; }
         .tc-kv { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; padding: 0.08rem 0; font-size: 0.75rem; border-bottom: 1px dashed var(--tc-border-soft); }
@@ -1734,8 +1766,13 @@
             .tc-map-controls { top: 10px; inset-inline-end: 10px; gap: 6px; z-index: 6; }
             .tc-map-controls .btn { width: 40px; height: 40px; }
 
-            /* Footer becomes a height-capped bottom sheet */
-            .tc-footer { height: auto; max-height: 58dvh; }
+            /* Footer becomes a height-capped bottom sheet — drag handle resize still applies */
+            .tc-footer {
+                height: var(--tc-footer-height, 280px);
+                max-height: 70dvh;
+                overflow: hidden;
+            }
+            .tc-footer-body { min-height: 0; }
             .tc-footer-title { display: none; }
 
             /* Per-vehicle menu fills more of the width for easy tapping */
@@ -1743,8 +1780,40 @@
         }
 
         @media (max-width: 768px) and (orientation: landscape) {
-            .tc-panel { width: 58vw; max-width: 272px; }
-            .tc-footer { max-height: 70dvh; }
+            .tc-panel { width: 48vw; max-width: 300px; }
+            .tc-footer {
+                height: var(--tc-footer-height, 160px);
+                max-height: 50dvh;
+                overflow: hidden;
+            }
+            .tc-footer-body { min-height: 0; }
+            .tc-app { min-height: 0; }
+            .tc-hist-form {
+                max-height: 42%;
+                overflow: auto;
+            }
+            .tc-hist-results-wrap,
+            .htt-list,
+            .tc-hist-virtual-host {
+                max-height: none;
+                flex: 1;
+                min-height: 0;
+            }
+            .playback-panel {
+                max-width: min(520px, 92vw);
+                transform: scale(0.92);
+                transform-origin: bottom center;
+            }
+            .map-history-load-banner {
+                top: 6px;
+                max-width: min(90vw, 560px);
+                gap: 4px;
+            }
+            .map-history-load-banner__item {
+                padding: 3px 8px;
+                font-size: 0.65rem;
+            }
+            .tc-hist-summary { font-size: 0.75rem; }
         }
 
         /* Larger touch targets on touch devices */
@@ -2056,6 +2125,9 @@
                             @endforeach
                         </select>
 
+                        <div id="tcHistVehicleLabel"></div>
+                        <div id="tcHistDayNav"></div>
+
                         @php($tcToday = now()->format('Y-m-d'))
                         <label for="tcHistDateFrom">{{ __('app.tracking.date_from') }}</label>
                         <div class="tc-datetime-row">
@@ -2077,13 +2149,14 @@
                                 <i class="fas fa-eraser me-1"></i>{{ __('app.tracking.hide') }}
                             </button>
                         </div>
+                        <div id="tcHistExport"></div>
                     </div>
                     <div id="tcHistSummary" class="tc-hist-summary" hidden></div>
                     <div id="tcHistResultsWrap" class="tc-hist-results-wrap" hidden>
                         <div class="tc-list-head">
-                            <span class="tc-head-label">{{ __('app.tracking.history_events') }}</span>
+                            <span class="tc-head-label">{{ __('app.tracking.trip_timeline') }}</span>
                         </div>
-                        <div class="tc-list" id="tcHistResults"></div>
+                        <div class="tc-list htt-list" id="tcHistResults"></div>
                     </div>
                 </div>
                 @endif
@@ -2412,6 +2485,8 @@
             historyJsonUrl: @json(route($routes['historyJson'])),
             historyPointsJsonUrl: @json(Route::has($routes['historyPoints'] ?? '') ? route($routes['historyPoints']) : null),
             historyAnalyticsJsonUrl: @json(Route::has($routes['historyAnalytics'] ?? '') ? route($routes['historyAnalytics']) : null),
+            historyExportUrl: @json(Route::has($routes['historyExport'] ?? '') ? route($routes['historyExport']) : null),
+            historyGeocodeUrl: @json(Route::has($routes['historyGeocode'] ?? '') ? route($routes['historyGeocode']) : null),
             historyWorkerUrl: @json(asset('js/history-map-worker.js')),
             eventsJsonUrl: @json(Route::has($routes['eventsJson']) ? route($routes['eventsJson']) : null),
             geofencesJsonUrl: @json(Route::has($routes['geofencesJson']) ? route($routes['geofencesJson']) : null),
@@ -2624,10 +2699,12 @@
     @include('partials.google-maps-platform')
     <script src="{{ protected_js('builtin-map-icons.js') }}"></script>
     <script src="{{ protected_js('vehicle-marker.js') }}"></script>
+    <script src="{{ protected_js('vehicle-motion.js') }}"></script>
     <script src="{{ protected_js('fleet-map-cluster.js') }}"></script>
     <script src="{{ protected_js('polyline-simplify.js') }}"></script>
     <script src="{{ protected_js('history-analytics.js') }}"></script>
     <script src="{{ protected_js('fleet-map-renderer.js') }}"></script>
+    <script src="{{ protected_js('history-trip-timeline.js') }}"></script>
     <script src="{{ protected_js('history-map-processor.js') }}"></script>
     <script src="{{ protected_js('route-trip-progress.js') }}"></script>
     <script src="{{ protected_js('map-panel-position.js') }}"></script>

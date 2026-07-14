@@ -32,6 +32,7 @@ class GlobalTrackingHistoryService
         private HistoryEventsCompiler $historyEvents,
         private EventReaderInterface $events,
         private HistoryTrackCache $trackCache,
+        private TripTimelineBuilder $tripTimeline,
     ) {}
 
     /**
@@ -65,9 +66,9 @@ class GlobalTrackingHistoryService
     }
 
     /**
-     * Single analyze pass — stats, timeline, and compiled events.
+     * Single analyze pass — stats, timeline, compiled events, and trip segments.
      *
-     * @return array{stats: array<string, mixed>, timeline: list<array<string, mixed>>, events: list<array<string, mixed>>}
+     * @return array{stats: array<string, mixed>, timeline: list<array<string, mixed>>, events: list<array<string, mixed>>, segments: list<array<string, mixed>>}
      */
     public function analyticsBundle(Device $device, Collection $locations, Carbon $from, ?Carbon $to): array
     {
@@ -75,7 +76,7 @@ class GlobalTrackingHistoryService
     }
 
     /**
-     * @return array{stats: array<string, mixed>, timeline: list<array<string, mixed>>, events: list<array<string, mixed>>}
+     * @return array{stats: array<string, mixed>, timeline: list<array<string, mixed>>, events: list<array<string, mixed>>, segments: list<array<string, mixed>>}
      */
     private function buildAnalyticsBundle(Device $device, Collection $locations, Carbon $from, ?Carbon $to): array
     {
@@ -90,10 +91,21 @@ class GlobalTrackingHistoryService
             'skip_timeline' => $count > self::SKIP_TIMELINE_POINT_CAP,
         ]);
 
+        $stats = $this->publicStatsPayload($rawStats);
+        $timeline = $this->capTimeline($rawStats['timeline'] ?? []);
+        $events = $this->compileHistoryEventsFromStats($device, $rawStats, $from, $to);
+        $segments = $this->tripTimeline->build(
+            $analysisPoints,
+            $rawStats['timeline'] ?? [],
+            $stats['stops'] ?? [],
+            $events,
+        );
+
         return [
-            'stats' => $this->publicStatsPayload($rawStats),
-            'timeline' => $this->capTimeline($rawStats['timeline'] ?? []),
-            'events' => $this->compileHistoryEventsFromStats($device, $rawStats, $from, $to),
+            'stats' => $stats,
+            'timeline' => $timeline,
+            'events' => $events,
+            'segments' => array_slice($segments, 0, 500),
         ];
     }
 
@@ -209,19 +221,39 @@ class GlobalTrackingHistoryService
             'start_time' => $stats['start_time'] ?? null,
             'end_time' => $stats['end_time'] ?? null,
             'stop_count' => (int) ($stats['stop_count'] ?? 0),
-            'stops' => array_map(fn (array $stop) => [
-                'lat' => (float) ($stop['lat'] ?? 0),
-                'lng' => (float) ($stop['lng'] ?? 0),
-                'duration_seconds' => (int) ($stop['duration_seconds'] ?? $stop['duration'] ?? 0),
-                'duration' => (int) ($stop['duration_seconds'] ?? $stop['duration'] ?? 0),
-                'start' => $stop['start'] ?? null,
-                'end' => $stop['end'] ?? null,
-                'start_display' => $stop['start_display'] ?? null,
-                'end_display' => $stop['end_display'] ?? null,
-                'status_label' => $stop['status_label'] ?? null,
-                'motion_key' => $stop['motion_key'] ?? null,
-            ], $stops),
+            'stops' => array_map(function (array $stop): array {
+                $lat = (float) ($stop['lat'] ?? 0);
+                $lng = (float) ($stop['lng'] ?? 0);
+
+                return [
+                    'lat' => $lat,
+                    'lng' => $lng,
+                    'duration_seconds' => (int) ($stop['duration_seconds'] ?? $stop['duration'] ?? 0),
+                    'duration' => (int) ($stop['duration_seconds'] ?? $stop['duration'] ?? 0),
+                    'start' => $stop['start'] ?? null,
+                    'end' => $stop['end'] ?? null,
+                    'start_display' => $stop['start_display'] ?? null,
+                    'end_display' => $stop['end_display'] ?? null,
+                    'status_label' => $stop['status_label'] ?? null,
+                    'motion_key' => $stop['motion_key'] ?? null,
+                    'maps_url' => $this->googleMapsUrl($lat, $lng),
+                    'address' => $stop['address'] ?? null,
+                ];
+            }, $stops),
         ];
+    }
+
+    private function googleMapsUrl(float $lat, float $lng): ?string
+    {
+        if (! is_finite($lat) || ! is_finite($lng)) {
+            return null;
+        }
+        if (abs($lat) > 90 || abs($lng) > 180 || ($lat == 0.0 && $lng == 0.0)) {
+            return null;
+        }
+
+        return 'https://www.google.com/maps/search/?api=1&query='
+            .rawurlencode(number_format($lat, 6, '.', '').','.number_format($lng, 6, '.', ''));
     }
 
     /**
@@ -345,6 +377,8 @@ class GlobalTrackingHistoryService
             'timeline' => $bundle['timeline'],
             'events' => $bundle['events'],
             'history_events' => $bundle['events'],
+            'segments' => $bundle['segments'] ?? [],
+            'trip_timeline' => $bundle['segments'] ?? [],
             'point_count' => $locations->count(),
             'used_fallback' => $usedFallback,
             'fallback_reason' => $fallbackReason,
@@ -380,6 +414,8 @@ class GlobalTrackingHistoryService
             'stats' => $bundle['stats'],
             'events' => $bundle['events'],
             'history_events' => $bundle['events'],
+            'segments' => $bundle['segments'] ?? [],
+            'trip_timeline' => $bundle['segments'] ?? [],
             'point_count' => $locations->count(),
             'display_point_count' => count($points),
         ];

@@ -6,6 +6,7 @@ use App\Models\Device;
 use App\Services\DeviceSubscriptionService;
 use App\Services\Mobile\MobileMapStatusResolver;
 use App\Services\Mobile\VehicleStatusSpec;
+use App\Services\Tracking\DriverMapInfoService;
 use App\Services\Tracking\StatusDurationResolver;
 use App\Support\Tracking\TelemetryFormatter;
 
@@ -15,6 +16,7 @@ class MobileDevicePresenter
         private DeviceSubscriptionService $subscriptions,
         private MobileMapStatusResolver $mapStatus,
         private StatusDurationResolver $statusDuration,
+        private DriverMapInfoService $driverMapInfo,
     ) {}
 
     /**
@@ -53,6 +55,9 @@ class MobileDevicePresenter
             'map_marker_title' => $device->mapMarkerTitle(),
             'map_marker_plate' => $device->mapMarkerPlateLine(),
             'notification_display_name' => $device->notificationDisplayName(),
+            'driver_name' => $device->driverDisplayName(),
+            'driver_contact' => $device->driverContactNumber(),
+            'driver' => $this->driverMapInfo->payloadForDevice($device),
             'status' => $map['label'],
             'status_key' => $map['key'],
             'connectivity_tier' => $map['connectivity_tier'],
@@ -159,6 +164,9 @@ class MobileDevicePresenter
             'map_icon_rotation_enabled' => $device->map_icon_rotation_enabled,
             'map_marker_title' => $device->mapMarkerTitle(),
             'map_marker_plate' => $device->mapMarkerPlateLine(),
+            'driver_name' => $device->driverDisplayName(),
+            'driver_contact' => $device->driverContactNumber(),
+            'driver' => $this->driverMapInfo->payloadForDevice($device),
             'map_rendering' => MapRenderingSpec::toArray(),
         ];
     }

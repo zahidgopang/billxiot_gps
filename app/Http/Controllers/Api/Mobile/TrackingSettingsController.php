@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Mobile;
 
 use App\Http\Controllers\Controller;
 use App\Http\Concerns\RespondsWithMobileJson;
+use App\Services\Tracking\CompanyMapCardService;
 use App\Services\Tracking\TrackingSettingsService;
 use Illuminate\Http\Request;
 
@@ -13,6 +14,7 @@ class TrackingSettingsController extends Controller
 
     public function __construct(
         private TrackingSettingsService $settings,
+        private CompanyMapCardService $companyMapCard,
     ) {}
 
     public function show(Request $request)
@@ -20,6 +22,14 @@ class TrackingSettingsController extends Controller
         return $this->mobileSuccess([
             'settings' => $this->settings->forActor($request->user()),
             'keys' => TrackingSettingsService::KEYS,
+            'company_map_card' => $this->companyMapCard->mapPayload(),
+        ]);
+    }
+
+    public function companyMapCard()
+    {
+        return $this->mobileSuccess([
+            'company_map_card' => $this->companyMapCard->mapPayload(),
         ]);
     }
 
@@ -40,6 +50,7 @@ class TrackingSettingsController extends Controller
 
         return $this->mobileSuccess([
             'settings' => $result['settings'],
+            'company_map_card' => $this->companyMapCard->mapPayload(),
             'message' => (string) __('app.tracking.settings_saved'),
         ]);
     }

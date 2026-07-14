@@ -43,7 +43,6 @@ class ReportController extends Controller
         $this->applyReportLocale($request);
 
         $ids = $this->resolveReportDeviceIds($request);
-        set_time_limit(min(300, 45 + count($ids) * 6));
 
         if ($ids === []) {
             return $this->noStoreJson([
@@ -56,6 +55,7 @@ class ReportController extends Controller
 
         try {
             $range = $this->resolveReportRange($request);
+            ReportService::applyTimeLimit(count($ids), $range['from'], $range['to']);
             $type = (string) $request->input('type', $request->query('type', 'summary'));
             $nonce = (string) $request->input('_nonce', '');
 
@@ -89,7 +89,6 @@ class ReportController extends Controller
     public function export(Request $request): StreamedResponse|\Illuminate\Http\Response
     {
         $this->applyReportLocale($request);
-        set_time_limit(300);
 
         $ids = $this->resolveReportDeviceIds($request);
         if ($ids === []) {
@@ -98,6 +97,7 @@ class ReportController extends Controller
 
         try {
             $range = $this->resolveReportRange($request);
+            ReportService::applyTimeLimit(count($ids), $range['from'], $range['to'], forExport: true);
             $type = (string) $request->input('type', $request->query('type', 'summary'));
             $format = (string) $request->input('format', $request->query('format', 'csv'));
 

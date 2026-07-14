@@ -15,7 +15,7 @@ class ReportExportServiceTest extends TestCase
     {
         $service = new ReportExportService;
 
-        foreach (['summary', 'trips', 'stops', 'events', 'route', 'positions'] as $type) {
+        foreach (['summary', 'trips', 'stops', 'trips_stops', 'mileage', 'diesel', 'events', 'route', 'positions'] as $type) {
             $report = $this->sampleReport($type);
             $rows = $service->tableRows($report, $type);
 
@@ -126,9 +126,13 @@ class ReportExportServiceTest extends TestCase
                 'start_lng' => 39.8,
                 'end_lat' => 21.5,
                 'end_lng' => 39.9,
+                'start_maps_url' => 'https://www.google.com/maps/search/?api=1&query=21.400000,39.800000',
+                'end_maps_url' => 'https://www.google.com/maps/search/?api=1&query=21.500000,39.900000',
                 'distance_km' => 12.5,
                 'duration_seconds' => 3600,
                 'moving_time_seconds' => 3000,
+                'stop_count' => 1,
+                'route_point_count' => 10,
                 'max_speed_kmh' => 80,
                 'average_speed_kmh' => 45,
             ]],
@@ -139,7 +143,48 @@ class ReportExportServiceTest extends TestCase
                 'duration_seconds' => 900,
                 'lat' => 21.5,
                 'lng' => 39.9,
+                'maps_url' => 'https://www.google.com/maps/search/?api=1&query=21.500000,39.900000',
             ]],
+            'segments' => [[
+                'kind' => 'trip',
+                'kind_label' => 'Trip',
+                'start_time' => '08:00',
+                'end_time' => '09:00',
+                'duration_seconds' => 3600,
+                'distance_km' => 12.5,
+                'start_lat' => 21.4,
+                'start_lng' => 39.8,
+                'maps_url' => 'https://www.google.com/maps/search/?api=1&query=21.400000,39.800000',
+                'stop_count' => 1,
+            ], [
+                'kind' => 'stop',
+                'kind_label' => 'Stop',
+                'start_display' => '09:00',
+                'end_display' => '09:15',
+                'duration_seconds' => 900,
+                'lat' => 21.5,
+                'lng' => 39.9,
+                'maps_url' => 'https://www.google.com/maps/search/?api=1&query=21.500000,39.900000',
+            ]],
+            'days' => [[
+                'date' => '2026-07-01',
+                'distance_km' => 12.5,
+                'duration_seconds' => 36000,
+                'point_count' => 120,
+                'start_time' => '2026-07-01T08:00:00+03:00',
+                'end_time' => '2026-07-01T18:00:00+03:00',
+                'start_maps_url' => 'https://www.google.com/maps/search/?api=1&query=21.400000,39.800000',
+                'end_maps_url' => 'https://www.google.com/maps/search/?api=1&query=21.500000,39.900000',
+                'fuel_liters' => 1.5,
+                'fuel_method' => 'estimated',
+                'efficiency' => 12.0,
+            ]],
+            'fuel_liters' => 1.5,
+            'fuel_method' => 'estimated',
+            'fuel_method_label' => 'Estimated (rate × distance)',
+            'efficiency' => 12.0,
+            'efficiency_label' => 'L/100km',
+            'rate_l_per_100km' => 12.0,
             'events' => [[
                 'time_display' => '10:00',
                 'event_type' => 'overspeed',
@@ -148,12 +193,14 @@ class ReportExportServiceTest extends TestCase
                 'geofence' => '',
                 'lat' => 21.5,
                 'lng' => 39.9,
+                'maps_url' => 'https://www.google.com/maps/search/?api=1&query=21.500000,39.900000',
                 'speed' => 95,
             ]],
             'positions' => [[
                 'time_display' => '08:05',
                 'lat' => 21.4,
                 'lng' => 39.8,
+                'maps_url' => 'https://www.google.com/maps/search/?api=1&query=21.400000,39.800000',
                 'speed' => 40,
                 'heading' => 90,
                 'ignition' => true,

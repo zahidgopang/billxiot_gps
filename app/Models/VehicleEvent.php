@@ -146,24 +146,28 @@ class VehicleEvent extends Model
     public function typeLabel(): string
     {
         return match ($this->type) {
-            self::TYPE_STOPPED => 'Stopped',
-            self::TYPE_RUNNING => 'Running',
-            self::TYPE_SLOW_SPEED => 'Slow speed',
+            self::TYPE_STOPPED => 'Engine Off',
+            self::TYPE_RUNNING => 'Engine On',
+            self::TYPE_SLOW_SPEED => 'Slow Speed',
             self::TYPE_OVERSPEED => 'Overspeed',
-            self::TYPE_GEOFENCE_ENTER => 'Geofence enter',
-            self::TYPE_GEOFENCE_EXIT => 'Geofence exit',
-            self::TYPE_LOW_BATTERY => 'Low battery',
-            self::TYPE_POWER_CUT => 'Power cut',
+            self::TYPE_GEOFENCE_ENTER => 'Geofence Entry',
+            self::TYPE_GEOFENCE_EXIT => 'Geofence Exit',
+            self::TYPE_LOW_BATTERY => 'Low Battery',
+            self::TYPE_POWER_CUT => 'Power Cut',
             self::TYPE_PANIC => 'SOS / Panic',
-            self::TYPE_IGNITION => 'Ignition alert',
-            self::TYPE_DELAYED => 'Delayed data',
-            self::TYPE_OFFLINE => 'Device offline',
-            self::TYPE_COMM_LOST_MOVING => 'Communication lost while moving',
-            self::TYPE_COMM_LOST_IGNITION => 'Communication lost (ignition ON)',
-            self::TYPE_TAMPERING => 'Tampering suspected',
-            self::TYPE_GSM_WEAK => 'GSM signal weak',
-            self::TYPE_GPS_WEAK => 'GPS signal weak',
-            self::TYPE_MAINTENANCE => 'Maintenance due',
+            self::TYPE_IGNITION => 'Ignition Off While Moving',
+            self::TYPE_DELAYED => 'Delayed Data',
+            self::TYPE_OFFLINE => 'Device Disconnected',
+            self::TYPE_COMM_LOST_MOVING => 'Communication Lost While Moving',
+            self::TYPE_COMM_LOST_IGNITION => 'Communication Lost (Ignition ON)',
+            self::TYPE_TAMPERING => 'Tampering Suspected',
+            self::TYPE_GSM_WEAK => 'Weak GSM Signal',
+            self::TYPE_GPS_WEAK => 'Weak GPS Signal',
+            self::TYPE_MAINTENANCE => 'Maintenance Due',
+            self::TYPE_TRIP_COMPLETED => 'Trip Completed',
+            'parked' => 'Engine Off',
+            'device_online' => 'Device Connected',
+            'idle' => 'Vehicle Idle',
             default => ucfirst(str_replace('_', ' ', $this->type)),
         };
     }
@@ -179,6 +183,14 @@ class VehicleEvent extends Model
         }
 
         $title = $this->title ?: $this->typeLabel();
+        if ($this->isGenericTitle($title)) {
+            $mapped = \App\Support\Push\PushNotificationMapper::fromVehicleEventType((string) $this->type);
+            if ($mapped) {
+                $title = \App\Support\Push\PushNotificationType::title($mapped);
+            } else {
+                $title = $this->typeLabel();
+            }
+        }
         $message = $this->message;
 
         if ($message === '' && in_array($this->type, [self::TYPE_GEOFENCE_ENTER, self::TYPE_GEOFENCE_EXIT], true)) {
@@ -208,5 +220,14 @@ class VehicleEvent extends Model
             'date' => \App\Support\DateTime\AppDateTime::format($this->occurred_at, 'date'),
             'clock' => \App\Support\DateTime\AppDateTime::format($this->occurred_at, 'time'),
         ];
+    }
+
+    private function isGenericTitle(string $title): bool
+    {
+        $normalized = strtolower(trim($title));
+
+        return $normalized === ''
+            || in_array($normalized, ['event', 'event record', 'event recorded', 'alert', 'notification', 'unknown'], true)
+            || str_contains($normalized, 'event recorded');
     }
 }

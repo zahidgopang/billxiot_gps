@@ -36,6 +36,8 @@ final class TraccarAttributes
             'gps_signal' => 'gps',
             'satellites' => 'sat',
             'odometer' => 'odometer',
+            'fuel' => 'fuel',
+            'fuel_level' => 'fuel',
             'power_cut' => 'powerCut',
             'panic' => 'alarm',
             'gps_fix' => 'gpsFix',
@@ -80,9 +82,37 @@ final class TraccarAttributes
                 ?? $attributes['satVisible']
                 ?? null,
             'odometer' => $attributes['odometer'] ?? null,
+            'fuel' => self::firstNumeric($attributes, [
+                'fuel',
+                'fuelLevel',
+                'fuel_level',
+                'fuelLiters',
+                'io9',
+                'io19',
+                'canFuel',
+                'fuel1',
+            ]),
             'power_cut' => (bool) ($attributes['powerCut'] ?? false),
             'panic' => ($attributes['alarm'] ?? null) === 'sos',
             'gps_fix' => $attributes['gpsFix'] ?? null,
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $attributes
+     * @param  list<string>  $keys
+     */
+    private static function firstNumeric(array $attributes, array $keys): mixed
+    {
+        foreach ($keys as $key) {
+            if (! array_key_exists($key, $attributes) || $attributes[$key] === null || $attributes[$key] === '') {
+                continue;
+            }
+            if (is_numeric($attributes[$key])) {
+                return $attributes[$key];
+            }
+        }
+
+        return null;
     }
 }
