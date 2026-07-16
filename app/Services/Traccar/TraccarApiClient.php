@@ -136,6 +136,57 @@ class TraccarApiClient
     }
 
     /**
+     * Lightweight health check (login + GET /api/server).
+     *
+     * @return array{ok: bool, status: int, body: mixed, message: string}
+     */
+    public function ping(): array
+    {
+        if (! $this->configured()) {
+            return [
+                'ok' => false,
+                'status' => 0,
+                'body' => null,
+                'message' => 'Traccar API is not configured.',
+            ];
+        }
+
+        $login = $this->ensureSession();
+        if (! ($login['ok'] ?? false)) {
+            return $login;
+        }
+
+        try {
+            $response = $this->http()
+                ->acceptJson()
+                ->get($this->baseUrl().'/api/server');
+
+            if ($response->successful()) {
+                return [
+                    'ok' => true,
+                    'status' => $response->status(),
+                    'body' => $response->json(),
+                    'message' => 'Traccar API is reachable.',
+                ];
+            }
+
+            return [
+                'ok' => false,
+                'status' => $response->status(),
+                'body' => $response->json() ?? $response->body(),
+                'message' => $this->errorMessage((string) $response->body(), $response->status()),
+            ];
+        } catch (\Throwable $e) {
+            return [
+                'ok' => false,
+                'status' => 0,
+                'body' => null,
+                'message' => $e->getMessage(),
+            ];
+        }
+    }
+
+    /**
      * @return array{ok: bool, status: int, body: mixed, message: string}
      */
     private function ensureSession(): array

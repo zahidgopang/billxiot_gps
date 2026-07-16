@@ -419,6 +419,16 @@
                 if (icon && global.VehicleMarker?.applyMarkerIcon) {
                     global.VehicleMarker.applyMarkerIcon(marker, icon);
                 }
+                if (icon?.meta?.flat && global.VehicleMarker?.applyMarkerPose) {
+                    global.VehicleMarker.applyMarkerPose(
+                        marker,
+                        item.position.lat,
+                        item.position.lng,
+                        parseFloat(point.heading || 0) || 0,
+                        global.VehicleMarker.resolveIconRotationOffset?.(point) ?? 0,
+                        global.VehicleMarker.resolveRotationEnabled?.(point) !== false,
+                    );
+                }
                 marker.addListener('click', () => {
                     global.GoogleMapsPlatform?.runAfterMarkerClick?.(() => {
                         const point = this.devicePoint(device);

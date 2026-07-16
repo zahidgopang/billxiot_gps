@@ -593,7 +593,15 @@
 
                 body.append('icon', prepared);
                 const offsetEl = form.querySelector('[data-map-rotation-offset]');
-                if (offsetEl?.value != null && offsetEl.value !== '') {
+                // Custom uploads are almost always top-down (nose up). Shared suggestions
+                // leave the select on East (-90); reset to North so top-down art tracks
+                // correctly unless the user already chose another nose direction after picking the file.
+                if (offsetEl) {
+                    const sharedDefault = String(offsetEl.value) === '-90';
+                    if (sharedDefault || offsetEl.value === '' || offsetEl.value == null) {
+                        offsetEl.value = '0';
+                        form.dataset.rotationOffset = '0';
+                    }
                     body.append('map_icon_rotation_offset', String(offsetEl.value));
                 }
                 const deviceIds = typeof options.getDeviceIds === 'function' ? options.getDeviceIds() : null;

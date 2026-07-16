@@ -33,6 +33,7 @@ class CommandController extends Controller
             'types' => $this->commandTypes(),
             'commands' => $this->commands->historyForDevice($request->user(), (int) $device->id),
             'can_send' => ! (bool) ($request->user()->getAttribute('limitCommands') ?? false),
+            'delivery' => $this->commands->deliveryHealth(),
         ])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
     }
 
@@ -62,6 +63,12 @@ class CommandController extends Controller
         return $this->mobileSuccess([
             'id' => $result['id'] ?? null,
             'status' => $result['status'] ?? null,
+            'status_label' => isset($result['status'])
+                ? (CommandService::statusLabels()[$result['status']] ?? $result['status'])
+                : null,
+            'stages' => $result['stages'] ?? [],
+            'delivery' => $result['delivery'] ?? null,
+            'queue_id' => $result['queue_id'] ?? null,
             'message' => (string) ($result['message'] ?? ''),
         ]);
     }

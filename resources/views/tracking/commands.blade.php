@@ -18,6 +18,7 @@
     <div class="gt-module-card">
         <h5 class="mb-1">{{ __('app.tracking.commands_title') }}</h5>
         <p class="small text-muted">{{ __('app.tracking.commands_hint') }}</p>
+        <div id="gtCmdDeliveryHealth" class="alert py-2 px-3 small mb-3" hidden role="status"></div>
 
         <form id="gtCmdForm" class="gt-cmd-form">
             <div class="gt-cmd-field">
@@ -80,6 +81,8 @@
         statusFailed: @json(__('app.tracking.command_status_failed')),
         statusTimeout: @json(__('app.tracking.command_status_timeout')),
         statusCanceled: @json(__('app.tracking.command_status_canceled')),
+        timeline: @json(__('app.tracking.command_history_timeline')),
+        pollHint: @json(__('app.tracking.command_poll_hint')),
     },
 };</script>
 <script src="{{ protected_js('tracking-commands.js') }}"></script>

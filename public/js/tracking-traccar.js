@@ -1903,7 +1903,7 @@
                 icon = arrowIcon(color);
                 if (icon?.meta) {
                     const VM2 = global.VehicleMarker;
-                    const offset = VM2?.resolveIconRotationOffset?.(point) || 0;
+                    const offset = VM2?.resolveIconRotationOffset?.(point) ?? 0;
                     const enabled = VM2?.resolveRotationEnabled?.(point) !== false;
                     icon = {
                         ...icon,
@@ -1926,7 +1926,7 @@
         _markerIconSignature(v) {
             const VM = global.VehicleMarker;
             const key = v?.status_key || 'offline';
-            const offset = VM?.resolveIconRotationOffset?.(v) || 0;
+            const offset = VM?.resolveIconRotationOffset?.(v) ?? 0;
             const enabled = VM?.resolveRotationEnabled?.(v) !== false;
             const style = VM?.resolveMarkerStyle?.(v) || 'pin';
             const scale = VM?.resolveMarkerSizeScale?.(v) || 1;
@@ -2360,19 +2360,28 @@
                 if (st._iconSig !== sig) {
                     st._iconSig = sig;
                     this.setVehicleMarkerIcon(st, colored, st.renderHeading);
-                } else if (VM?.applyMarkerPose) {
+                }
+                // Always apply live GPS heading + artwork offset. Flat icons are
+                // cached without heading in the key; never leave a stale meta.rotation.
+                if (VM?.applyMarkerPose) {
                     VM.applyMarkerPose(
                         st.marker,
                         pos.lat,
                         pos.lng,
                         st.renderHeading || 0,
-                        VM.resolveIconRotationOffset?.(colored) || 0,
+                        VM.resolveIconRotationOffset?.(colored) ?? 0,
                         VM.resolveRotationEnabled?.(colored) !== false,
                     );
                 } else {
                     st.marker.setPosition({ lat: pos.lat, lng: pos.lng });
                     if (typeof st.marker.setRotation === 'function') {
-                        st.marker.setRotation(st.renderHeading || 0);
+                        const offset = VM?.resolveIconRotationOffset?.(colored) ?? 0;
+                        const enabled = VM?.resolveRotationEnabled?.(colored) !== false;
+                        st.marker.setRotation(
+                            enabled
+                                ? (VM?.finalRotation?.(st.renderHeading || 0, offset, true) ?? (st.renderHeading || 0))
+                                : 0,
+                        );
                     }
                 }
             } else {
@@ -3234,7 +3243,7 @@
                         || '/icons/builtin/Vehicles/car.svg',
                     getCustomIconUrl: (p) => global.VehicleMarker?.resolveCustomIconUrl?.(p) ?? null,
                     getRotationEnabled: (p) => global.VehicleMarker?.resolveRotationEnabled?.(p) !== false,
-                    getRotationOffset: (p) => global.VehicleMarker?.resolveIconRotationOffset?.(p) || 0,
+                    getRotationOffset: (p) => global.VehicleMarker?.resolveIconRotationOffset?.(p) ?? 0,
                     shouldShowDirection: (_, state) => MOVING_KEYS.has(state),
                     isHidden: (p) => !hasGeo(p?.lat, p?.lng),
                     speedToColor,

@@ -35,6 +35,7 @@ class CommandsController extends Controller
     {
         return $this->noStoreJson([
             'commands' => $this->commands->historyForActor($request->user()),
+            'delivery' => $this->commands->deliveryHealth(),
         ]);
     }
 

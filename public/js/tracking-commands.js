@@ -7,31 +7,45 @@
     const form = document.getElementById('gtCmdForm');
     const body = document.getElementById('gtCmdBody');
     const typeSel = document.getElementById('gtCmdType');
+    const deliveryEl = document.getElementById('gtCmdDeliveryHealth');
 
     const csrf = () => document.querySelector('meta[name="csrf-token"]')?.content || '';
+    const OPEN = new Set(['pending', 'sent', 'delivered']);
+    let pollTimer = null;
 
     function escHtml(s) {
         return String(s == null ? '' : s).replace(/[&<>"']/g, (c) =>
             ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     }
 
-    function statusBadge(status) {
+    function statusBadge(status, label) {
         const map = {
-            pending: ['warning', i18n.statusPending || 'Pending'],
-            sent: ['info', i18n.statusSent || 'Sent'],
-            delivered: ['primary', i18n.statusDelivered || 'Delivered'],
-            executed: ['success', i18n.statusExecuted || 'Executed'],
-            failed: ['danger', i18n.statusFailed || 'Failed'],
-            timeout: ['dark', i18n.statusTimeout || 'Timeout'],
-            canceled: ['secondary', i18n.statusCanceled || 'Canceled'],
+            pending: 'warning',
+            sent: 'info',
+            delivered: 'primary',
+            executed: 'success',
+            failed: 'danger',
+            timeout: 'dark',
+            canceled: 'secondary',
         };
-        const [cls, label] = map[status] || ['secondary', status];
-        return `<span class="badge bg-${cls} gt-cmd-badge">${escHtml(label)}</span>`;
+        const cls = map[status] || 'secondary';
+        const text = label || status;
+        return `<span class="badge bg-${cls} gt-cmd-badge">${escHtml(text)}</span>`;
+    }
+
+    function stagesHtml(stages) {
+        if (!Array.isArray(stages) || !stages.length) return '';
+        const items = stages.map((s) => {
+            const at = s.at ? String(s.at).replace('T', ' ').slice(0, 19) : '';
+            return `<li><strong>${escHtml(s.stage || '')}</strong> — ${escHtml(s.message || '')}`
+                + (at ? ` <span class="text-muted">(${escHtml(at)})</span>` : '')
+                + `</li>`;
+        }).join('');
+        return `<details class="gt-cmd-stages mt-1"><summary class="small text-muted">${escHtml(i18n.timeline || 'Command timeline')}</summary>`
+            + `<ol class="small mb-0 ps-3">${items}</ol></details>`;
     }
 
     function toggleDataField() {
-        // The custom command must carry its raw payload in the data field;
-        // other types accept optional data, so only `custom` is required.
         const input = document.getElementById('gtCmdData');
         if (input) input.required = typeSel?.value === 'custom';
     }
@@ -46,22 +60,49 @@
 
     function notify(icon, title) {
         if (global.Swal) {
-            global.Swal.fire({ icon, title, timer: icon === 'success' ? 1600 : undefined, showConfirmButton: icon !== 'success' });
+            global.Swal.fire({ icon, title, timer: icon === 'success' ? 1800 : undefined, showConfirmButton: icon !== 'success' });
         } else {
             global.alert(title);
         }
     }
 
-    async function load() {
+    function renderDelivery(delivery) {
+        if (!deliveryEl || !delivery) return;
+        const ok = !!delivery.ok;
+        deliveryEl.className = `alert alert-${ok ? 'success' : 'danger'} py-2 px-3 small mb-3`;
+        deliveryEl.hidden = false;
+        deliveryEl.textContent = ok
+            ? (delivery.message || 'Traccar API is reachable — commands can be delivered.')
+            : (delivery.message || 'Traccar API is unreachable — commands will fail until Traccar is running.');
+    }
+
+    function schedulePoll(commands) {
+        if (pollTimer) {
+            clearInterval(pollTimer);
+            pollTimer = null;
+        }
+        const needsPoll = (commands || []).some((c) => OPEN.has(c.status));
+        if (!needsPoll) return;
+        pollTimer = setInterval(() => { load(true); }, 8000);
+    }
+
+    async function load(silent) {
         let commands = [];
+        let delivery = null;
         try {
             const res = await fetch(cfg.jsonUrl, { credentials: 'same-origin', headers: { Accept: 'application/json' } });
             const data = await res.json();
             commands = data.commands || [];
-        } catch (e) { commands = []; }
+            delivery = data.delivery || null;
+        } catch (e) {
+            commands = [];
+        }
+
+        renderDelivery(delivery);
 
         if (!commands.length) {
             body.innerHTML = `<tr><td colspan="7" class="gt-cmd-empty">${escHtml(i18n.noHistory || 'No commands yet')}</td></tr>`;
+            schedulePoll([]);
             return;
         }
 
@@ -73,18 +114,26 @@
                 ? `<div class="small text-muted">${escHtml(c.wire_type)}${c.wire_data ? ': ' + escHtml(c.wire_data) : ''}</div>`
                 : '';
             const result = c.result
-                ? `<div class="small text-muted" title="${escHtml(c.result)}">${escHtml(String(c.result).slice(0, 80))}</div>`
+                ? `<div class="small text-muted" title="${escHtml(c.result)}">${escHtml(String(c.result).slice(0, 120))}</div>`
+                : '';
+            const deliveryTag = c.delivery
+                ? `<div class="small text-muted">${escHtml(c.delivery)}</div>`
                 : '';
             return `<tr data-id="${c.id}">
                 <td class="text-nowrap small">${escHtml(c.time_display || c.time || '')}</td>
                 <td>${escHtml(c.device || ('#' + c.device_id))}</td>
                 <td>${escHtml(c.type_label || c.type)}${wire}</td>
                 <td class="small text-muted">${escHtml(c.data || '')}</td>
-                <td>${statusBadge(c.status)}${result}</td>
+                <td>${statusBadge(c.status, c.status_label)}${result}${deliveryTag}${stagesHtml(c.stages)}</td>
                 <td class="small text-muted">${escHtml(c.requested_by || '')}</td>
                 <td class="text-end">${cancelBtn}</td>
             </tr>`;
         }).join('');
+
+        schedulePoll(commands);
+        if (!silent && (commands || []).some((c) => OPEN.has(c.status)) && i18n.pollHint) {
+            // no toast spam — hint lives in delivery banner area if needed
+        }
     }
 
     typeSel?.addEventListener('change', toggleDataField);
@@ -108,6 +157,7 @@
             const data = await res.json().catch(() => ({}));
             if (!res.ok || !data.success) {
                 notify('error', data.message || i18n.failed || 'Failed');
+                await load();
                 return;
             }
             notify('success', data.message || i18n.sent || 'Sent');

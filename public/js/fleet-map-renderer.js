@@ -178,7 +178,7 @@
                     lat,
                     lng,
                     heading,
-                    VM.resolveIconRotationOffset?.(point) || 0,
+                    VM.resolveIconRotationOffset?.(point) ?? 0,
                     VM.resolveRotationEnabled?.(point) !== false,
                 );
                 return;
@@ -241,7 +241,12 @@
                     zIndex: MARKER_Z,
                     optimized: false,
                 });
-                this._applyIconRotation(icon);
+                this._applyPose(
+                    position.lat,
+                    position.lng,
+                    parseFloat(point.heading || 0) || 0,
+                    point,
+                );
                 this.vehicleMarker.addListener('click', () => {
                     global.GoogleMapsPlatform?.runAfterMarkerClick?.(() => {
                         this.opts.onVehicleClick?.(point);
@@ -256,9 +261,17 @@
 
             if (skipAnimation) {
                 this._motionEngine?.clear('v');
-                this.vehicleMarker.setPosition(position);
-                this.vehicleMarker.setIcon(icon);
-                this._applyIconRotation(icon);
+                if (global.VehicleMarker?.applyMarkerIcon && icon) {
+                    global.VehicleMarker.applyMarkerIcon(this.vehicleMarker, icon);
+                } else {
+                    this.vehicleMarker.setIcon(icon);
+                }
+                this._applyPose(
+                    position.lat,
+                    position.lng,
+                    parseFloat(point.heading || 0) || 0,
+                    point,
+                );
                 this.vehicleMarker.setTitle(title);
                 this._updatePulse(point);
                 this._lastPoint = point;
@@ -389,9 +402,9 @@
                     this._animFrame = null;
                     this._renderPos = target;
                     this._renderHeading = toHeading;
-                    this.vehicleMarker.setPosition(target);
-                    this._applyIconRotation(this._iconFor(point));
-                    this._updatePulse(point);
+                    const finalPoint = { ...point, lat: target.lat, lng: target.lng, heading: toHeading };
+                    this._applyPose(target.lat, target.lng, toHeading, finalPoint);
+                    this._updatePulse(finalPoint);
                     options.onComplete?.();
                 }
             };
@@ -407,6 +420,13 @@
             } else {
                 this.vehicleMarker.setIcon(icon);
             }
+            this._applyPose(
+                Number(point.lat),
+                Number(point.lng),
+                parseFloat(point.heading || 0) || 0,
+                point,
+            );
+        }
             this._updatePulse(point);
         }
 

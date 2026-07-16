@@ -84,13 +84,19 @@
                     pose.lat,
                     pose.lng,
                     pose.heading,
-                    VM.resolveIconRotationOffset?.(v) || 0,
+                    VM.resolveIconRotationOffset?.(v) ?? 0,
                     VM.resolveRotationEnabled?.(v) !== false,
                 );
             } else {
                 st.marker.setPosition({ lat: pose.lat, lng: pose.lng });
                 if (typeof st.marker.setRotation === 'function') {
-                    st.marker.setRotation(pose.heading || 0);
+                    const offset = VM?.resolveIconRotationOffset?.(v) ?? 0;
+                    const enabled = VM?.resolveRotationEnabled?.(v) !== false;
+                    st.marker.setRotation(
+                        enabled
+                            ? (VM?.finalRotation?.(pose.heading || 0, offset, true) ?? (pose.heading || 0))
+                            : 0,
+                    );
                 }
             }
             const frame = { ...(v || {}), id, lat: pose.lat, lng: pose.lng, heading: pose.heading };
@@ -766,7 +772,7 @@
                 if (global.VehicleMarker?.applyMarkerPose) {
                     global.VehicleMarker.applyMarkerPose(
                         st.marker, lat, lng, heading,
-                        global.VehicleMarker.resolveIconRotationOffset?.(to) || 0,
+                        global.VehicleMarker.resolveIconRotationOffset?.(to) ?? 0,
                         global.VehicleMarker.resolveRotationEnabled?.(to) !== false,
                     );
                 } else {

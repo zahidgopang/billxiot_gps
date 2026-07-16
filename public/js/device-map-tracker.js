@@ -240,7 +240,7 @@
     }
 
     function resolveRotationOffset(source) {
-        return window.VehicleMarker?.resolveIconRotationOffset?.(withMapAppearance(source)) || 0;
+        return window.VehicleMarker?.resolveIconRotationOffset?.(withMapAppearance(source)) ?? 0;
     }
 
     function applyMapAppearance(next) {

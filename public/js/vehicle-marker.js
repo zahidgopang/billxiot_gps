@@ -101,27 +101,55 @@
      * zoomed-in vehicle icons invisible while cluster bubbles still worked.
      * Rotation = heading + offset, applied via CSS transform-origin: center.
      */
+    /**
+     * Flat CSS-rotated icons share one cache entry per asset. Always refresh
+     * meta.rotation from the live GPS heading so a cached icon never paints
+     * another vehicle’s (or an older fix’s) nose direction.
+     */
+    function withLiveFlatRotation(icon, heading, offset, enabled) {
+        if (!icon?.meta?.flat) {
+            return icon;
+        }
+        const off = Number.isFinite(Number(offset))
+            ? Number(offset)
+            : (Number.isFinite(Number(icon.meta.rotationOffset)) ? Number(icon.meta.rotationOffset) : 0);
+        const gpsHeading = Number(heading);
+        const liveHeading = Number.isFinite(gpsHeading) ? gpsHeading : 0;
+        const rotation = enabled === false ? 0 : finalRotation(liveHeading, off, true);
+        return {
+            ...icon,
+            meta: {
+                ...icon.meta,
+                flat: true,
+                baked: false,
+                rotationOffset: off,
+                gpsHeading: liveHeading,
+                rotation,
+                heading: rotation,
+            },
+        };
+    }
+
     function flatRotatedImageIcon(url, heading, offset, google, sizeScale, enabled) {
         if (!url || !google?.maps) {
             return null;
         }
-        const rotation = finalRotation(heading, offset, enabled !== false);
+        const off = Number.isFinite(Number(offset)) ? Number(offset) : 0;
         const base = Math.max(24, Math.round(64 * (Number(sizeScale) || 1)));
         const fallback = global.BuiltinMapIcons?.fallbackUrl?.()
             || '/icons/builtin/Vehicles/car.svg';
-        return {
+        return withLiveFlatRotation({
             url,
             scaledSize: new google.maps.Size(base, base),
             anchor: new google.maps.Point(base / 2, base / 2),
             meta: {
                 flat: true,
-                rotation,
                 baked: false,
-                heading: rotation,
+                rotationOffset: off,
                 sourceUrl: url,
                 fallbackUrl: fallback,
             },
-        };
+        }, heading, off, enabled !== false);
     }
 
     function shadeColor(hex, percent) {
@@ -486,7 +514,16 @@
             ].join('|');
 
             if (cache[cacheKey]) {
-                return cache[cacheKey];
+                const cached = cache[cacheKey];
+                if (cached?.meta?.flat) {
+                    return withLiveFlatRotation(
+                        cached,
+                        heading,
+                        rotationOffset,
+                        rotationEnabled,
+                    );
+                }
+                return cached;
             }
 
             if (customUrl) {
@@ -803,9 +840,10 @@
      */
     function applyMarkerPose(marker, lat, lng, heading, rotationOffset, rotationEnabled) {
         if (!marker) return;
+        const offset = Number.isFinite(Number(rotationOffset)) ? Number(rotationOffset) : 0;
         const rot = rotationEnabled === false
             ? 0
-            : finalRotation(heading, rotationOffset || 0, true);
+            : finalRotation(heading, offset, true);
         if (typeof marker.setPose === 'function') {
             marker.setPose({ lat, lng }, rot);
             return;
@@ -856,7 +894,12 @@
         if (!marker || !fallbackUrl || !global.google?.maps) {
             return;
         }
-        const heading = Number(icon?.meta?.heading || 0) || 0;
+        // meta.heading is the FINAL painted angle; meta.gpsHeading is raw course.
+        // Fallback art is nose-up, so apply GPS heading with offset 0.
+        const gpsHeading = Number(icon?.meta?.gpsHeading);
+        const heading = Number.isFinite(gpsHeading)
+            ? gpsHeading
+            : 0;
         const size = icon?.scaledSize?.width || 64;
         const sizeScale = Math.max(0.5, size / 64);
         const replacement = flatRotatedImageIcon(
@@ -928,6 +971,7 @@
         },
         resolveIconRotationOffset,
         finalRotation,
+        withLiveFlatRotation,
         normalizeHeading,
         lerpHeading,
         shortestPathHeading,

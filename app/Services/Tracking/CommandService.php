@@ -110,6 +110,8 @@ class CommandService
      */
     public function historyForActor(User $actor, int $limit = 100): array
     {
+        $this->reconcileQuietly();
+
         $deviceIds = $this->tracking->allowedDeviceIds($actor);
         if ($deviceIds === []) {
             return [];
@@ -128,6 +130,8 @@ class CommandService
      */
     public function historyForDevice(User $actor, int $deviceId, int $limit = 50): array
     {
+        $this->reconcileQuietly();
+
         if (! in_array($deviceId, $this->tracking->filterAllowedIds($actor, [$deviceId]), true)) {
             return [];
         }
@@ -138,6 +142,37 @@ class CommandService
         }
 
         return $this->legacyQueueHistory([$deviceId], $limit);
+    }
+
+    /**
+     * @return array{ok: bool, configured: bool, message: string}
+     */
+    public function deliveryHealth(): array
+    {
+        if (! $this->traccarApi->configured()) {
+            return [
+                'ok' => false,
+                'configured' => false,
+                'message' => 'Traccar API is not configured (TRACCAR_API_URL / EMAIL / PASSWORD).',
+            ];
+        }
+
+        $probe = $this->traccarApi->ping();
+
+        return [
+            'ok' => (bool) ($probe['ok'] ?? false),
+            'configured' => true,
+            'message' => (string) ($probe['message'] ?? ''),
+        ];
+    }
+
+    private function reconcileQuietly(): void
+    {
+        try {
+            app(CommandLifecycleReconciler::class)->reconcile(100);
+        } catch (\Throwable) {
+            // History still returns; scheduler will retry.
+        }
     }
 
     /**
@@ -256,11 +291,16 @@ class CommandService
                     $message .= ' '.$offlineHint;
                 }
 
+                $log = $log?->fresh() ?? $log;
+
                 return [
                     'success' => true,
                     'message' => $message,
                     'id' => $log?->id,
                     'status' => self::STATUS_SENT,
+                    'stages' => is_array($log?->stages) ? $log->stages : [],
+                    'delivery' => self::DELIVERY_API,
+                    'queue_id' => $queueId,
                 ];
             }
 
@@ -268,17 +308,39 @@ class CommandService
             $this->pipeline->stage(
                 $log,
                 CommandPipelineLogger::STAGE_FAILED,
-                'Traccar API rejected command — falling back to DB queue',
+                'Traccar API rejected command',
                 ['error' => $apiError, 'http_status' => $api['status'] ?? null]
             );
         } else {
-            $apiError = 'Traccar API is not configured';
+            $apiError = 'Traccar API is not configured (set TRACCAR_API_URL / EMAIL / PASSWORD)';
             $this->pipeline->stage(
                 $log,
                 CommandPipelineLogger::STAGE_FAILED,
                 $apiError,
                 []
             );
+        }
+
+        // GPRS devices need a live Traccar process. Silent DB-queue "success" made
+        // the app/web look like commands worked when nothing reached the tracker.
+        if (! config('device_commands.allow_queue_fallback', false)) {
+            if ($log) {
+                $log->status = self::STATUS_FAILED;
+                $log->delivery = self::DELIVERY_API;
+                $log->result = $apiError ?: (string) __('app.tracking.command_delivery_unavailable');
+                $log->save();
+            }
+
+            return [
+                'success' => false,
+                'message' => (string) __('app.tracking.command_traccar_unreachable', [
+                    'error' => $apiError ?: 'Traccar API unavailable',
+                ]),
+                'id' => $log?->id,
+                'status' => self::STATUS_FAILED,
+                'stages' => is_array($log?->stages) ? $log->stages : [],
+                'delivery' => self::DELIVERY_API,
+            ];
         }
 
         if (! TraccarSchema::hasTable($this->table())) {
@@ -352,6 +414,8 @@ class CommandService
             'message' => $message,
             'id' => $log?->id ?? $queueId,
             'status' => self::STATUS_PENDING,
+            'stages' => is_array($log?->fresh()?->stages) ? $log->stages : [],
+            'delivery' => self::DELIVERY_QUEUE,
         ];
     }
 
@@ -475,6 +539,14 @@ class CommandService
                 return (int) $body[$key];
             }
         }
+        foreach (['command', 'data'] as $nestedKey) {
+            if (isset($body[$nestedKey]) && is_array($body[$nestedKey])) {
+                $nested = $this->extractQueueId($body[$nestedKey]);
+                if ($nested !== null) {
+                    return $nested;
+                }
+            }
+        }
 
         return null;
     }
@@ -563,6 +635,8 @@ class CommandService
                 'delivery' => (string) ($log->delivery ?? self::DELIVERY_QUEUE),
                 'stages' => is_array($log->stages) ? $log->stages : [],
                 'queue_id' => $log->queue_id,
+                'delivered_at' => $log->delivered_at?->toIso8601String(),
+                'executed_at' => $log->executed_at?->toIso8601String(),
                 'time' => $at ? AppDateTime::format($at, 'display') : '',
                 ...($at ? AppDateTime::apiFields($at) : []),
             ];

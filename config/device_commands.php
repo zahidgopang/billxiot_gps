@@ -13,6 +13,17 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Queue fallback when Traccar API is down
+    |--------------------------------------------------------------------------
+    | GPRS devices only receive commands via Traccar POST /api/commands/send.
+    | Inserting into tc_commands_queue without a live API does NOT push to an
+    | already-online tracker. Keep this false unless you have a custom check-in
+    | path that drains the queue.
+    */
+    'allow_queue_fallback' => (bool) env('COMMAND_ALLOW_QUEUE_FALLBACK', false),
+
+    /*
+    |--------------------------------------------------------------------------
     | Protocol profiles
     |--------------------------------------------------------------------------
     | Map BillX logical types (engineStop / engineResume) to the wire payload
