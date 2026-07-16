@@ -426,7 +426,6 @@
                 parseFloat(point.heading || 0) || 0,
                 point,
             );
-        }
             this._updatePulse(point);
         }
 

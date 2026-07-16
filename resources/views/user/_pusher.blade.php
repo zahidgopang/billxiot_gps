@@ -27,8 +27,13 @@
         let port = configuredPort;
         let scheme = configuredScheme;
 
-        if (window.location.hostname) {
-            host = window.location.hostname;
+        const pageHost = window.location.hostname || '';
+        const pageHostInvalidForWs = pageHost.includes('_');
+        if (pageHost && !pageHostInvalidForWs) {
+            host = pageHost;
+        } else if (pageHostInvalidForWs && isLocal) {
+            // Laragon vhosts like zahid.billxiot_gps break WebSocket host validation.
+            host = normalizeHost(configuredHost) || '127.0.0.1';
         }
 
         if (window.location.protocol === 'https:') {
