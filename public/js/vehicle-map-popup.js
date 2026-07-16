@@ -659,6 +659,12 @@
             _overlay: null,
             _el: null,
             _listeners: [],
+            _popup: null,
+            _delegationBound: false,
+            onDomReady: null,
+        };
+        host.bindPopup = (popup) => {
+            host._popup = popup;
         };
 
         class PopupOverlay extends g.maps.OverlayView {
@@ -674,6 +680,28 @@
                         e.stopPropagation();
                     }, { passive: true });
                 });
+                if (!host._delegationBound) {
+                    host._delegationBound = true;
+                    div.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        if (e.target.closest('#vehicleMapPopupClose, .vehicle-map-popup__close')) {
+                            e.preventDefault();
+                            host._popup?.close();
+                            return;
+                        }
+                        if (e.target.closest('[data-vehicle-map-cmd-send], #vehicleMapPopupCmdSend')) {
+                            e.preventDefault();
+                            global.GoogleMapsPlatform?.runAfterMarkerClick?.();
+                            void host._popup?._sendCommand();
+                        }
+                    });
+                    div.addEventListener('change', (e) => {
+                        const sel = e.target.closest?.('[data-vehicle-map-cmd-type], #vehicleMapPopupCmdType');
+                        if (!sel || !host._popup) return;
+                        e.stopPropagation();
+                        host._popup._selectedCommandType = sel.value || '';
+                    });
+                }
                 host._el = div;
                 if (host._pendingHtml) {
                     host._el.innerHTML = host._pendingHtml;
@@ -682,6 +710,7 @@
                     mapDiv.style.position = 'relative';
                 }
                 mapDiv.appendChild(div);
+                host.onDomReady?.(host._el);
                 if (host.visible) {
                     this.draw();
                 }
@@ -742,7 +771,10 @@
 
         host.setContent = (html) => {
             host._pendingHtml = html;
-            if (host._el) host._el.innerHTML = html;
+            if (host._el) {
+                host._el.innerHTML = html;
+                host.onDomReady?.(host._el);
+            }
         };
 
         host.setPosition = (pos) => {
@@ -831,8 +863,32 @@
             if (!this.overlayHost || this.overlayHost.map !== map) {
                 this.overlayHost?.destroy();
                 this.overlayHost = createMapOverlayHost(map, this.opts.googleMaps || global.google);
+                if (this.overlayHost) {
+                    this.overlayHost.bindPopup(this);
+                    this.overlayHost.onDomReady = (el) => this._wireDom(el);
+                }
             }
             return this.overlayHost;
+        }
+
+        _scheduleWireDom() {
+            const root = this._popupRoot();
+            if (root) {
+                this._wireDom(root);
+                return;
+            }
+            let attempts = 0;
+            const tick = () => {
+                const el = this._popupRoot();
+                if (el) {
+                    this._wireDom(el);
+                    return;
+                }
+                if (++attempts < 24) {
+                    global.requestAnimationFrame(tick);
+                }
+            };
+            global.requestAnimationFrame(tick);
         }
 
         open(point, anchor) {
@@ -866,6 +922,7 @@
                 host.setPosition(position);
                 host.show();
                 this._wireDom(host.getElement());
+                this._scheduleWireDom();
                 this.opts.onOpen?.(this.currentPoint);
                 this._startDurationTick();
                 return;
@@ -881,6 +938,7 @@
                 overlay.setPosition(position);
                 overlay.show();
                 this._wireDom(overlay._el);
+                this._scheduleWireDom();
                 this.opts.onOpen?.(this.currentPoint);
                 this._startDurationTick();
                 return;
@@ -1071,9 +1129,11 @@
                 sendBtn.onclick = (e) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    this._sendCommand();
+                    global.GoogleMapsPlatform?.runAfterMarkerClick?.();
+                    void this._sendCommand();
                 };
                 sendBtn.onmousedown = (e) => e.stopPropagation();
+                sendBtn.onpointerdown = (e) => e.stopPropagation();
             }
         }
 

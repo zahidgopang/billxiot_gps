@@ -1055,7 +1055,7 @@
                         close: i.hide || 'Close',
                     },
                     onSendCommand: (deviceId, type, _data, btn) => {
-                        this.sendCommandFromPopup(deviceId, type, btn);
+                        void this.sendCommandFromPopup(deviceId, type, btn);
                     },
                     onClose: () => {
                         this._popupVehicleId = null;
