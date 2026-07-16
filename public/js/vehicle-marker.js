@@ -64,6 +64,21 @@
         return normalizeHeading((Number(heading) || 0) + (Number(offset) || 0));
     }
 
+    /**
+     * Rotation offset for the artwork that will actually be painted.
+     * North-up status arrows / procedural pins must ignore Shared east-facing
+     * offsets left over from a previous icon selection.
+     *
+     * @param {object|null} source
+     * @param {{ northUpArtwork?: boolean }} [options]
+     */
+    function resolvePoseRotationOffset(source, options) {
+        if (options && options.northUpArtwork === true) {
+            return 0;
+        }
+        return resolveIconRotationOffset(source);
+    }
+
     function resolveIconRotationOffset(source) {
         if (!source) {
             return 0;
@@ -970,6 +985,7 @@
             return true;
         },
         resolveIconRotationOffset,
+        resolvePoseRotationOffset,
         finalRotation,
         withLiveFlatRotation,
         normalizeHeading,

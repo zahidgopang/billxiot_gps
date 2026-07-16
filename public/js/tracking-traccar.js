@@ -1020,7 +1020,9 @@
                     getFallbackIconUrl: () => null,
                     getCustomIconUrl: (p) => VM.resolveCustomIconUrl(p),
                     getRotationEnabled: (p) => VM.resolveRotationEnabled(p),
-                    getRotationOffset: (p) => VM.resolveIconRotationOffset(p),
+                    getRotationOffset: (p) => VM.resolvePoseRotationOffset?.(p, {
+                        northUpArtwork: !this.hasSelectedMapIcon(p),
+                    }) ?? (this.hasSelectedMapIcon(p) ? VM.resolveIconRotationOffset(p) : 0),
                     shouldShowDirection: (_, state) => MOVING_KEYS.has(state),
                 });
             }
@@ -1955,19 +1957,18 @@
             if (this.hasSelectedMapIcon(point)) {
                 icon = this.iconBuilder?.iconFor(point) || null;
             }
-            // No upload / broken custom → Google-style status arrow pin.
+            // No upload / broken custom → Google-style north-up status arrow.
+            // Arrow art faces north at rotation 0 — never apply Shared east-facing offsets.
             if (!icon?.url) {
                 icon = arrowIcon(color);
                 if (icon?.meta) {
-                    const VM2 = global.VehicleMarker;
-                    const offset = VM2?.resolveIconRotationOffset?.(point) ?? 0;
-                    const enabled = VM2?.resolveRotationEnabled?.(point) !== false;
+                    const enabled = VM?.resolveRotationEnabled?.(point) !== false;
                     icon = {
                         ...icon,
                         meta: {
                             ...icon.meta,
                             rotation: enabled
-                                ? (VM2?.finalRotation?.(h, offset, true) ?? h)
+                                ? (VM?.finalRotation?.(h, 0, true) ?? h)
                                 : 0,
                         },
                     };
@@ -1982,13 +1983,16 @@
         /** Rebuild marker asset only when status/color/style changes — never on heading. */
         _markerIconSignature(v) {
             const VM = global.VehicleMarker;
+            const usingArrow = !this.hasSelectedMapIcon(v);
             const key = v?.status_key || 'offline';
-            const offset = VM?.resolveIconRotationOffset?.(v) ?? 0;
+            const offset = usingArrow
+                ? 0
+                : (VM?.resolveIconRotationOffset?.(v) ?? 0);
             const enabled = VM?.resolveRotationEnabled?.(v) !== false;
-            const style = VM?.resolveMarkerStyle?.(v) || 'pin';
+            const style = usingArrow ? 'pin' : (VM?.resolveMarkerStyle?.(v) || 'pin');
             const scale = VM?.resolveMarkerSizeScale?.(v) || 1;
-            const custom = VM?.resolveMapIconUrl?.(v) || '';
-            return `${key}|${colorForPoint(v, this.stateColors)}|${style}|${scale}|${custom}|${offset}|${enabled ? 1 : 0}`;
+            const custom = usingArrow ? '' : (VM?.resolveMapIconUrl?.(v) || '');
+            return `${key}|${colorForPoint(v, this.stateColors)}|${style}|${scale}|${custom}|${offset}|${enabled ? 1 : 0}|arrow:${usingArrow ? 1 : 0}`;
         }
 
         ensureMotionEngine() {
@@ -2420,23 +2424,29 @@
                 }
                 // Always apply live GPS heading + artwork offset. Flat icons are
                 // cached without heading in the key; never leave a stale meta.rotation.
+                // Default status arrow is north-up — force offset 0 even if the
+                // device still has a Shared east-facing offset saved.
+                const usingArrow = !this.hasSelectedMapIcon(colored);
+                const poseOffset = VM?.resolvePoseRotationOffset?.(colored, {
+                    northUpArtwork: usingArrow,
+                }) ?? (usingArrow ? 0 : (VM?.resolveIconRotationOffset?.(colored) ?? 0));
                 if (VM?.applyMarkerPose) {
                     VM.applyMarkerPose(
                         st.marker,
                         pos.lat,
                         pos.lng,
                         st.renderHeading || 0,
-                        VM.resolveIconRotationOffset?.(colored) ?? 0,
+                        poseOffset,
                         VM.resolveRotationEnabled?.(colored) !== false,
                     );
                 } else {
                     st.marker.setPosition({ lat: pos.lat, lng: pos.lng });
                     if (typeof st.marker.setRotation === 'function') {
-                        const offset = VM?.resolveIconRotationOffset?.(colored) ?? 0;
                         const enabled = VM?.resolveRotationEnabled?.(colored) !== false;
                         st.marker.setRotation(
                             enabled
-                                ? (VM?.finalRotation?.(st.renderHeading || 0, offset, true) ?? (st.renderHeading || 0))
+                                ? (VM?.finalRotation?.(st.renderHeading || 0, poseOffset, true)
+                                    ?? (st.renderHeading || 0))
                                 : 0,
                         );
                     }
