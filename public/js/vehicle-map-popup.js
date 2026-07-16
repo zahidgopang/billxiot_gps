@@ -1082,23 +1082,17 @@
             const point = this.currentPoint;
             const deviceId = point?.id;
             const root = this._popupRoot() || document;
-            const selectEl = root.querySelector?.('[data-vehicle-map-cmd-type], #vehicleMapPopupCmdType')
-                || document.getElementById('vehicleMapPopupCmdType');
-            const type = selectEl?.value || this._selectedCommandType || '';
+            const type = this._rememberSelectedCommand(root);
             const btn = root.querySelector?.('[data-vehicle-map-cmd-send], #vehicleMapPopupCmdSend')
                 || document.getElementById('vehicleMapPopupCmdSend');
-            if (!url || !deviceId || !type) {
-                if (global.Swal) {
-                    global.Swal.fire({
-                        icon: 'warning',
-                        title: this.opts.i18n?.cmdFailed || 'Select a command first',
-                        timer: 2000,
-                        showConfirmButton: false,
-                    });
-                }
+            if (!url || !deviceId) {
+                this._notifyCommand('warning', this.opts.i18n?.cmdFailed || 'Commands unavailable');
                 return;
             }
-            this._selectedCommandType = type;
+            if (!type) {
+                this._notifyCommand('warning', this.opts.i18n?.cmdFailed || 'Select a command first');
+                return;
+            }
 
             if (typeof this.opts.onSendCommand === 'function') {
                 this.opts.onSendCommand(deviceId, type, '', btn);
@@ -1120,15 +1114,24 @@
                 const out = await res.json().catch(() => ({}));
                 const ok = res.ok && out.success;
                 const msg = out.message || (ok ? (this.opts.i18n?.cmdSent || 'Command queued') : (this.opts.i18n?.cmdFailed || 'Failed'));
-                if (global.Swal) {
-                    global.Swal.fire({ icon: ok ? 'success' : 'error', title: msg, timer: ok ? 2200 : undefined, showConfirmButton: !ok });
-                } else {
-                    alert(msg);
-                }
+                this._notifyCommand(ok ? 'success' : 'error', msg);
             } catch (_) {
-                alert(this.opts.i18n?.cmdFailed || 'Failed');
+                this._notifyCommand('error', this.opts.i18n?.cmdFailed || 'Failed');
             } finally {
                 btn?.removeAttribute('disabled');
+            }
+        }
+
+        _notifyCommand(icon, msg) {
+            if (global.Swal) {
+                global.Swal.fire({
+                    icon,
+                    title: msg,
+                    timer: icon === 'success' ? 2200 : undefined,
+                    showConfirmButton: icon !== 'success',
+                });
+            } else {
+                alert(msg);
             }
         }
     }

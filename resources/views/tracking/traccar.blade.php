@@ -2497,7 +2497,11 @@
             restartTripUrl: @json(Route::has($routes['restartTrip'] ?? '') ? route($routes['restartTrip']) : null),
             routeGuidanceUrl: @json(Route::has($routes['routeGuidance']) ? route($routes['routeGuidance']) : null),
             manageRoutesUrl: @json($manageRoutesUrl ?? null),
-            commandsSendUrl: @json(Route::has($routes['commandsSend']) ? route($routes['commandsSend']) : null),
+            commandsSendUrl: @json(
+                ($trackingUi['hub']['commands'] ?? false) && Route::has($routes['commandsSend'])
+                    ? route($routes['commandsSend'])
+                    : null
+            ),
             commandTypes: @json(\App\Services\Tracking\CommandService::typeLabels()),
             liveUrl: @json(route($routes['live'])),
             deviceEditUrl: @json($deviceEditUrlTemplate),
@@ -2610,6 +2614,8 @@
                 statAvgSpeed: @json(__('app.tracking.stat_avg_speed')),
                 cmdSend: @json(__('app.tracking.cmd_send')),
                 cmdSent: @json(__('app.tracking.cmd_sent')),
+                commandConfirmSend: @json(__('app.tracking.command_confirm_send')),
+                commandCustomRequired: @json(__('app.tracking.command_custom_required')),
                 colTime: @json(__('app.tracking.col_time')),
                 noEvents: @json(__('app.tracking.no_events')),
                 secRecentTasks: @json(__('app.tracking.sec_recent_tasks')),

@@ -769,6 +769,88 @@
             return this.ui[flag] !== false && this.ui[flag] !== undefined ? !!this.ui[flag] : true;
         }
 
+        canSendCommands() {
+            return !!this.cfg.commandsSendUrl;
+        }
+
+        async _confirmCommandSend() {
+            const title = this.cfg.i18n?.commandConfirmSend || 'Send this command to the device?';
+            if (global.Swal) {
+                const r = await global.Swal.fire({
+                    icon: 'question',
+                    title,
+                    showCancelButton: true,
+                    confirmButtonText: this.cfg.i18n?.cmdSend || 'Send',
+                });
+                return r.isConfirmed;
+            }
+            return global.confirm(title);
+        }
+
+        _commandNotify(icon, msg) {
+            if (global.Swal) {
+                global.Swal.fire({
+                    icon,
+                    title: msg,
+                    timer: icon === 'success' ? 2200 : undefined,
+                    showConfirmButton: icon !== 'success',
+                });
+            } else {
+                alert(msg);
+            }
+        }
+
+        async _postDeviceCommand(deviceId, type, data, btn) {
+            const i = this.cfg.i18n || {};
+            const numId = Number(deviceId);
+            const cmdType = String(type || '').trim();
+            const payload = String(data ?? '');
+            if (!this.cfg.commandsSendUrl) {
+                this._commandNotify('warning', i.loadFailed || 'Commands unavailable');
+                return false;
+            }
+            if (!Number.isFinite(numId) || numId <= 0) {
+                this._commandNotify('warning', i.selectVehicle || 'Select a vehicle first');
+                return false;
+            }
+            if (!cmdType) {
+                this._commandNotify('warning', i.commandInvalidType || 'Select a command type');
+                return false;
+            }
+            if (cmdType === 'custom' && !payload.trim()) {
+                this._commandNotify('warning', i.commandCustomRequired || 'Enter the custom command text');
+                return false;
+            }
+            if (!(await this._confirmCommandSend())) {
+                return false;
+            }
+
+            btn?.setAttribute('disabled', 'disabled');
+            try {
+                const res = await fetch(this.cfg.commandsSendUrl, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        Accept: 'application/json',
+                        'X-CSRF-TOKEN': this.cfg.csrfToken || '',
+                    },
+                    body: JSON.stringify({ device_id: numId, type: cmdType, data: payload }),
+                });
+                const out = await res.json().catch(() => ({}));
+                const ok = res.ok && out.success;
+                const msg = out.message
+                    || (ok ? (i.cmdSent || 'Command queued') : (i.loadFailed || 'Failed to send command'));
+                this._commandNotify(ok ? 'success' : 'error', msg);
+                return ok;
+            } catch (_) {
+                this._commandNotify('error', i.loadFailed || 'Failed');
+                return false;
+            } finally {
+                btn?.removeAttribute('disabled');
+            }
+        }
+
         /** Route-level "Show polyline on map" (admin → Routes edit). */
         routeAllowsPolyline(route) {
             return !!route && route.show_polyline !== false;
@@ -950,7 +1032,7 @@
                     googleMaps: google,
                     mapOverlay: true,
                     stateColors: this.stateColors,
-                    commandsSendUrl: this.ui.hub?.commands ? this.cfg.commandsSendUrl : null,
+                    commandsSendUrl: this.cfg.commandsSendUrl,
                     commandTypes: this.cfg.commandTypes,
                     csrfToken: this.cfg.csrfToken,
                     i18n: {
@@ -969,6 +1051,7 @@
                         sendCommand: i.cmdSend || 'Send',
                         cmdSent: i.cmdSent || 'Command queued',
                         cmdFailed: i.loadFailed || 'Failed',
+                        commandCustomRequired: i.commandCustomRequired || 'Enter the custom command text',
                         close: i.hide || 'Close',
                     },
                     onSendCommand: (deviceId, type, _data, btn) => {
@@ -1588,33 +1671,7 @@
         }
 
         async sendCommandFromPopup(deviceId, type, btn) {
-            if (!this.cfg.commandsSendUrl || !type) return;
-            btn?.setAttribute('disabled', 'disabled');
-            try {
-                const res = await fetch(this.cfg.commandsSendUrl, {
-                    method: 'POST',
-                    credentials: 'same-origin',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        Accept: 'application/json',
-                        'X-CSRF-TOKEN': this.cfg.csrfToken || '',
-                    },
-                    body: JSON.stringify({ device_id: deviceId, type, data: '' }),
-                });
-                const out = await res.json().catch(() => ({}));
-                const ok = res.ok && out.success;
-                const msg = out.message || (ok ? (this.cfg.i18n?.cmdSent || 'Command queued') : (this.cfg.i18n?.loadFailed || 'Failed'));
-                if (global.Swal) {
-                    global.Swal.fire({ icon: ok ? 'success' : 'error', title: msg, timer: ok ? 2200 : undefined, showConfirmButton: !ok });
-                } else {
-                    alert(msg);
-                }
-            } catch (err) {
-                if (global.Swal) global.Swal.fire({ icon: 'error', title: this.cfg.i18n?.loadFailed || 'Failed' });
-                else alert(this.cfg.i18n?.loadFailed || 'Failed');
-            } finally {
-                btn?.removeAttribute('disabled');
-            }
+            await this._postDeviceCommand(deviceId, type, '', btn);
         }
 
         // Footprints column: one-shot zoom to vehicle (no continuous map follow).
@@ -5075,7 +5132,7 @@
             const cmdTypes = this.cfg.commandTypes || {};
             const cmdEntries = Array.isArray(cmdTypes) ? cmdTypes.map((t) => [t, t]) : Object.entries(cmdTypes);
             const cmdOpts = cmdEntries.map(([value, label]) => `<option value="${escHtml(value)}">${escHtml(label)}</option>`).join('');
-            const control = this.cfg.commandsSendUrl ? `
+            const control = this.canSendCommands() ? `
                 <div class="tc-ctrl-row">
                     <select class="form-select form-select-sm" id="tcCmdType">${cmdOpts}</select>
                 </div>
@@ -5163,11 +5220,16 @@
                     }
                 });
             });
-            el.querySelector('#tcCmdSend')?.addEventListener('click', () => {
-                if (Number(this._panelDeviceId) === Number(panel.id)) {
-                    this.sendCommand(this._panelDeviceId);
-                }
-            });
+            const sendBtn = el.querySelector('#tcCmdSend');
+            if (sendBtn) {
+                sendBtn.onclick = (e) => {
+                    e.preventDefault();
+                    const deviceId = this._panelDeviceId ?? panel.id;
+                    if (deviceId) {
+                        this.sendCommand(deviceId);
+                    }
+                };
+            }
 
             if (panel.mileage == null && this.cfg.deviceMileageUrl) {
                 this.loadPanelMileage(panel.id);
@@ -5349,30 +5411,10 @@
         }
 
         async sendCommand(deviceId) {
-            if (!this.cfg.commandsSendUrl) return;
             const type = document.getElementById('tcCmdType')?.value;
             const data = document.getElementById('tcCmdData')?.value || '';
             const btn = document.getElementById('tcCmdSend');
-            if (!type) return;
-            btn?.setAttribute('disabled', 'disabled');
-            try {
-                const res = await fetch(this.cfg.commandsSendUrl, {
-                    method: 'POST',
-                    credentials: 'same-origin',
-                    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': this.cfg.csrfToken || '' },
-                    body: JSON.stringify({ device_id: deviceId, type, data }),
-                });
-                const out = await res.json().catch(() => ({}));
-                const ok = res.ok && out.success;
-                const msg = out.message || (ok ? (this.cfg.i18n?.cmdSent || 'Command queued') : (this.cfg.i18n?.loadFailed || 'Failed'));
-                if (global.Swal) global.Swal.fire({ icon: ok ? 'success' : 'error', title: msg, timer: ok ? 2200 : undefined, showConfirmButton: !ok });
-                else alert(msg);
-            } catch (err) {
-                if (global.Swal) global.Swal.fire({ icon: 'error', title: this.cfg.i18n?.loadFailed || 'Failed' });
-                else alert(this.cfg.i18n?.loadFailed || 'Failed');
-            } finally {
-                btn?.removeAttribute('disabled');
-            }
+            await this._postDeviceCommand(deviceId, type, data, btn);
         }
 
         /* ---------- Module popups (Reports, Geofences, etc.) ---------- */
