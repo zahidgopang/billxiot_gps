@@ -98,6 +98,13 @@ final class TraccarAppFields
 
     public const KEY_SIM_NUMBER = 'sim_number';
 
+    /**
+     * Last observed Traccar wire protocol (e.g. teltonika, gt06).
+     * Cached from tc_positions.protocol so command profile detection works
+     * even when tc_devices.model / name do not mention the GPS brand.
+     */
+    public const KEY_TRACCAR_PROTOCOL = 'traccar_protocol';
+
     public const KEY_DEVICE_STATUS = 'laravel_device_status';
 
     public const KEY_DEVICE_DESC = 'description';

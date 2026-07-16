@@ -8,6 +8,7 @@ use App\Models\Device;
 use App\Models\TraccarEntityMap;
 use App\Services\Traccar\TraccarIdMap;
 use App\Services\Traccar\TraccarPositionMapper;
+use App\Services\Tracking\CommandProtocolMapper;
 use App\Services\VehicleEventService;
 use App\Support\Tracking\DeviceLocationPayload;
 use Illuminate\Support\Facades\Cache;
@@ -43,6 +44,14 @@ class TraccarForwardPositionService
 
         if (! $device) {
             return false;
+        }
+
+        $protocol = $position['protocol']
+            ?? $payload['position']['protocol']
+            ?? $payload['protocol']
+            ?? null;
+        if (is_string($protocol) && $protocol !== '') {
+            app(CommandProtocolMapper::class)->rememberProtocol($device, $protocol);
         }
 
         $row = $this->normalizePositionRow($position);

@@ -244,6 +244,8 @@ class CommandService
             "Mapped to Traccar wire type {$wire['type']} via profile {$wire['profile']}",
             [
                 'profile' => $wire['profile'],
+                'protocol' => $wire['protocol'] ?? null,
+                'profile_source' => $wire['source'] ?? null,
                 'wire_type' => $wire['type'],
                 'wire_data' => $wire['wire_data'],
                 'attributes' => $wire['attributes'],

@@ -29,10 +29,31 @@ return [
     | Map BillX logical types (engineStop / engineResume) to the wire payload
     | Traccar should send for a given GPS family.
     |
-    | Profiles are selected from tc_devices.model / attributes.command_profile /
-    | attributes.protocol (case-insensitive contains match).
+    | Resolution priority (CommandProtocolMapper):
+    |   1. attributes.command_profile          (explicit override)
+    |   2. attributes.protocol / traccar_protocol (explicit or cached)
+    |   3. tc_positions.protocol               (live Traccar protocol)
+    |   4. tc_devices.model / attributes.device_model keyword match
+    |   5. broader keyword fallback (name, etc.)
+    |   6. default_profile
     */
     'default_profile' => 'generic',
+
+    /*
+    |--------------------------------------------------------------------------
+    | Traccar protocol → command profile
+    |--------------------------------------------------------------------------
+    | Exact protocol strings as stored on tc_positions.protocol. Add an entry
+    | when introducing a new BillX profile for Queclink, Ruptela, etc.
+    | Protocols without an entry still fall through to profile "match" needles
+    | and to a same-name profile when one exists.
+    */
+    'protocol_to_profile' => [
+        'teltonika' => 'teltonika',
+        'gt06' => 'gt06',
+        'h02' => 'gt06',
+        'huabao' => 'gt06',
+    ],
 
     'profiles' => [
 
