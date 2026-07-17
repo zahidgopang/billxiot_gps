@@ -696,6 +696,18 @@
             this.followId = null;
             this.activeFilter = 'all';
             this.activeTab = 'objects';
+            this._mapLayer = 'roadmap';
+            this._baseMapLayer = 'roadmap';
+            this._streetViewMode = false;
+            this._streetViewService = null;
+            this._streetViewPano = null;
+            this._streetViewPanoId = null;
+            this._streetViewLastLookupPos = null;
+            this._streetViewLastLookupAt = 0;
+            this._streetViewLookupInFlight = false;
+            this._streetViewSeq = 0;
+            this._streetViewTargetHeading = null;
+            this._streetViewHeadingRaf = 0;
             this.pollTimer = null;
             this.pollInFlight = false;
             this.realtimeHealthy = false;
@@ -2062,8 +2074,14 @@
                 const now = performance.now();
                 if (!this._followCamAt || now - this._followCamAt >= 66) {
                     this._followCamAt = now;
-                    this.map.panTo({ lat: pose.lat, lng: pose.lng });
+                    if (!this._streetViewMode) {
+                        this.map.panTo({ lat: pose.lat, lng: pose.lng });
+                    }
                 }
+            }
+
+            if (this._streetViewMode && this.streetViewTargetId() === id) {
+                this.syncStreetViewToPose(pose.lat, pose.lng, pose.heading);
             }
         }
 
@@ -2124,7 +2142,7 @@
 
             this.renderLiveClusters();
 
-            if (options.pan !== false && hasGeo(v?.lat, v?.lng)) {
+            if (options.pan !== false && hasGeo(v?.lat, v?.lng) && !this._streetViewMode) {
                 const lat = parseFloat(v.lat);
                 const lng = parseFloat(v.lng);
                 const nearby = this.countNearbyVehicles(numId);
@@ -2139,6 +2157,15 @@
                 } else {
                     this.map.panTo({ lat, lng });
                 }
+            }
+
+            if (this._streetViewMode && hasGeo(v?.lat, v?.lng)) {
+                this.syncStreetViewToPose(
+                    parseFloat(v.lat),
+                    parseFloat(v.lng),
+                    Number(v.heading ?? v.angle ?? 0),
+                    { force: true },
+                );
             }
 
             this.updateMarkerFocusStyles();
@@ -2936,7 +2963,7 @@
             }
         }
 
-        /* ---------- Map layers (Map / Satellite / Hybrid / Terrain + Traffic) ---------- */
+        /* ---------- Map layers (Map / Satellite / Hybrid / Terrain / Street View + Traffic) ---------- */
         bindMapLayers() {
             const toggleBtn = document.getElementById('tcLayers');
             const menu = document.getElementById('tcLayerMenu');
@@ -2956,22 +2983,16 @@
                 });
                 menu.querySelectorAll('.tc-layer-item').forEach((item) => {
                     item.addEventListener('click', () => {
-                        const type = item.dataset.layer;
-                        if (this.map && global.google?.maps?.MapTypeId) {
-                            const map = {
-                                roadmap: google.maps.MapTypeId.ROADMAP,
-                                satellite: google.maps.MapTypeId.SATELLITE,
-                                hybrid: google.maps.MapTypeId.HYBRID,
-                                terrain: google.maps.MapTypeId.TERRAIN,
-                            };
-                            this.map.setMapTypeId(map[type] || google.maps.MapTypeId.ROADMAP);
-                        }
-                        menu.querySelectorAll('.tc-layer-item').forEach((b) => b.classList.toggle('active', b === item));
+                        this.setMapLayer(item.dataset.layer || 'roadmap');
                         menu.classList.remove('open');
                         toggleBtn.setAttribute('aria-expanded', 'false');
                     });
                 });
             }
+
+            document.getElementById('tcStreetViewBack')?.addEventListener('click', () => {
+                this.setMapLayer(this._baseMapLayer || 'roadmap');
+            });
 
             if (trafficBtn) {
                 trafficBtn.addEventListener('click', () => {
@@ -2982,6 +3003,299 @@
                     trafficBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
                 });
             }
+        }
+
+        setMapLayer(type) {
+            const layer = String(type || 'roadmap');
+            const menu = document.getElementById('tcLayerMenu');
+            menu?.querySelectorAll('.tc-layer-item').forEach((b) => {
+                b.classList.toggle('active', b.dataset.layer === layer);
+            });
+
+            if (layer === 'streetview') {
+                this.enterStreetViewMode();
+                return;
+            }
+
+            // Leaving Street View restores the chosen basemap without dropping vehicle focus.
+            this.exitStreetViewMode();
+            this._mapLayer = layer;
+            this._baseMapLayer = layer;
+            if (this.map && global.google?.maps?.MapTypeId) {
+                const map = {
+                    roadmap: google.maps.MapTypeId.ROADMAP,
+                    satellite: google.maps.MapTypeId.SATELLITE,
+                    hybrid: google.maps.MapTypeId.HYBRID,
+                    terrain: google.maps.MapTypeId.TERRAIN,
+                };
+                this.map.setMapTypeId(map[layer] || google.maps.MapTypeId.ROADMAP);
+            }
+        }
+
+        streetViewTargetId() {
+            return this.activeClusterBreakId();
+        }
+
+        streetViewTargetVehicle() {
+            const id = this.streetViewTargetId();
+            if (id == null) return null;
+            const v = this.vehicles.get(id);
+            if (!v || !hasGeo(v.lat, v.lng)) return null;
+            return v;
+        }
+
+        /**
+         * Google Maps supports live Street View on the same Map via getStreetView().
+         * One panorama instance is created and reused — no split Map + Street View layout.
+         */
+        ensureStreetViewPanorama() {
+            if (!this.map || !global.google?.maps) return null;
+            if (this._streetViewPano) return this._streetViewPano;
+            const pano = this.map.getStreetView();
+            pano.setOptions({
+                visible: false,
+                enableCloseButton: false,
+                addressControl: true,
+                linksControl: true,
+                panControl: true,
+                zoomControl: true,
+                fullscreenControl: false,
+                motionTracking: false,
+                motionTrackingControl: false,
+                clickToGo: true,
+            });
+            this._streetViewPano = pano;
+            this._streetViewService = new google.maps.StreetViewService();
+            return pano;
+        }
+
+        enterStreetViewMode() {
+            const i = this.cfg.i18n || {};
+            const vehicle = this.streetViewTargetVehicle();
+            if (!vehicle) {
+                this.toast(i.streetViewNeedVehicle || i.noPosition || 'Select a vehicle with a live position');
+                const fallback = this._baseMapLayer && this._baseMapLayer !== 'streetview'
+                    ? this._baseMapLayer
+                    : 'roadmap';
+                this.setMapLayer(fallback);
+                return;
+            }
+
+            if (this._mapLayer !== 'streetview') {
+                this._baseMapLayer = this._mapLayer || 'roadmap';
+            }
+            this._streetViewMode = true;
+            this._mapLayer = 'streetview';
+            document.querySelector('.tc-app')?.classList.add('tc-app--streetview');
+            this.hideStreetViewBanners();
+            this.ensureStreetViewPanorama();
+            this.syncStreetViewToPose(
+                Number(vehicle.lat),
+                Number(vehicle.lng),
+                Number(vehicle.heading ?? vehicle.course ?? vehicle.angle ?? 0),
+                { force: true },
+            );
+        }
+
+        exitStreetViewMode() {
+            this._streetViewMode = false;
+            this._streetViewSeq += 1;
+            this._streetViewLookupInFlight = false;
+            this._streetViewLastLookupPos = null;
+            this._streetViewPanoId = null;
+            this._streetViewTargetHeading = null;
+            if (this._streetViewHeadingRaf) {
+                cancelAnimationFrame(this._streetViewHeadingRaf);
+                this._streetViewHeadingRaf = 0;
+            }
+            document.querySelector('.tc-app')?.classList.remove('tc-app--streetview');
+            this.hideStreetViewBanners();
+            try {
+                this._streetViewPano?.setVisible(false);
+            } catch (_) { /* ignore */ }
+        }
+
+        hideStreetViewBanners() {
+            const unavailable = document.getElementById('tcStreetViewNotice');
+            const nearest = document.getElementById('tcStreetViewNearest');
+            if (unavailable) unavailable.hidden = true;
+            if (nearest) nearest.hidden = true;
+        }
+
+        showStreetViewUnavailable() {
+            const nearest = document.getElementById('tcStreetViewNearest');
+            if (nearest) nearest.hidden = true;
+            const el = document.getElementById('tcStreetViewNotice');
+            if (!el) return;
+            const title = el.querySelector('[data-sv-title]');
+            const body = el.querySelector('[data-sv-body]');
+            const i = this.cfg.i18n || {};
+            if (title) title.textContent = i.streetViewUnavailableTitle || 'Street View is not available for this location.';
+            if (body) body.textContent = i.streetViewUnavailableBody || '';
+            el.hidden = false;
+        }
+
+        showStreetViewNearestHint() {
+            const unavailable = document.getElementById('tcStreetViewNotice');
+            if (unavailable) unavailable.hidden = true;
+            const el = document.getElementById('tcStreetViewNearest');
+            if (!el) return;
+            const i = this.cfg.i18n || {};
+            el.textContent = i.streetViewNearestHint || 'Showing nearest available Street View.';
+            el.hidden = false;
+        }
+
+        normalizeHeading(heading) {
+            const n = Number(heading);
+            if (!Number.isFinite(n)) return null;
+            return ((n % 360) + 360) % 360;
+        }
+
+        /** Smooth POV rotation — never recreates the panorama. */
+        applyStreetViewHeading(heading) {
+            const target = this.normalizeHeading(heading);
+            if (target == null) return;
+            this._streetViewTargetHeading = target;
+            const pano = this._streetViewPano;
+            if (!pano?.getVisible?.()) return;
+
+            if (this._streetViewHeadingRaf) return;
+            const step = () => {
+                this._streetViewHeadingRaf = 0;
+                if (!this._streetViewMode || !this._streetViewPano?.getVisible?.()) return;
+                const desired = this._streetViewTargetHeading;
+                if (desired == null) return;
+                const pov = this._streetViewPano.getPov?.() || { heading: 0, pitch: 0 };
+                const current = this.normalizeHeading(pov.heading) ?? 0;
+                let delta = desired - current;
+                if (delta > 180) delta -= 360;
+                if (delta < -180) delta += 360;
+                if (Math.abs(delta) < 0.75) {
+                    this._streetViewPano.setPov({ heading: desired, pitch: 0 });
+                    return;
+                }
+                const next = this.normalizeHeading(current + delta * 0.28) ?? desired;
+                this._streetViewPano.setPov({ heading: next, pitch: 0 });
+                this._streetViewHeadingRaf = requestAnimationFrame(step);
+            };
+            this._streetViewHeadingRaf = requestAnimationFrame(step);
+        }
+
+        syncStreetViewToPose(lat, lng, heading, options = {}) {
+            if (!this._streetViewMode || !this.map) return;
+            const latN = Number(lat);
+            const lngN = Number(lng);
+            if (!Number.isFinite(latN) || !Number.isFinite(lngN)) return;
+
+            // Always keep POV in sync with vehicle course — cheap, no StreetViewService call.
+            this.applyStreetViewHeading(heading);
+
+            const force = !!options.force;
+            const now = performance.now();
+            const prev = this._streetViewLastLookupPos;
+            const movedM = prev
+                ? haversineKm(prev.lat, prev.lng, latN, lngN) * 1000
+                : Infinity;
+
+            // Stationary / tiny GPS jitter: skip panorama lookup entirely.
+            if (!force && movedM < 12) return;
+            // Debounce lookups while moving.
+            if (!force && (this._streetViewLookupInFlight || now - this._streetViewLastLookupAt < 900)) {
+                return;
+            }
+            // Only re-query when the vehicle moved far enough from the last lookup.
+            if (!force && movedM < 28) return;
+
+            this._streetViewLastLookupPos = { lat: latN, lng: lngN };
+            this._streetViewLastLookupAt = now;
+            this.lookupStreetViewPanorama(latN, lngN, heading);
+        }
+
+        lookupStreetViewPanorama(lat, lng, heading) {
+            const pano = this.ensureStreetViewPanorama();
+            const service = this._streetViewService;
+            if (!pano || !service) return;
+
+            const seq = ++this._streetViewSeq;
+            this._streetViewLookupInFlight = true;
+            const location = { lat, lng };
+            // Progressive nearest-pano search (requirement).
+            const radii = [100, 250, 500, 1000];
+            const headingN = this.normalizeHeading(heading);
+
+            const finishMiss = () => {
+                this._streetViewLookupInFlight = false;
+                this._streetViewPanoId = null;
+                try { pano.setVisible(false); } catch (_) { /* ignore */ }
+                this.showStreetViewUnavailable();
+            };
+
+            const tryRadius = (index) => {
+                if (!this._streetViewMode || seq !== this._streetViewSeq) {
+                    this._streetViewLookupInFlight = false;
+                    return;
+                }
+                if (index >= radii.length) {
+                    finishMiss();
+                    return;
+                }
+
+                const request = {
+                    location,
+                    radius: radii[index],
+                };
+                if (google.maps.StreetViewSource?.OUTDOOR) {
+                    request.source = google.maps.StreetViewSource.OUTDOOR;
+                }
+                if (google.maps.StreetViewPreference?.NEAREST) {
+                    request.preference = google.maps.StreetViewPreference.NEAREST;
+                }
+
+                service.getPanorama(request, (data, status) => {
+                    if (!this._streetViewMode || seq !== this._streetViewSeq) {
+                        this._streetViewLookupInFlight = false;
+                        return;
+                    }
+                    if (status !== google.maps.StreetViewStatus.OK || !data?.location?.pano) {
+                        tryRadius(index + 1);
+                        return;
+                    }
+
+                    this._streetViewLookupInFlight = false;
+                    const panoId = data.location.pano;
+                    const panoLat = Number(data.location.latLng?.lat?.() ?? data.location.latLng?.lat);
+                    const panoLng = Number(data.location.latLng?.lng?.() ?? data.location.latLng?.lng);
+                    const offsetM = (Number.isFinite(panoLat) && Number.isFinite(panoLng))
+                        ? haversineKm(lat, lng, panoLat, panoLng) * 1000
+                        : radii[index];
+
+                    // Reuse the same panorama instance — only swap pano id when it changes.
+                    if (this._streetViewPanoId !== panoId) {
+                        pano.setPano(panoId);
+                        this._streetViewPanoId = panoId;
+                    }
+                    if (!pano.getVisible?.()) {
+                        pano.setVisible(true);
+                    }
+                    if (headingN != null) {
+                        this.applyStreetViewHeading(headingN);
+                    } else {
+                        const center = Number(data.tiles?.centerHeading);
+                        if (Number.isFinite(center)) this.applyStreetViewHeading(center);
+                    }
+
+                    if (offsetM > 25 || index > 0) {
+                        this.showStreetViewNearestHint();
+                    } else {
+                        const nearest = document.getElementById('tcStreetViewNearest');
+                        if (nearest) nearest.hidden = true;
+                        const unavailable = document.getElementById('tcStreetViewNotice');
+                        if (unavailable) unavailable.hidden = true;
+                    }
+                });
+            };
+
+            tryRadius(0);
         }
 
         /* ---------- Responsive drawer + sizing ---------- */

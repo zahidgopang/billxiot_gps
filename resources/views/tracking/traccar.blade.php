@@ -1702,6 +1702,50 @@
         .tc-layer-item:hover { background: var(--tc-surface-2); }
         .tc-layer-item.active { background: color-mix(in srgb, var(--tc-primary) 12%, transparent); color: var(--tc-primary); font-weight: 600; }
         .tc-layer-item i { width: 16px; text-align: center; }
+        .tc-streetview-notice {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 6;
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            max-width: min(420px, calc(100% - 32px));
+            padding: 16px 18px;
+            border-radius: 14px;
+            background: color-mix(in srgb, var(--tc-surface, #fff) 94%, transparent);
+            border: 1px solid color-mix(in srgb, var(--tc-border, #cbd5e1) 80%, transparent);
+            box-shadow: 0 12px 40px rgba(15, 23, 42, 0.18);
+            color: var(--tc-text, #0f172a);
+        }
+        .tc-streetview-notice[hidden] { display: none !important; }
+        .tc-streetview-notice > i {
+            font-size: 1.5rem;
+            color: var(--tc-primary, #2563eb);
+            flex-shrink: 0;
+        }
+        .tc-streetview-notice strong { display: block; font-size: 0.95rem; margin-bottom: 2px; }
+        .tc-streetview-notice p { margin: 0; font-size: 0.82rem; color: var(--tc-muted, #64748b); line-height: 1.35; }
+        .tc-streetview-nearest {
+            position: absolute;
+            left: 50%;
+            top: 14px;
+            transform: translateX(-50%);
+            z-index: 6;
+            max-width: min(420px, calc(100% - 32px));
+            padding: 8px 14px;
+            border-radius: 999px;
+            background: color-mix(in srgb, var(--tc-surface, #0f172a) 82%, transparent);
+            color: #fff;
+            font-size: 0.78rem;
+            font-weight: 600;
+            letter-spacing: 0.01em;
+            box-shadow: 0 8px 24px rgba(15, 23, 42, 0.28);
+            pointer-events: none;
+            text-align: center;
+        }
+        .tc-streetview-nearest[hidden] { display: none !important; }
 
         /* ===== Skeleton loaders + fade-in ===== */
         @keyframes tcShimmer { 0% { background-position: -320px 0; } 100% { background-position: 320px 0; } }
@@ -2235,6 +2279,17 @@
                         </div>
                     </div>
                     <div id="tcMap" aria-label="{{ __('app.tracking.live_map_aria') }}"></div>
+                    <div id="tcStreetViewNearest" class="tc-streetview-nearest" hidden role="status" aria-live="polite">
+                        {{ __('app.tracking.street_view_nearest_hint') }}
+                    </div>
+                    <div id="tcStreetViewNotice" class="tc-streetview-notice" hidden role="status" aria-live="polite">
+                        <i class="fas fa-street-view" aria-hidden="true"></i>
+                        <div>
+                            <strong data-sv-title>{{ __('app.tracking.street_view_unavailable_title') }}</strong>
+                            <p data-sv-body>{{ __('app.tracking.street_view_unavailable_body') }}</p>
+                        </div>
+                        <button type="button" class="btn btn-sm btn-light" id="tcStreetViewBack">{{ __('app.tracking.street_view_back_to_map') }}</button>
+                    </div>
                     @if(! empty($ui['route_progress']))
                     <div id="routeTripProgressBar" class="route-trip-bar route-trip-bar--footer" hidden aria-live="polite"></div>
                     @endif
@@ -2411,6 +2466,7 @@
                                 <button type="button" class="tc-layer-item" data-layer="satellite" role="menuitemradio"><i class="fas fa-satellite"></i>{{ __('app.tracking.layer_satellite') }}</button>
                                 <button type="button" class="tc-layer-item" data-layer="hybrid" role="menuitemradio"><i class="fas fa-globe"></i>{{ __('app.tracking.layer_hybrid') }}</button>
                                 <button type="button" class="tc-layer-item" data-layer="terrain" role="menuitemradio"><i class="fas fa-mountain"></i>{{ __('app.tracking.layer_terrain') }}</button>
+                                <button type="button" class="tc-layer-item" data-layer="streetview" role="menuitemradio"><i class="fas fa-street-view"></i>{{ __('app.tracking.layer_street_view') }}</button>
                             </div>
                         </div>
                         @endif
@@ -2635,6 +2691,10 @@
                 menuFollow: @json(__('app.tracking.menu_follow')),
                 menuFollowNew: @json(__('app.tracking.menu_follow_new')),
                 menuStreetView: @json(__('app.tracking.menu_street_view')),
+                streetViewNeedVehicle: @json(__('app.tracking.street_view_need_vehicle')),
+                streetViewUnavailableTitle: @json(__('app.tracking.street_view_unavailable_title')),
+                streetViewUnavailableBody: @json(__('app.tracking.street_view_unavailable_body')),
+                streetViewNearestHint: @json(__('app.tracking.street_view_nearest_hint')),
                 menuShare: @json(__('app.tracking.menu_share')),
                 menuSendCommand: @json(__('app.tracking.menu_send_command')),
                 menuEdit: @json(__('app.tracking.menu_edit')),
