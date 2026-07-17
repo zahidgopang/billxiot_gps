@@ -1868,7 +1868,24 @@
 
         openStreetView(v) {
             if (!v || v.lat == null || v.lng == null) { this.toast(this.cfg.i18n?.noPosition || 'No position'); return; }
-            global.open(`https://www.google.com/maps?q=&layer=c&cbll=${v.lat},${v.lng}&cbp=11,0,0,0,0`, '_blank');
+            // Official Maps URL API — legacy ?layer=c&cbll=&cbp= often opens a black Street View pane.
+            // https://developers.google.com/maps/documentation/urls/get-started#street-view-action
+            const lat = Number(v.lat);
+            const lng = Number(v.lng);
+            if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+                this.toast(this.cfg.i18n?.noPosition || 'No position');
+                return;
+            }
+            const heading = Number(v.heading ?? v.course ?? v.angle);
+            const params = new URLSearchParams({
+                api: '1',
+                map_action: 'pano',
+                viewpoint: `${lat},${lng}`,
+            });
+            if (Number.isFinite(heading)) {
+                params.set('heading', String(((heading % 360) + 360) % 360));
+            }
+            global.open(`https://www.google.com/maps/@?${params.toString()}`, '_blank');
         }
 
         async sharePosition(v) {
