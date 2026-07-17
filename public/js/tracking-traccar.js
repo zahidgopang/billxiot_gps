@@ -2993,6 +2993,17 @@
             document.getElementById('tcStreetViewBack')?.addEventListener('click', () => {
                 this.setMapLayer(this._baseMapLayer || 'roadmap');
             });
+            document.getElementById('tcStreetViewSatellite')?.addEventListener('click', () => {
+                this.setMapLayer('satellite');
+            });
+            document.getElementById('tcStreetViewOpenMaps')?.addEventListener('click', () => {
+                const v = this.streetViewTargetVehicle();
+                if (!v) return;
+                global.open(
+                    `https://www.google.com/maps/@?api=1&map_action=map&center=${Number(v.lat)},${Number(v.lng)}&zoom=18`,
+                    '_blank',
+                );
+            });
 
             if (trafficBtn) {
                 trafficBtn.addEventListener('click', () => {
@@ -3244,9 +3255,7 @@
                     location,
                     radius: radii[index],
                 };
-                if (google.maps.StreetViewSource?.OUTDOOR) {
-                    request.source = google.maps.StreetViewSource.OUTDOOR;
-                }
+                // Prefer nearest of any source — OUTDOOR-only misses photospheres / sparse coverage.
                 if (google.maps.StreetViewPreference?.NEAREST) {
                     request.preference = google.maps.StreetViewPreference.NEAREST;
                 }
@@ -3256,7 +3265,9 @@
                         this._streetViewLookupInFlight = false;
                         return;
                     }
-                    if (status !== google.maps.StreetViewStatus.OK || !data?.location?.pano) {
+                    const ok = status === 'OK'
+                        || status === google.maps.StreetViewStatus?.OK;
+                    if (!ok || !data?.location?.pano) {
                         tryRadius(index + 1);
                         return;
                     }

@@ -1727,6 +1727,12 @@
         }
         .tc-streetview-notice strong { display: block; font-size: 0.95rem; margin-bottom: 2px; }
         .tc-streetview-notice p { margin: 0; font-size: 0.82rem; color: var(--tc-muted, #64748b); line-height: 1.35; }
+        .tc-streetview-notice__actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 12px;
+        }
         .tc-streetview-nearest {
             position: absolute;
             left: 50%;
@@ -2284,11 +2290,15 @@
                     </div>
                     <div id="tcStreetViewNotice" class="tc-streetview-notice" hidden role="status" aria-live="polite">
                         <i class="fas fa-street-view" aria-hidden="true"></i>
-                        <div>
+                        <div class="tc-streetview-notice__text">
                             <strong data-sv-title>{{ __('app.tracking.street_view_unavailable_title') }}</strong>
                             <p data-sv-body>{{ __('app.tracking.street_view_unavailable_body') }}</p>
+                            <div class="tc-streetview-notice__actions">
+                                <button type="button" class="btn btn-sm btn-primary" id="tcStreetViewSatellite">{{ __('app.tracking.street_view_use_satellite') }}</button>
+                                <button type="button" class="btn btn-sm btn-light" id="tcStreetViewOpenMaps">{{ __('app.tracking.street_view_open_maps') }}</button>
+                                <button type="button" class="btn btn-sm btn-light" id="tcStreetViewBack">{{ __('app.tracking.street_view_back_to_map') }}</button>
+                            </div>
                         </div>
-                        <button type="button" class="btn btn-sm btn-light" id="tcStreetViewBack">{{ __('app.tracking.street_view_back_to_map') }}</button>
                     </div>
                     @if(! empty($ui['route_progress']))
                     <div id="routeTripProgressBar" class="route-trip-bar route-trip-bar--footer" hidden aria-live="polite"></div>
