@@ -993,9 +993,16 @@
                 clickableIcons: false,
             }));
             this.mapZoom = this.map.getZoom() || 11;
+            this._lastClusterZoom = this.mapZoom;
             this.map.addListener('idle', () => {
-                this.mapZoom = this.map.getZoom() || this.mapZoom || 11;
-                this.renderLiveClusters();
+                const z = this.map.getZoom() || this.mapZoom || 11;
+                const zoomChanged = z !== this._lastClusterZoom;
+                this.mapZoom = z;
+                // Grid clustering is zoom-keyed — skip full rebuilds on pan-only idle.
+                if (zoomChanged) {
+                    this._lastClusterZoom = z;
+                    this.scheduleRenderLiveClusters(true);
+                }
             });
             this.legendEl = document.getElementById('tcLegend');
             this.trafficLayer = new google.maps.TrafficLayer();
@@ -1140,14 +1147,27 @@
 
         /** Apply cached SSR positions so markers/clusters render before the first poll. */
         seedLivePositionsFromCache() {
-            this.visible.forEach((id) => {
-                this.ensureMarker(id);
-                this.subscribePusher(id);
-                const v = this.vehicles.get(id);
-                if (v?.lat != null && v?.lng != null) {
-                    this.applyPoint(id, v);
-                }
-            });
+            // Cap Echo channels — 10k private subscriptions freezes the browser.
+            const MAX_ECHO = 300;
+            const ids = [...this.visible];
+            this._suppressClusterDuringSeed = true;
+            try {
+                ids.forEach((id) => {
+                    this.ensureMarker(id);
+                    const v = this.vehicles.get(id);
+                    if (v?.lat != null && v?.lng != null) {
+                        this.applyPoint(id, v);
+                    }
+                });
+                ids.slice(0, MAX_ECHO).forEach((id) => this.subscribePusher(id));
+            } finally {
+                this._suppressClusterDuringSeed = false;
+            }
+            this.scheduleRenderLiveClusters(true);
+            // Large fleets keep HTTP poll as the live fallback for non-subscribed devices.
+            if (ids.length > MAX_ECHO && this._needsHttpLivePoll()) {
+                this.startPolling();
+            }
         }
 
         /** Fit map to all visible vehicles once we have at least one position. */
@@ -2146,6 +2166,30 @@
             this.clusteredDeviceIds.clear();
         }
 
+        /**
+         * Coalesce cluster rebuilds to one per animation frame (Reverb storms).
+         * @param {boolean} [force]
+         */
+        scheduleRenderLiveClusters(force = false) {
+            if (this._suppressClusterDuringSeed && !force) return;
+            if (force) {
+                if (this._clusterRaf) {
+                    cancelAnimationFrame(this._clusterRaf);
+                    this._clusterRaf = null;
+                }
+                this._clusterRenderScheduled = false;
+                this.renderLiveClusters();
+                return;
+            }
+            if (this._clusterRenderScheduled) return;
+            this._clusterRenderScheduled = true;
+            this._clusterRaf = requestAnimationFrame(() => {
+                this._clusterRenderScheduled = false;
+                this._clusterRaf = null;
+                this.renderLiveClusters();
+            });
+        }
+
         showAllLiveMarkers() {
             if (!this.map || this.historyActive) return;
             this.visible.forEach((id) => {
@@ -2555,7 +2599,7 @@
             } else {
                 this.placeVehicleMarker(st, id, merged.lat, merged.lng, liveColor, h);
             }
-            this.renderLiveClusters();
+            this.scheduleRenderLiveClusters();
         }
 
         showLiveLayer(show) {
@@ -2569,7 +2613,7 @@
                     st.trailPolylines.forEach((l) => l.setMap(null));
                 }
             });
-            if (show && !this.historyActive) this.renderLiveClusters();
+            if (show && !this.historyActive) this.scheduleRenderLiveClusters(true);
             else this.clearLiveClusters();
         }
 
@@ -2751,19 +2795,26 @@
             const ids = [...this.visible];
             if (ids.length === 0) return;
             this.pollInFlight = true;
+            // Batch IDs — a 10k CSV exceeds typical proxy URL limits (~8KB).
+            const BATCH = 150;
             try {
-                const url = `${this.cfg.liveJsonUrl}?ids=${ids.join(',')}&_=${Date.now()}`;
-                const res = await fetch(url, { credentials: 'same-origin', cache: 'no-store' });
-                if (!res.ok) return;
-                const data = await res.json();
-                (data.devices || []).forEach((d) => this.applyPoint(d.id, d));
+                this._suppressClusterDuringSeed = true;
+                for (let i = 0; i < ids.length; i += BATCH) {
+                    const chunk = ids.slice(i, i + BATCH);
+                    const url = `${this.cfg.liveJsonUrl}?ids=${chunk.join(',')}&_=${Date.now()}`;
+                    const res = await fetch(url, { credentials: 'same-origin', cache: 'no-store' });
+                    if (!res.ok) continue;
+                    const data = await res.json();
+                    (data.devices || []).forEach((d) => this.applyPoint(d.id, d));
+                }
                 this.syncVisibleVehicleRoutePolylines();
-                this.renderLiveClusters();
                 this.fitAllIfNeeded();
             } catch (err) {
                 console.warn('[traccar-ui] poll failed', err);
             } finally {
+                this._suppressClusterDuringSeed = false;
                 this.pollInFlight = false;
+                this.scheduleRenderLiveClusters(true);
             }
         }
 
@@ -3348,8 +3399,9 @@
             return ctrl.signal;
         }
 
-        async fetchHistoryJson(url, signal, timeoutMs = 120000) {
-            const cached = this._historyResponseCache.get(url);
+        async fetchHistoryJson(url, signal, timeoutMs = 120000, cacheKey = null) {
+            const key = cacheKey || url;
+            const cached = this._historyResponseCache.get(key);
             if (cached && (Date.now() - cached.ts) < HISTORY_CACHE_TTL_MS) {
                 return cached.data;
             }
@@ -3378,7 +3430,7 @@
                     throw err;
                 }
                 const data = { response, json };
-                this._historyResponseCache.set(url, { ts: Date.now(), data });
+                this._historyResponseCache.set(key, { ts: Date.now(), data });
                 if (this._historyResponseCache.size > HISTORY_CACHE_MAX_ENTRIES) {
                     const oldest = [...this._historyResponseCache.entries()].sort((a, b) => a[1].ts - b[1].ts)[0];
                     if (oldest) this._historyResponseCache.delete(oldest[0]);
@@ -3465,6 +3517,8 @@
                 cancelAnimationFrame(this._playbackAnimFrame);
                 this._playbackAnimFrame = null;
             }
+            this._playbackAnimToken = (this._playbackAnimToken || 0) + 1;
+            this._fleetRenderer?.cancelAnimation?.();
             this._isPlaying = false;
             this._playbackActive = false;
             this._fleetRenderer?.setPlaybackActive(false);
@@ -3624,10 +3678,12 @@
                     onComplete: () => {
                         if (seq !== this._historyLoadSeq) return;
                         syncRouteLayers();
-                        this.setHistoryLoadBanner('route', 'done');
                     },
                 });
                 syncRouteLayers();
+                // Mark route loaded immediately — do not wait for progressive RAF
+                // (cancelled draws never fire onComplete → banner stuck "Loading…").
+                this.setHistoryLoadBanner('route', 'done');
             }
 
             const endPoint = points[points.length - 1];
@@ -3882,6 +3938,9 @@
             });
         }
 
+        /**
+         * @returns {'ok'|'empty'|'superseded'|'error'}
+         */
         async applyHistoryPoints(vehicle, seq) {
             const points = (vehicle?.points || [])
                 .map((p) => this.normalizeHistoryPoint(p))
@@ -3890,15 +3949,31 @@
             if (points.length < 2) {
                 this.toast(this.cfg.i18n?.noData || 'No data for the selected period.', 'warning');
                 this.exitHistory();
-                return false;
+                this.finishHistoryLoadBanners();
+                return 'empty';
             }
 
             this._historyVehicle = vehicle;
             this._historyPoints = points;
             this.prepareHistoryRoute();
             this.setHistoryLoadBanner('route', 'loading');
-            await this.renderHistoryRouteProgressive(points, vehicle, seq);
-            return seq === this._historyLoadSeq;
+            try {
+                await this.renderHistoryRouteProgressive(points, vehicle, seq);
+            } catch (renderErr) {
+                console.warn('[traccar-ui] history route render', renderErr);
+                this.setHistoryLoadBanner('route', 'done');
+                if (seq !== this._historyLoadSeq) return 'superseded';
+                return 'error';
+            }
+            if (seq !== this._historyLoadSeq) return 'superseded';
+            if (vehicle?.used_fallback || vehicle?.fallback_reason) {
+                this.toast(
+                    this.cfg.i18n?.historyFallback
+                        || 'No GPS in the selected period — showing the latest available track.',
+                    'info',
+                );
+            }
+            return 'ok';
         }
 
         finishHistoryLoadBanners() {
@@ -3959,12 +4034,12 @@
             );
 
             const applyPointsVehicle = async (vehicle) => {
-                if (loadSeq !== this._historyLoadSeq) return false;
+                if (loadSeq !== this._historyLoadSeq) return 'superseded';
                 if (!vehicle) {
                     this.toast(this.cfg.i18n?.noData || 'No data for the selected period.', 'warning');
                     this.exitHistory();
                     this.finishHistoryLoadBanners();
-                    return false;
+                    return 'empty';
                 }
                 return this.applyHistoryPoints(vehicle, loadSeq);
             };
@@ -3982,38 +4057,52 @@
                 }
             };
 
+            const historyCacheKey = `hist|${id}|${from || ''}|${to || ''}`;
+
             try {
                 if (canParallel) {
                     let skipParallelAnalytics = false;
 
-                    const pointsTask = this.fetchHistoryJson(pointsUrl, signal)
+                    const pointsTask = this.fetchHistoryJson(pointsUrl, signal, 120000, historyCacheKey)
                         .then(async (result) => {
                             const vehicle = (result.json.vehicles || [])[0] || null;
                             return applyPointsVehicle(vehicle);
                         })
                         .catch(async (err) => {
-                            if (loadSeq !== this._historyLoadSeq || err?.name === 'AbortError') return false;
+                            if (loadSeq !== this._historyLoadSeq || err?.name === 'AbortError') return 'superseded';
                             if (this.isHistoryPermissionError(err)) {
                                 throw err;
                             }
                             console.warn('[traccar-ui] history points', err);
                             try {
                                 skipParallelAnalytics = true;
-                                const legacy = await this.fetchHistoryJson(this.appendCacheBust(legacyUrl), signal);
-                                if (loadSeq !== this._historyLoadSeq) return false;
+                                const legacy = await this.fetchHistoryJson(
+                                    this.appendCacheBust(legacyUrl),
+                                    signal,
+                                    120000,
+                                    `${historyCacheKey}|legacy`,
+                                );
+                                if (loadSeq !== this._historyLoadSeq) return 'superseded';
                                 const vehicle = (legacy.json.vehicles || [])[0] || null;
                                 const applied = await applyPointsVehicle(vehicle);
-                                if (applied && vehicle) {
+                                if (applied === 'ok' && vehicle) {
                                     applyAnalyticsVehicle(vehicle);
                                 }
                                 return applied;
                             } catch (legacyErr) {
-                                if (loadSeq !== this._historyLoadSeq || legacyErr?.name === 'AbortError') return false;
+                                if (loadSeq !== this._historyLoadSeq || legacyErr?.name === 'AbortError') {
+                                    return 'superseded';
+                                }
                                 throw legacyErr;
                             }
                         });
 
-                    const analyticsTask = this.fetchHistoryJson(analyticsUrl, signal)
+                    const analyticsTask = this.fetchHistoryJson(
+                        analyticsUrl,
+                        signal,
+                        120000,
+                        `${historyCacheKey}|analytics`,
+                    )
                         .then((result) => {
                             if (skipParallelAnalytics || loadSeq !== this._historyLoadSeq) return false;
                             const vehicle = (result.json.vehicles || [])[0] || null;
@@ -4037,7 +4126,10 @@
                     const pointsOutcome = await pointsTask;
                     if (loadSeq !== this._historyLoadSeq) return;
 
-                    if (pointsOutcome === false && this.historyActive) {
+                    if (pointsOutcome === 'empty' || pointsOutcome === 'superseded') {
+                        return;
+                    }
+                    if (pointsOutcome !== 'ok') {
                         this.toast(this.cfg.i18n?.loadFailed || 'Failed to load history.', 'error');
                         this.finishHistoryLoadBanners();
                         return;
@@ -4047,20 +4139,26 @@
                         await analyticsTask;
                     }
                 } else {
-                    const result = await this.fetchHistoryJson(this.appendCacheBust(legacyUrl), signal);
+                    const result = await this.fetchHistoryJson(
+                        this.appendCacheBust(legacyUrl),
+                        signal,
+                        120000,
+                        `${historyCacheKey}|legacy`,
+                    );
                     if (loadSeq !== this._historyLoadSeq) return;
                     const vehicle = (result.json.vehicles || [])[0] || null;
                     const pointsApplied = await applyPointsVehicle(vehicle);
-                    if (pointsApplied) {
+                    if (pointsApplied === 'ok') {
                         this.scheduleIdleWork(() => applyAnalyticsVehicle(vehicle));
                     }
                 }
             } catch (err) {
                 if (loadSeq !== this._historyLoadSeq || err?.name === 'AbortError') return;
                 console.error('[traccar-ui] history', err);
+                const hadRoute = Array.isArray(this._historyPoints) && this._historyPoints.length > 1;
                 this.finishHistoryLoadBanners();
-                this.exitHistory();
                 if (this.isHistoryPermissionError(err)) {
+                    this.exitHistory();
                     this.popupError(
                         err.message
                             || this.cfg.i18n?.historyPermissionDenied
@@ -4069,7 +4167,8 @@
                     );
                     return;
                 }
-                if (!(this.historyActive && this.historyLayers.length > 0)) {
+                if (!hadRoute) {
+                    this.exitHistory();
                     this.toast(
                         `${this.cfg.i18n?.loadFailed || 'Failed to load history.'} ${err.message || ''}`.trim(),
                         'error',
@@ -4087,8 +4186,8 @@
             this.motionEngine?.clear();
             this.showLiveLayer(false);
             this.beginHistoryLoadBanner();
-            this.applyHistoryPoints(vehicle, loadSeq).then((ok) => {
-                if (ok) {
+            this.applyHistoryPoints(vehicle, loadSeq).then((outcome) => {
+                if (outcome === 'ok') {
                     this.applyHistoryAnalytics(vehicle, this._historyPoints, loadSeq);
                 }
             });
@@ -5606,6 +5705,7 @@
             const p = this._playbackPoints[index];
             if (!p) return;
             const renderer = this.ensureFleetRenderer();
+            renderer?.cancelAnimation?.();
             renderer?.setPlaybackActive(this._playbackActive);
             renderer?.setCurrentVehicle(p, { animate: false, skipAnimation: true });
             const speedEl = document.getElementById('tcPbLiveSpeed');
@@ -5625,9 +5725,11 @@
                 return;
             }
             const renderer = this.ensureFleetRenderer();
+            renderer?.cancelAnimation?.();
             if (this._playbackAnimFrame) cancelAnimationFrame(this._playbackAnimFrame);
             this._playbackAnimFrame = null;
             const fromH = parseFloat(from.heading || 0);
+            const playToken = (this._playbackAnimToken = (this._playbackAnimToken || 0) + 1);
             renderer?.setCurrentVehicle({
                 ...to,
                 _fromHeading: fromH,
@@ -5635,6 +5737,7 @@
                 skipAnimation: false,
                 animDurationMs: Math.max(200, 1000 / this._playbackSpeed),
                 onComplete: () => {
+                    if (playToken !== this._playbackAnimToken || !this._isPlaying) return;
                     this._playbackAnimFrame = null;
                     this._playbackIndex = nextIndex;
                     this.updatePlaybackAtIndex(nextIndex);
@@ -5681,6 +5784,8 @@
             this._playbackTimer = null;
             if (this._playbackAnimFrame) cancelAnimationFrame(this._playbackAnimFrame);
             this._playbackAnimFrame = null;
+            this._playbackAnimToken = (this._playbackAnimToken || 0) + 1;
+            this._fleetRenderer?.cancelAnimation?.();
             this._isPlaying = false;
             this.setPlayPauseUi(false);
             this.updatePlaybackMeta();

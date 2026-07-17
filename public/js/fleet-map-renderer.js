@@ -456,8 +456,15 @@
 
         setRouteEndpoints(start, end, options = {}) {
             const g = this.opts.googleMaps || global.google;
-            this.startMarker?.setMap(null);
-            this.endMarker?.setMap(null);
+            const prevStart = this.startMarker;
+            const prevEnd = this.endMarker;
+            prevStart?.setMap(null);
+            prevEnd?.setMap(null);
+            if (Array.isArray(this._extraMarkers) && (prevStart || prevEnd)) {
+                this._extraMarkers = this._extraMarkers.filter(
+                    (m) => m !== prevStart && m !== prevEnd,
+                );
+            }
 
             const VM = global.VehicleMarker;
             const createMarker = VM?.createMarker || global.GoogleMapsPlatform?.createMarker;
@@ -471,6 +478,8 @@
                     zIndex: ROUTE_START_Z,
                 });
                 this._extraMarkers.push(this.startMarker);
+            } else {
+                this.startMarker = null;
             }
 
             if (end) {
@@ -482,6 +491,8 @@
                     zIndex: ROUTE_END_Z,
                 });
                 this._extraMarkers.push(this.endMarker);
+            } else {
+                this.endMarker = null;
             }
 
             if (end && options.updateCurrent !== false) {

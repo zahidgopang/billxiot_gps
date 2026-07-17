@@ -4,7 +4,8 @@
 (function (global) {
     'use strict';
 
-    const CLUSTER_ZOOM_THRESHOLD = 12;
+    // Keep clustering into street zoom — city zoom with 1k–10k pins freezes the map.
+    const CLUSTER_ZOOM_THRESHOLD = 15;
     const CLUSTER_RADIUS_PX = 64;
 
     function cellDegrees(zoom, latitude) {

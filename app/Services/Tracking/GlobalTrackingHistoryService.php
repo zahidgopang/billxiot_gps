@@ -41,7 +41,9 @@ class GlobalTrackingHistoryService
     public function fetchLocations(Device $device, Carbon $from, ?Carbon $to): array
     {
         return $this->trackCache->remember($device, $from, $to, function () use ($device, $from, $to) {
-            $fetch = $this->historyFetcher->fetch($device, $from, $to, true, allowFallback: false);
+            // Allow last-known-activity fallback so empty calendar days still load a route
+            // (used_fallback / history_fallback are returned to the UI).
+            $fetch = $this->historyFetcher->fetch($device, $from, $to, true, allowFallback: true);
 
             return [
                 'locations' => $fetch['locations'],
