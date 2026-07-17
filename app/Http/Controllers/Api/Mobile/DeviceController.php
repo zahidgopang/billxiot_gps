@@ -17,6 +17,7 @@ use App\Services\Routes\TripManagementService;
 use App\Services\Tracking\DeviceHistoryFetcher;
 use App\Services\Tracking\DevicePositionLoader;
 use App\Services\Tracking\DeviceMapAppearanceService;
+use App\Services\Tracking\GlobalTrackingHistoryService;
 use App\Services\Tracking\GlobalTrackingService;
 use App\Services\Tracking\TripTimelineBuilder;
 use App\Services\UserDashboardService;
@@ -186,17 +187,32 @@ class DeviceController extends Controller
         );
 
         $locations = $result['locations'];
-        $stats = $this->routeAnalytics->analyze($locations);
-        $statuses = $this->routeAnalytics->pointStatuses($locations);
+        $trackCache = app(GlobalTrackingHistoryService::class);
+
+        // Cap analytics + map payload — multi-day tracks were OOMing the app.
+        $analysisLocations = $locations->count() > 6000
+            ? $trackCache->downsampleForMap($locations, 6000)
+            : $locations;
+        $mapLocations = $locations->count() > 2800
+            ? $trackCache->downsampleForMap($locations, 2800)
+            : $locations;
+
+        $stats = $this->routeAnalytics->analyze($analysisLocations, [
+            'point_statuses' => false,
+            'include_track_points' => false,
+            'skip_timeline' => $locations->count() > 5000,
+        ]);
+        $statuses = $this->routeAnalytics->pointStatuses($mapLocations);
         $events = $this->eventsForTimeline($device, $range['from'], $range['to']);
         $segments = $this->tripTimeline->build(
-            $locations,
+            $analysisLocations,
             $stats['timeline'] ?? [],
             $stats['stops'] ?? [],
             $events,
         );
+        $segments = array_slice($segments, 0, 400);
 
-        $points = $locations->values()->map(fn ($loc, int $index) => array_merge([
+        $points = $mapLocations->values()->map(fn ($loc, int $index) => array_merge([
             'lat' => (float) $loc->lat,
             'lng' => (float) $loc->lng,
             'speed' => (float) ($loc->speed ?? 0),
@@ -221,12 +237,15 @@ class DeviceController extends Controller
             'position_id' => (int) ($loc->id ?? 0),
         ], $statuses[$index] ?? []))->values();
 
+        $timeline = array_slice($stats['timeline'] ?? [], 0, 400);
+        $stops = array_slice($stats['stops'] ?? [], 0, 250);
+
         return $this->mobileSuccess([
             'polyline' => $points,
-            'stops' => $stats['stops'],
-            'moving_points' => $stats['moving_points'],
-            'idle_points' => $stats['idle_points'],
-            'timeline' => $stats['timeline'] ?? [],
+            'stops' => $stops,
+            'moving_points' => $stats['moving_points'] ?? [],
+            'idle_points' => $stats['idle_points'] ?? [],
+            'timeline' => $timeline,
             'segments' => $segments,
             'trip_timeline' => $segments,
             'stats' => [
@@ -241,12 +260,14 @@ class DeviceController extends Controller
                 'total_duration_seconds' => max(0, (int) ($stats['total_duration_seconds'] ?? 0)),
                 'start_time' => $stats['start_time'] ?? null,
                 'end_time' => $stats['end_time'] ?? null,
-                'stop_count' => $stats['stop_count'] ?? count($stats['stops'] ?? []),
+                'stop_count' => $stats['stop_count'] ?? count($stops),
             ],
             'from' => app_datetime_api($range['from']),
             'to' => app_datetime_api($range['to']),
             'history_fallback' => $result['used_fallback'] ? $result['fallback_reason'] : null,
             'used_fallback' => $result['used_fallback'],
+            'raw_point_count' => $locations->count(),
+            'display_point_count' => $mapLocations->count(),
         ]);
     }
 
@@ -264,14 +285,25 @@ class DeviceController extends Controller
         );
 
         $locations = $result['locations'];
-        $stats = $this->routeAnalytics->analyze($locations);
+        $trackCache = app(GlobalTrackingHistoryService::class);
+        $analysisLocations = $locations->count() > 6000
+            ? $trackCache->downsampleForMap($locations, 6000)
+            : $locations;
+
+        $stats = $this->routeAnalytics->analyze($analysisLocations, [
+            'point_statuses' => false,
+            'include_track_points' => false,
+            'skip_timeline' => $locations->count() > 5000,
+            'minimal_stats' => $locations->count() > 8000,
+        ]);
         $events = $this->eventsForTimeline($device, $range['from'], $range['to']);
         $segments = $this->tripTimeline->build(
-            $locations,
+            $analysisLocations,
             $stats['timeline'] ?? [],
             $stats['stops'] ?? [],
             $events,
         );
+        $segments = array_slice($segments, 0, 400);
 
         $startTime = $stats['start_time'] ?? null;
         $endTime = $stats['end_time'] ?? null;
@@ -295,7 +327,7 @@ class DeviceController extends Controller
             'start_time' => $startTime,
             'end_time' => $endTime,
             'stop_count' => $stats['stop_count'] ?? count($stats['stops'] ?? []),
-            'timeline' => $stats['timeline'] ?? [],
+            'timeline' => array_slice($stats['timeline'] ?? [], 0, 400),
             'segments' => $segments,
             'trip_timeline' => $segments,
             'history_fallback' => $result['used_fallback'] ? $result['fallback_reason'] : null,
