@@ -178,6 +178,8 @@ class DeviceController extends Controller
         $device = $this->findMobileDevice($request->user(), $id);
         $range = $this->resolveHistoryRange($request);
         $explicitRange = trim((string) ($request->query('from', $request->input('from', '')))) !== '';
+        $lite = filter_var($request->query('lite', $request->input('lite', false)), FILTER_VALIDATE_BOOLEAN)
+            || (string) $request->query('mode', '') === 'map';
 
         $result = $this->historyFetcher->fetch(
             $device,
@@ -188,6 +190,41 @@ class DeviceController extends Controller
 
         $locations = $result['locations'];
         $trackCache = app(GlobalTrackingHistoryService::class);
+
+        // Mobile map/playback: skip analytics/timeline so the first paint is fast.
+        if ($lite) {
+            $mapLocations = $locations->count() > 1500
+                ? $trackCache->downsampleForMap($locations, 1500)
+                : $locations;
+
+            $points = $mapLocations->values()->map(fn ($loc) => [
+                'lat' => (float) $loc->lat,
+                'lng' => (float) $loc->lng,
+                'speed' => (float) ($loc->speed ?? 0),
+                'heading' => (float) ($loc->heading ?? 0),
+                'ignition' => (bool) $loc->ignition,
+                'recorded_at' => app_datetime_api($loc->recorded_at),
+                'time' => app_datetime_api($loc->recorded_at),
+            ])->values();
+
+            return $this->mobileSuccess([
+                'polyline' => $points,
+                'stops' => [],
+                'moving_points' => [],
+                'idle_points' => [],
+                'timeline' => [],
+                'segments' => [],
+                'trip_timeline' => [],
+                'stats' => [],
+                'from' => app_datetime_api($range['from']),
+                'to' => app_datetime_api($range['to']),
+                'history_fallback' => $result['used_fallback'] ? $result['fallback_reason'] : null,
+                'used_fallback' => $result['used_fallback'],
+                'raw_point_count' => $locations->count(),
+                'display_point_count' => $mapLocations->count(),
+                'lite' => true,
+            ]);
+        }
 
         // Cap analytics + map payload — multi-day tracks were OOMing the app.
         $analysisLocations = $locations->count() > 6000
