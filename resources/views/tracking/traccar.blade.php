@@ -1298,30 +1298,83 @@
             box-shadow: 0 0 0 3px color-mix(in srgb, var(--tc-primary) 18%, transparent), var(--tc-shadow);
         }
 
-        /* Follow Mode Tracking HUD — top-center, compact, non-blocking */
+        /* Follow Mode Tracking HUD — toggleable + draggable */
         .tc-follow-hud {
             position: absolute;
             top: 12px;
             left: 50%;
             transform: translateX(-50%);
-            z-index: 5;
+            z-index: 7;
             width: min(520px, calc(100% - 112px));
-            pointer-events: none;
-            transition: opacity 0.18s ease, transform 0.18s ease;
+            pointer-events: auto;
+            touch-action: none;
+            user-select: none;
         }
         .tc-follow-hud[hidden] { display: none !important; }
+        .tc-follow-hud.is-dragging {
+            z-index: 12;
+            cursor: grabbing;
+        }
+        .tc-follow-hud.is-dragging .tc-follow-hud__card {
+            box-shadow: 0 16px 40px rgba(15, 23, 42, 0.55);
+        }
         .tc-follow-hud__card {
             display: flex;
             flex-direction: column;
             gap: 6px;
-            padding: 10px 14px;
+            padding: 8px 12px 10px;
             border-radius: 14px;
-            background: color-mix(in srgb, var(--tc-surface, #0f172a) 78%, transparent);
-            border: 1px solid color-mix(in srgb, #fff 12%, transparent);
-            box-shadow: 0 10px 28px rgba(15, 23, 42, 0.28);
+            /* Solid dark panel — readable over light map/satellite tiles */
+            background: rgba(15, 23, 42, 0.94);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            box-shadow: 0 12px 32px rgba(15, 23, 42, 0.45);
             color: #f8fafc;
-            backdrop-filter: blur(10px);
-            -webkit-backdrop-filter: blur(10px);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            text-shadow: 0 1px 1px rgba(0, 0, 0, 0.35);
+        }
+        .tc-follow-hud__toolbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            margin: -2px -2px 2px;
+        }
+        .tc-follow-hud__drag {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            min-width: 0;
+            flex: 1;
+            padding: 2px 4px;
+            border: 0;
+            background: transparent;
+            color: #94a3b8;
+            font-size: 0.68rem;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            cursor: grab;
+            text-shadow: none;
+        }
+        .tc-follow-hud__drag:active { cursor: grabbing; }
+        .tc-follow-hud__drag i { color: #64748b; }
+        .tc-follow-hud__hide {
+            width: 28px;
+            height: 28px;
+            border: 0;
+            border-radius: 8px;
+            background: rgba(255,255,255,0.08);
+            color: #e2e8f0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            text-shadow: none;
+        }
+        .tc-follow-hud__hide:hover {
+            background: rgba(255,255,255,0.16);
+            color: #fff;
         }
         .tc-follow-hud__top {
             display: flex;
@@ -1333,16 +1386,18 @@
         .tc-follow-hud__name {
             display: block;
             font-size: 0.95rem;
-            font-weight: 700;
+            font-weight: 800;
             line-height: 1.2;
+            color: #ffffff;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
         }
         .tc-follow-hud__plate {
             display: block;
-            font-size: 0.72rem;
-            opacity: 0.78;
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: #cbd5e1;
             letter-spacing: 0.02em;
             white-space: nowrap;
             overflow: hidden;
@@ -1356,17 +1411,18 @@
             padding: 4px 10px;
             border-radius: 999px;
             font-size: 0.72rem;
-            font-weight: 700;
-            background: color-mix(in srgb, var(--hud-status, #94a3b8) 22%, transparent);
-            color: #fff;
-            border: 1px solid color-mix(in srgb, var(--hud-status, #94a3b8) 45%, transparent);
+            font-weight: 800;
+            background: color-mix(in srgb, var(--hud-status, #94a3b8) 34%, #0f172a);
+            color: #ffffff;
+            border: 1px solid color-mix(in srgb, var(--hud-status, #94a3b8) 70%, #fff);
+            text-shadow: none;
         }
         .tc-follow-hud__status-dot {
             width: 7px;
             height: 7px;
             border-radius: 50%;
             background: var(--hud-status, #94a3b8);
-            box-shadow: 0 0 0 3px color-mix(in srgb, var(--hud-status, #94a3b8) 28%, transparent);
+            box-shadow: 0 0 0 3px color-mix(in srgb, var(--hud-status, #94a3b8) 35%, transparent);
         }
         .tc-follow-hud__metrics {
             display: flex;
@@ -1377,38 +1433,42 @@
             display: inline-flex;
             align-items: center;
             gap: 5px;
-            font-size: 0.72rem;
-            font-weight: 600;
-            opacity: 0.95;
+            font-size: 0.74rem;
+            font-weight: 700;
+            color: #f1f5f9;
             white-space: nowrap;
         }
         .tc-follow-hud__chip i {
             width: 12px;
             text-align: center;
-            opacity: 0.85;
-            font-size: 0.7rem;
+            color: #93c5fd;
+            font-size: 0.72rem;
         }
         .tc-follow-hud__chip--warn {
             color: #fecaca;
         }
-        .tc-follow-hud__chip--ok { color: #bbf7d0; }
-        .tc-follow-hud__chip--off { color: #cbd5e1; }
+        .tc-follow-hud__chip--ok { color: #86efac; }
+        .tc-follow-hud__chip--ok i { color: #86efac; }
+        .tc-follow-hud__chip--off { color: #e2e8f0; }
+        .tc-follow-hud__chip--off i { color: #94a3b8; }
         .tc-follow-hud__address {
             display: flex;
             align-items: flex-start;
             gap: 6px;
-            font-size: 0.74rem;
-            line-height: 1.3;
-            opacity: 0.9;
+            font-size: 0.76rem;
+            font-weight: 600;
+            line-height: 1.35;
+            color: #e2e8f0;
             min-width: 0;
         }
-        .tc-follow-hud__address i { margin-top: 2px; opacity: 0.8; }
+        .tc-follow-hud__address i { margin-top: 2px; color: #93c5fd; }
         .tc-follow-hud__address span {
             min-width: 0;
             overflow: hidden;
             display: -webkit-box;
             -webkit-line-clamp: 2;
             -webkit-box-orient: vertical;
+            color: #e2e8f0;
         }
         .tc-follow-hud__extra {
             display: flex;
@@ -1422,23 +1482,27 @@
             gap: 5px;
             padding: 3px 8px;
             border-radius: 999px;
-            font-size: 0.68rem;
-            font-weight: 700;
-            background: rgba(255,255,255,0.1);
-            border: 1px solid rgba(255,255,255,0.14);
+            font-size: 0.7rem;
+            font-weight: 800;
+            color: #f8fafc;
+            background: rgba(255,255,255,0.14);
+            border: 1px solid rgba(255,255,255,0.22);
+            text-shadow: none;
         }
         .tc-follow-hud__pill--warn {
-            background: rgba(239, 68, 68, 0.22);
-            border-color: rgba(248, 113, 113, 0.45);
-            color: #fecaca;
+            background: rgba(185, 28, 28, 0.55);
+            border-color: rgba(252, 165, 165, 0.65);
+            color: #fff1f2;
         }
         .tc-follow-hud__pill--geo {
-            background: rgba(8, 145, 178, 0.22);
-            border-color: rgba(34, 211, 238, 0.4);
+            background: rgba(8, 145, 178, 0.45);
+            border-color: rgba(103, 232, 249, 0.55);
+            color: #ecfeff;
         }
         .tc-follow-hud__pill--eta {
-            background: rgba(37, 99, 235, 0.22);
-            border-color: rgba(96, 165, 250, 0.45);
+            background: rgba(29, 78, 216, 0.5);
+            border-color: rgba(147, 197, 253, 0.55);
+            color: #eff6ff;
         }
         @media (max-width: 768px) {
             .tc-follow-hud {
@@ -2451,6 +2515,15 @@
                     <div id="tcMap" aria-label="{{ __('app.tracking.live_map_aria') }}"></div>
                     <div id="tcFollowHud" class="tc-follow-hud" hidden aria-live="polite">
                         <div class="tc-follow-hud__card">
+                            <div class="tc-follow-hud__toolbar">
+                                <button type="button" class="tc-follow-hud__drag" id="tcFollowHudDrag" title="{{ __('app.tracking.hud_drag') }}" aria-label="{{ __('app.tracking.hud_drag') }}">
+                                    <i class="fas fa-grip-vertical" aria-hidden="true"></i>
+                                    <span>{{ __('app.tracking.hud_label') }}</span>
+                                </button>
+                                <button type="button" class="tc-follow-hud__hide" id="tcFollowHudHide" title="{{ __('app.tracking.hud_hide') }}" aria-label="{{ __('app.tracking.hud_hide') }}">
+                                    <i class="fas fa-eye-slash" aria-hidden="true"></i>
+                                </button>
+                            </div>
                             <div class="tc-follow-hud__top">
                                 <div class="tc-follow-hud__identity">
                                     <span class="tc-follow-hud__name" data-hud="name">—</span>
@@ -2642,9 +2715,14 @@
                         </button>
                         @endif
                         @if(! empty($mapCtl['follow']))
-                        <button type="button" class="btn btn-light" id="tcFollow" title="{{ __('app.tracking.follow_vehicle') }}" aria-pressed="false">
-                            <i class="fas fa-crosshairs"></i>
-                        </button>
+                        <div class="tc-ctrl-group">
+                            <button type="button" class="btn btn-light" id="tcFollow" title="{{ __('app.tracking.follow_vehicle') }}" aria-pressed="false">
+                                <i class="fas fa-crosshairs"></i>
+                            </button>
+                            <button type="button" class="btn btn-light" id="tcFollowHudToggle" title="{{ __('app.tracking.hud_toggle') }}" aria-pressed="true" hidden>
+                                <i class="fas fa-table-list"></i>
+                            </button>
+                        </div>
                         @endif
                         @if(! empty($mapCtl['refresh']))
                         <button type="button" class="btn btn-light" id="tcRefresh" title="{{ __('app.tracking.refresh') }}">
@@ -2922,6 +3000,9 @@
                 hudAgoSec: @json(__('app.tracking.hud_ago_sec')),
                 hudAgoMin: @json(__('app.tracking.hud_ago_min')),
                 hudAgoHour: @json(__('app.tracking.hud_ago_hour')),
+                hudToggle: @json(__('app.tracking.hud_toggle')),
+                hudShow: @json(__('app.tracking.hud_show')),
+                hudHide: @json(__('app.tracking.hud_hide')),
                 menuShare: @json(__('app.tracking.menu_share')),
                 menuSendCommand: @json(__('app.tracking.menu_send_command')),
                 menuEdit: @json(__('app.tracking.menu_edit')),

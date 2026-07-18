@@ -803,6 +803,9 @@
             this._followHudAddress = null;
             this._followHudAddressInflight = false;
             this._followHudTimer = null;
+            this._followHudVisible = this.readFollowHudVisiblePreference();
+            this._followHudDragBound = false;
+            this._followHudDragging = false;
             this.pollTimer = null;
             this.pollInFlight = false;
             this.realtimeHealthy = false;
@@ -3144,6 +3147,7 @@
             }
 
             this.updateFollowOverlayChrome();
+            this.bindFollowHudUi();
         }
 
         readTrafficPreference() {
@@ -3705,19 +3709,194 @@
             this.syncFollowHudVisibility();
         }
 
+        readFollowHudVisiblePreference() {
+            try {
+                const raw = global.sessionStorage?.getItem('tc.followHud.visible');
+                if (raw == null) return true;
+                return raw === '1';
+            } catch (_) {
+                return true;
+            }
+        }
+
+        writeFollowHudVisiblePreference(on) {
+            try {
+                global.sessionStorage?.setItem('tc.followHud.visible', on ? '1' : '0');
+            } catch (_) { /* private mode */ }
+        }
+
+        readFollowHudPosition() {
+            try {
+                const raw = global.sessionStorage?.getItem('tc.followHud.pos');
+                if (!raw) return null;
+                const pos = JSON.parse(raw);
+                if (!Number.isFinite(pos?.left) || !Number.isFinite(pos?.top)) return null;
+                return { left: pos.left, top: pos.top };
+            } catch (_) {
+                return null;
+            }
+        }
+
+        writeFollowHudPosition(left, top) {
+            try {
+                global.sessionStorage?.setItem(
+                    'tc.followHud.pos',
+                    JSON.stringify({ left: Math.round(left), top: Math.round(top) }),
+                );
+            } catch (_) { /* private mode */ }
+        }
+
+        bindFollowHudUi() {
+            if (this._followHudDragBound) return;
+            this._followHudDragBound = true;
+
+            const hudToggle = document.getElementById('tcFollowHudToggle');
+            hudToggle?.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (!this.followId) return;
+                this.setFollowHudVisible(!this._followHudVisible);
+            });
+
+            document.getElementById('tcFollowHudHide')?.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.setFollowHudVisible(false);
+            });
+
+            this.bindFollowHudDrag();
+            this.applyFollowHudPosition();
+            this.updateFollowHudToggleBtn();
+        }
+
+        setFollowHudVisible(on) {
+            this._followHudVisible = !!on;
+            this.writeFollowHudVisiblePreference(this._followHudVisible);
+            this.syncFollowHudVisibility();
+            this.updateFollowHudToggleBtn();
+        }
+
+        updateFollowHudToggleBtn() {
+            const btn = document.getElementById('tcFollowHudToggle');
+            if (!btn) return;
+            const following = !!this.followId;
+            btn.hidden = !following;
+            btn.classList.toggle('active', following && this._followHudVisible);
+            btn.setAttribute('aria-pressed', following && this._followHudVisible ? 'true' : 'false');
+            const i = this.cfg.i18n || {};
+            btn.title = this._followHudVisible
+                ? (i.hudHide || i.hudToggle || 'Hide Tracking HUD')
+                : (i.hudShow || i.hudToggle || 'Show Tracking HUD');
+        }
+
+        applyFollowHudPosition() {
+            const el = document.getElementById('tcFollowHud');
+            if (!el) return;
+            const pos = this.readFollowHudPosition();
+            if (!pos) return;
+            const area = el.offsetParent || el.parentElement;
+            const maxLeft = Math.max(8, (area?.clientWidth || global.innerWidth) - el.offsetWidth - 8);
+            const maxTop = Math.max(8, (area?.clientHeight || global.innerHeight) - el.offsetHeight - 8);
+            const left = Math.min(Math.max(8, pos.left), maxLeft);
+            const top = Math.min(Math.max(8, pos.top), maxTop);
+            el.style.left = `${left}px`;
+            el.style.top = `${top}px`;
+            el.style.transform = 'none';
+            el.style.right = 'auto';
+        }
+
+        clampFollowHudPosition(left, top) {
+            const el = document.getElementById('tcFollowHud');
+            if (!el) return { left, top };
+            const area = el.offsetParent || el.parentElement;
+            const maxLeft = Math.max(8, (area?.clientWidth || global.innerWidth) - el.offsetWidth - 8);
+            const maxTop = Math.max(8, (area?.clientHeight || global.innerHeight) - el.offsetHeight - 8);
+            return {
+                left: Math.min(Math.max(8, left), maxLeft),
+                top: Math.min(Math.max(8, top), maxTop),
+            };
+        }
+
+        bindFollowHudDrag() {
+            const el = document.getElementById('tcFollowHud');
+            const handle = document.getElementById('tcFollowHudDrag') || el;
+            if (!el || !handle || handle.dataset.dragBound === '1') return;
+            handle.dataset.dragBound = '1';
+
+            let startX = 0;
+            let startY = 0;
+            let originLeft = 0;
+            let originTop = 0;
+            let pointerId = null;
+
+            const onMove = (ev) => {
+                if (!this._followHudDragging || (pointerId != null && ev.pointerId !== pointerId)) return;
+                const dx = ev.clientX - startX;
+                const dy = ev.clientY - startY;
+                const next = this.clampFollowHudPosition(originLeft + dx, originTop + dy);
+                el.style.left = `${next.left}px`;
+                el.style.top = `${next.top}px`;
+                el.style.transform = 'none';
+                el.style.right = 'auto';
+            };
+
+            const onUp = (ev) => {
+                if (pointerId != null && ev.pointerId !== pointerId) return;
+                if (!this._followHudDragging) return;
+                this._followHudDragging = false;
+                el.classList.remove('is-dragging');
+                pointerId = null;
+                try { handle.releasePointerCapture?.(ev.pointerId); } catch (_) { /* ignore */ }
+                global.removeEventListener('pointermove', onMove);
+                global.removeEventListener('pointerup', onUp);
+                global.removeEventListener('pointercancel', onUp);
+                const left = parseFloat(el.style.left);
+                const top = parseFloat(el.style.top);
+                if (Number.isFinite(left) && Number.isFinite(top)) {
+                    this.writeFollowHudPosition(left, top);
+                }
+            };
+
+            handle.addEventListener('pointerdown', (ev) => {
+                if (ev.button != null && ev.button !== 0) return;
+                ev.preventDefault();
+                ev.stopPropagation();
+                const rect = el.getBoundingClientRect();
+                const parent = el.offsetParent || el.parentElement;
+                const parentRect = parent?.getBoundingClientRect?.() || { left: 0, top: 0 };
+                startX = ev.clientX;
+                startY = ev.clientY;
+                originLeft = rect.left - parentRect.left;
+                originTop = rect.top - parentRect.top;
+                el.style.left = `${originLeft}px`;
+                el.style.top = `${originTop}px`;
+                el.style.transform = 'none';
+                el.style.right = 'auto';
+                this._followHudDragging = true;
+                pointerId = ev.pointerId;
+                el.classList.add('is-dragging');
+                try { handle.setPointerCapture?.(ev.pointerId); } catch (_) { /* ignore */ }
+                global.addEventListener('pointermove', onMove);
+                global.addEventListener('pointerup', onUp);
+                global.addEventListener('pointercancel', onUp);
+            });
+        }
+
         syncFollowHudVisibility() {
             const el = document.getElementById('tcFollowHud');
             if (!el) return;
-            if (this.followId) {
-                el.hidden = false;
+            const show = !!this.followId && this._followHudVisible;
+            el.hidden = !show;
+            this.updateFollowHudToggleBtn();
+            if (show) {
+                this.applyFollowHudPosition();
                 void this.ensureGeofenceDataForHud();
                 this.scheduleFollowHudUpdate(true);
                 this.startFollowHudClock();
             } else {
-                el.hidden = true;
                 this.stopFollowHudClock();
-                this._followHudAddressKey = null;
-                this._followHudAddress = null;
+                if (!this.followId) {
+                    this._followHudAddressKey = null;
+                    this._followHudAddress = null;
+                }
             }
         }
 
@@ -3736,7 +3915,7 @@
         }
 
         scheduleFollowHudUpdate(force = false) {
-            if (!this.followId) return;
+            if (!this.followId || !this._followHudVisible) return;
             const now = performance.now();
             if (!force && this._followHudAt && now - this._followHudAt < 180) return;
             this._followHudAt = now;
