@@ -20,14 +20,14 @@ class ContactConfirmationMail extends Mailable
     public function __construct(ContactMessage $contactMessage)
     {
         $this->contactMessage = $contactMessage;
-        $this->supportEmail = config('contact.email', config('mail.support_email', 'support@billxiotgps.com'));
+        $this->supportEmail = config('contact.email', config('mail.support_email', 'info@billxiot.com'));
     }
 
     public function envelope(): Envelope
     {
         return new Envelope(
             subject: 'Thank You for Contacting BillX GPS',
-            replyTo: [config('contact.email', 'support@billxiotgps.com')]
+            replyTo: [config('contact.email', 'info@billxiot.com')]
         );
     }
 
@@ -39,7 +39,7 @@ class ContactConfirmationMail extends Mailable
                 'ticketNumber' => 'TP-' . str_pad($this->contactMessage->id, 6, '0', STR_PAD_LEFT),
                 'estimatedResponseTime' => '24 hours',
                 'supportPhone' => config('contact.whatsapp', '+923003026824'),
-                'supportEmail' => config('contact.email', 'zhg786@gmail.com'),
+                'supportEmail' => config('contact.email', 'info@billxiot.com'),
             ]
         );
     }
