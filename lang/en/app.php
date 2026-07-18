@@ -1164,6 +1164,7 @@ return [
         'hud_hide' => 'Hide Tracking HUD',
         'hud_toggle' => 'Show / hide Tracking HUD',
         'hud_show' => 'Show Tracking HUD',
+        'hud_hidden_hint' => 'Tracking HUD hidden. Click the eye icon under Follow on the map toolbar to show it again.',
         'street_view_unavailable_title' => 'Street View is not available for this location.',
         'street_view_unavailable_body' => 'This is Google coverage, not an app error. Street View photos are missing in many areas (including much of Saudi Arabia). Use Satellite for a live overhead view instead.',
         'street_view_nearest_hint' => 'Showing nearest available Street View.',

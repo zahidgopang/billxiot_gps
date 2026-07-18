@@ -3758,8 +3758,9 @@
             });
 
             document.getElementById('tcFollowHudHide')?.addEventListener('click', (e) => {
+                e.preventDefault();
                 e.stopPropagation();
-                this.setFollowHudVisible(false);
+                this.setFollowHudVisible(false, { toast: true });
             });
 
             this.bindFollowHudDrag();
@@ -3767,24 +3768,42 @@
             this.updateFollowHudToggleBtn();
         }
 
-        setFollowHudVisible(on) {
-            this._followHudVisible = !!on;
+        setFollowHudVisible(on, options = {}) {
+            const next = !!on;
+            const changed = next !== this._followHudVisible;
+            this._followHudVisible = next;
             this.writeFollowHudVisiblePreference(this._followHudVisible);
             this.syncFollowHudVisibility();
             this.updateFollowHudToggleBtn();
+            if (changed && !next && options.toast !== false && this.followId) {
+                const i = this.cfg.i18n || {};
+                this.toast(i.hudHiddenHint || 'Tracking HUD hidden. Click the eye icon on the map toolbar to show it again.');
+            }
         }
 
         updateFollowHudToggleBtn() {
             const btn = document.getElementById('tcFollowHudToggle');
             if (!btn) return;
             const following = !!this.followId;
-            btn.hidden = !following;
-            btn.classList.toggle('active', following && this._followHudVisible);
-            btn.setAttribute('aria-pressed', following && this._followHudVisible ? 'true' : 'false');
+            if (following) {
+                btn.removeAttribute('hidden');
+            } else {
+                btn.setAttribute('hidden', '');
+            }
+            const hudOn = following && this._followHudVisible;
+            btn.classList.toggle('active', hudOn);
+            btn.classList.toggle('tc-hud-toggle--off', following && !this._followHudVisible);
+            btn.setAttribute('aria-pressed', hudOn ? 'true' : 'false');
             const i = this.cfg.i18n || {};
             btn.title = this._followHudVisible
                 ? (i.hudHide || i.hudToggle || 'Hide Tracking HUD')
                 : (i.hudShow || i.hudToggle || 'Show Tracking HUD');
+            const icon = btn.querySelector('i');
+            if (icon) {
+                icon.className = this._followHudVisible
+                    ? 'fas fa-eye'
+                    : 'fas fa-eye-slash';
+            }
         }
 
         applyFollowHudPosition() {

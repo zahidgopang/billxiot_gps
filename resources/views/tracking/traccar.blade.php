@@ -1297,6 +1297,16 @@
             outline-color: color-mix(in srgb, var(--tc-primary) 55%, transparent);
             box-shadow: 0 0 0 3px color-mix(in srgb, var(--tc-primary) 18%, transparent), var(--tc-shadow);
         }
+        #tcFollowHudToggle.tc-hud-toggle--off {
+            background: var(--tc-primary) !important;
+            color: #fff !important;
+            border-color: var(--tc-primary) !important;
+            animation: tc-hud-pulse 1.4s ease-in-out infinite;
+        }
+        @keyframes tc-hud-pulse {
+            0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--tc-primary) 45%, transparent); }
+            50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--tc-primary) 0%, transparent); }
+        }
 
         /* Follow Mode Tracking HUD — toggleable + draggable */
         .tc-follow-hud {
@@ -2720,7 +2730,7 @@
                                 <i class="fas fa-crosshairs"></i>
                             </button>
                             <button type="button" class="btn btn-light" id="tcFollowHudToggle" title="{{ __('app.tracking.hud_toggle') }}" aria-pressed="true" hidden>
-                                <i class="fas fa-table-list"></i>
+                                <i class="fas fa-eye"></i>
                             </button>
                         </div>
                         @endif
@@ -3003,6 +3013,7 @@
                 hudToggle: @json(__('app.tracking.hud_toggle')),
                 hudShow: @json(__('app.tracking.hud_show')),
                 hudHide: @json(__('app.tracking.hud_hide')),
+                hudHiddenHint: @json(__('app.tracking.hud_hidden_hint')),
                 menuShare: @json(__('app.tracking.menu_share')),
                 menuSendCommand: @json(__('app.tracking.menu_send_command')),
                 menuEdit: @json(__('app.tracking.menu_edit')),
