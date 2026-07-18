@@ -33,6 +33,94 @@
             .replace(/"/g, '&quot;');
     }
 
+    function compassLabel(headingDeg) {
+        const h = ((Number(headingDeg) % 360) + 360) % 360;
+        if (!Number.isFinite(h)) return null;
+        const dirs = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+        return dirs[Math.round(h / 45) % 8];
+    }
+
+    function parseGpsTimeMs(v) {
+        const raw = v?.recorded_at || v?.last_update || v?.timestamp;
+        if (!raw) return null;
+        const ms = Date.parse(String(raw));
+        return Number.isFinite(ms) ? ms : null;
+    }
+
+    function formatRelativeAgo(ms, i18n) {
+        if (ms == null) return '—';
+        const sec = Math.max(0, Math.round((Date.now() - ms) / 1000));
+        if (sec < 3) return i18n.hudAgoJustNow || 'Just now';
+        if (sec < 60) return String(i18n.hudAgoSec || ':n sec ago').replace(':n', String(sec));
+        const min = Math.round(sec / 60);
+        if (min < 60) return String(i18n.hudAgoMin || ':n min ago').replace(':n', String(min));
+        const hr = Math.round(min / 60);
+        return String(i18n.hudAgoHour || ':n h ago').replace(':n', String(hr));
+    }
+
+    function gpsQualityLabel(v, i18n) {
+        const sat = v?.satellites != null ? parseInt(v.satellites, 10) : NaN;
+        if (Number.isFinite(sat)) {
+            if (sat >= 8) return { text: `${i18n.hudGpsGood || 'Good'} · ${sat}`, tier: 'good' };
+            if (sat >= 5) return { text: `${i18n.hudGpsFair || 'Fair'} · ${sat}`, tier: 'fair' };
+            return { text: `${i18n.hudGpsPoor || 'Poor'} · ${sat}`, tier: 'poor' };
+        }
+        const signal = parseInt(v?.gps_signal ?? v?.gsm_signal, 10);
+        if (Number.isFinite(signal)) {
+            if (signal >= 70) return { text: i18n.hudGpsGood || 'Good', tier: 'good' };
+            if (signal >= 40) return { text: i18n.hudGpsFair || 'Fair', tier: 'fair' };
+            return { text: i18n.hudGpsPoor || 'Poor', tier: 'poor' };
+        }
+        return { text: '—', tier: 'unknown' };
+    }
+
+    function roadLabelFromGeocodeResults(results) {
+        if (!Array.isArray(results) || !results.length) return null;
+        const best = results[0];
+        const comps = best.address_components || [];
+        const route = comps.find((c) => (c.types || []).includes('route'));
+        if (route?.long_name) {
+            const locality = comps.find((c) => {
+                const t = c.types || [];
+                return t.includes('locality') || t.includes('sublocality') || t.includes('postal_town');
+            });
+            return locality?.long_name
+                ? `${route.long_name}, ${locality.long_name}`
+                : route.long_name;
+        }
+        return best.formatted_address || null;
+    }
+
+    function pointInPolygon(lat, lng, coords) {
+        if (!Array.isArray(coords) || coords.length < 3) return false;
+        let inside = false;
+        for (let i = 0, j = coords.length - 1; i < coords.length; j = i++) {
+            const yi = parseFloat(coords[i].lat ?? coords[i][0]);
+            const xi = parseFloat(coords[i].lng ?? coords[i][1]);
+            const yj = parseFloat(coords[j].lat ?? coords[j][0]);
+            const xj = parseFloat(coords[j].lng ?? coords[j][1]);
+            const intersect = ((yi > lat) !== (yj > lat))
+                && (lng < ((xj - xi) * (lat - yi)) / ((yj - yi) || 1e-12) + xi);
+            if (intersect) inside = !inside;
+        }
+        return inside;
+    }
+
+    function pointInGeofence(lat, lng, fence) {
+        if (!fence || !Number.isFinite(lat) || !Number.isFinite(lng)) return false;
+        if (fence.type === 'circle' && fence.center && fence.radius != null) {
+            const cLat = parseFloat(fence.center.lat ?? fence.center[0]);
+            const cLng = parseFloat(fence.center.lng ?? fence.center[1]);
+            const r = parseFloat(fence.radius);
+            if (!Number.isFinite(cLat) || !Number.isFinite(cLng) || !Number.isFinite(r)) return false;
+            return haversineKm(lat, lng, cLat, cLng) * 1000 <= r;
+        }
+        if (Array.isArray(fence.coords) && fence.coords.length >= 3) {
+            return pointInPolygon(lat, lng, fence.coords);
+        }
+        return false;
+    }
+
     function colorForPoint(point, stateColors) {
         const key = point?.status_key || 'offline';
         const normalized = key === 'parking' ? 'parked' : key;
@@ -698,6 +786,7 @@
             this.activeTab = 'objects';
             this._mapLayer = 'roadmap';
             this._baseMapLayer = 'roadmap';
+            this._trafficEnabled = false;
             this._streetViewMode = false;
             this._streetViewService = null;
             this._streetViewPano = null;
@@ -708,6 +797,12 @@
             this._streetViewSeq = 0;
             this._streetViewTargetHeading = null;
             this._streetViewHeadingRaf = 0;
+            this._geofenceData = [];
+            this._followHudAt = 0;
+            this._followHudAddressKey = null;
+            this._followHudAddress = null;
+            this._followHudAddressInflight = false;
+            this._followHudTimer = null;
             this.pollTimer = null;
             this.pollInFlight = false;
             this.realtimeHealthy = false;
@@ -1017,7 +1112,12 @@
                 }
             });
             this.legendEl = document.getElementById('tcLegend');
+            // Create once — show/hide via setMap only (Follow overlays).
             this.trafficLayer = new google.maps.TrafficLayer();
+            this._trafficEnabled = this.readTrafficPreference();
+            if (this._trafficEnabled) {
+                this.trafficLayer.setMap(this.map);
+            }
 
             const VM = global.VehicleMarker;
             if (VM) {
@@ -1734,8 +1834,21 @@
                 }
             }
             this.updateFollowBtn();
+            this.updateFollowOverlayChrome();
             this.renderList();
             this.renderLiveClusters();
+            // Keep Street View locked to the newly followed vehicle without interrupting Follow.
+            if (on && this._streetViewMode) {
+                const v = this.vehicles.get(id);
+                if (v && hasGeo(v.lat, v.lng)) {
+                    this.syncStreetViewToPose(
+                        Number(v.lat),
+                        Number(v.lng),
+                        Number(v.heading ?? v.course ?? v.angle ?? 0),
+                        { force: true },
+                    );
+                }
+            }
         }
 
         /* ---------- Per-vehicle action menu (Traccar-style kebab) ---------- */
@@ -2082,6 +2195,10 @@
 
             if (this._streetViewMode && this.streetViewTargetId() === id) {
                 this.syncStreetViewToPose(pose.lat, pose.lng, pose.heading);
+            }
+
+            if (this.followId === id) {
+                this.scheduleFollowHudUpdate(false);
             }
         }
 
@@ -2604,6 +2721,9 @@
             }
             this.syncCompanyMapCard();
             this.syncDriverMapCard();
+            if (this.followId === id) {
+                this.scheduleFollowHudUpdate(true);
+            }
 
             const key = merged.status_key || 'offline';
             if (!MOVING_KEYS.has(key)) this.clearTrail(st);
@@ -2963,11 +3083,12 @@
             }
         }
 
-        /* ---------- Map layers (Map / Satellite / Hybrid / Terrain / Street View + Traffic) ---------- */
+        /* ---------- Map layers + Follow overlays (Traffic / Street View) ---------- */
         bindMapLayers() {
             const toggleBtn = document.getElementById('tcLayers');
             const menu = document.getElementById('tcLayerMenu');
             const trafficBtn = document.getElementById('tcTraffic');
+            const streetViewBtn = document.getElementById('tcStreetViewToggle');
 
             if (toggleBtn && menu) {
                 toggleBtn.addEventListener('click', (e) => {
@@ -2991,9 +3112,10 @@
             }
 
             document.getElementById('tcStreetViewBack')?.addEventListener('click', () => {
-                this.setMapLayer(this._baseMapLayer || 'roadmap');
+                this.setStreetViewEnabled(false);
             });
             document.getElementById('tcStreetViewSatellite')?.addEventListener('click', () => {
+                this.setStreetViewEnabled(false);
                 this.setMapLayer('satellite');
             });
             document.getElementById('tcStreetViewOpenMaps')?.addEventListener('click', () => {
@@ -3006,44 +3128,124 @@
             });
 
             if (trafficBtn) {
-                trafficBtn.addEventListener('click', () => {
-                    if (!this.trafficLayer) return;
-                    const on = this.trafficLayer.getMap() == null;
-                    this.trafficLayer.setMap(on ? this.map : null);
-                    trafficBtn.classList.toggle('active', on);
-                    trafficBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+                this.updateTrafficBtn();
+                trafficBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this.setTrafficEnabled(!this._trafficEnabled);
                 });
+            }
+
+            if (streetViewBtn) {
+                this.updateStreetViewBtn();
+                streetViewBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this.setStreetViewEnabled(!this._streetViewMode);
+                });
+            }
+
+            this.updateFollowOverlayChrome();
+        }
+
+        readTrafficPreference() {
+            try {
+                return global.sessionStorage?.getItem('tc.traffic.enabled') === '1';
+            } catch (_) {
+                return false;
             }
         }
 
-        setMapLayer(type) {
-            const layer = String(type || 'roadmap');
+        writeTrafficPreference(on) {
+            try {
+                global.sessionStorage?.setItem('tc.traffic.enabled', on ? '1' : '0');
+            } catch (_) { /* private mode */ }
+        }
+
+        setTrafficEnabled(on) {
+            const enabled = !!on;
+            this._trafficEnabled = enabled;
+            if (this.trafficLayer && this.map) {
+                this.trafficLayer.setMap(enabled ? this.map : null);
+            }
+            this.writeTrafficPreference(enabled);
+            this.updateTrafficBtn();
+        }
+
+        updateTrafficBtn() {
+            const btn = document.getElementById('tcTraffic');
+            if (!btn) return;
+            btn.classList.toggle('active', !!this._trafficEnabled);
+            btn.setAttribute('aria-pressed', this._trafficEnabled ? 'true' : 'false');
+        }
+
+        updateStreetViewBtn() {
+            const btn = document.getElementById('tcStreetViewToggle');
+            if (!btn) return;
+            btn.classList.toggle('active', !!this._streetViewMode);
+            btn.setAttribute('aria-pressed', this._streetViewMode ? 'true' : 'false');
+        }
+
+        updateFollowOverlayChrome() {
+            document.querySelector('.tc-app')?.classList.toggle('tc-app--following', !!this.followId);
+        }
+
+        syncLayerMenuActive(layer) {
             const menu = document.getElementById('tcLayerMenu');
             menu?.querySelectorAll('.tc-layer-item').forEach((b) => {
                 b.classList.toggle('active', b.dataset.layer === layer);
             });
+        }
 
-            if (layer === 'streetview') {
+        applyBaseMapType(layer) {
+            if (!this.map || !global.google?.maps?.MapTypeId) return;
+            const map = {
+                roadmap: google.maps.MapTypeId.ROADMAP,
+                satellite: google.maps.MapTypeId.SATELLITE,
+                hybrid: google.maps.MapTypeId.HYBRID,
+                terrain: google.maps.MapTypeId.TERRAIN,
+            };
+            this.map.setMapTypeId(map[layer] || google.maps.MapTypeId.ROADMAP);
+        }
+
+        /**
+         * Toolbar Street View toggle — must never clear Follow Mode.
+         */
+        setStreetViewEnabled(on) {
+            if (on) {
                 this.enterStreetViewMode();
                 return;
             }
+            this.exitStreetViewMode();
+            const base = this._baseMapLayer && this._baseMapLayer !== 'streetview'
+                ? this._baseMapLayer
+                : 'roadmap';
+            this._mapLayer = base;
+            this.applyBaseMapType(base);
+            this.syncLayerMenuActive(base);
+            this.updateStreetViewBtn();
+        }
 
-            // Leaving Street View restores the chosen basemap without dropping vehicle focus.
+        setMapLayer(type) {
+            const layer = String(type || 'roadmap');
+
+            if (layer === 'streetview') {
+                this.setStreetViewEnabled(true);
+                return;
+            }
+
+            // Leaving Street View restores the chosen basemap without dropping Follow.
             this.exitStreetViewMode();
             this._mapLayer = layer;
             this._baseMapLayer = layer;
-            if (this.map && global.google?.maps?.MapTypeId) {
-                const map = {
-                    roadmap: google.maps.MapTypeId.ROADMAP,
-                    satellite: google.maps.MapTypeId.SATELLITE,
-                    hybrid: google.maps.MapTypeId.HYBRID,
-                    terrain: google.maps.MapTypeId.TERRAIN,
-                };
-                this.map.setMapTypeId(map[layer] || google.maps.MapTypeId.ROADMAP);
-            }
+            this.applyBaseMapType(layer);
+            this.syncLayerMenuActive(layer);
+            this.updateStreetViewBtn();
         }
 
         streetViewTargetId() {
+            // Prefer the followed vehicle so Follow + Street View stay locked together.
+            if (this.followId != null && this.visible.has(this.followId)) {
+                return this.followId;
+            }
             return this.activeClusterBreakId();
         }
 
@@ -3085,10 +3287,9 @@
             const vehicle = this.streetViewTargetVehicle();
             if (!vehicle) {
                 this.toast(i.streetViewNeedVehicle || i.noPosition || 'Select a vehicle with a live position');
-                const fallback = this._baseMapLayer && this._baseMapLayer !== 'streetview'
-                    ? this._baseMapLayer
-                    : 'roadmap';
-                this.setMapLayer(fallback);
+                this._streetViewMode = false;
+                this.syncLayerMenuActive(this._baseMapLayer || 'roadmap');
+                this.updateStreetViewBtn();
                 return;
             }
 
@@ -3100,6 +3301,8 @@
             document.querySelector('.tc-app')?.classList.add('tc-app--streetview');
             this.hideStreetViewBanners();
             this.ensureStreetViewPanorama();
+            this.syncLayerMenuActive('streetview');
+            this.updateStreetViewBtn();
             this.syncStreetViewToPose(
                 Number(vehicle.lat),
                 Number(vehicle.lng),
@@ -3124,6 +3327,7 @@
             try {
                 this._streetViewPano?.setVisible(false);
             } catch (_) { /* ignore */ }
+            this.updateStreetViewBtn();
         }
 
         hideStreetViewBanners() {
@@ -3493,9 +3697,208 @@
 
         updateFollowBtn() {
             const btn = document.getElementById('tcFollow');
-            if (!btn) return;
-            btn.classList.toggle('active', !!this.followId);
-            btn.setAttribute('aria-pressed', this.followId ? 'true' : 'false');
+            if (btn) {
+                btn.classList.toggle('active', !!this.followId);
+                btn.setAttribute('aria-pressed', this.followId ? 'true' : 'false');
+            }
+            this.updateFollowOverlayChrome();
+            this.syncFollowHudVisibility();
+        }
+
+        syncFollowHudVisibility() {
+            const el = document.getElementById('tcFollowHud');
+            if (!el) return;
+            if (this.followId) {
+                el.hidden = false;
+                void this.ensureGeofenceDataForHud();
+                this.scheduleFollowHudUpdate(true);
+                this.startFollowHudClock();
+            } else {
+                el.hidden = true;
+                this.stopFollowHudClock();
+                this._followHudAddressKey = null;
+                this._followHudAddress = null;
+            }
+        }
+
+        startFollowHudClock() {
+            if (this._followHudTimer) return;
+            this._followHudTimer = global.setInterval(() => {
+                if (!this.followId) return;
+                this.scheduleFollowHudUpdate(false);
+            }, 1000);
+        }
+
+        stopFollowHudClock() {
+            if (!this._followHudTimer) return;
+            global.clearInterval(this._followHudTimer);
+            this._followHudTimer = null;
+        }
+
+        scheduleFollowHudUpdate(force = false) {
+            if (!this.followId) return;
+            const now = performance.now();
+            if (!force && this._followHudAt && now - this._followHudAt < 180) return;
+            this._followHudAt = now;
+            this.renderFollowHud();
+        }
+
+        hudSetText(root, key, text) {
+            const node = root.querySelector(`[data-hud="${key}"]`);
+            if (!node) return;
+            const next = text == null || text === '' ? '' : String(text);
+            if (node.textContent !== next) node.textContent = next;
+        }
+
+        async ensureGeofenceDataForHud() {
+            if (this._geofenceData?.length || this._geofenceHudLoading) return;
+            if (!this.cfg.geofencesJsonUrl) return;
+            this._geofenceHudLoading = true;
+            try {
+                const res = await fetch(`${this.cfg.geofencesJsonUrl}?_=${Date.now()}`, {
+                    credentials: 'same-origin',
+                    cache: 'no-store',
+                    headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                });
+                const data = await res.json().catch(() => ({}));
+                if (res.ok && Array.isArray(data.geofences)) {
+                    this._geofenceData = data.geofences;
+                }
+            } catch (_) { /* HUD geofence is optional */ }
+            finally {
+                this._geofenceHudLoading = false;
+            }
+        }
+
+        findContainingGeofence(lat, lng) {
+            const fences = this._geofenceData || [];
+            for (const g of fences) {
+                if (pointInGeofence(lat, lng, g)) return g;
+            }
+            return null;
+        }
+
+        resolveFollowHudAddress(lat, lng) {
+            const key = `${Number(lat).toFixed(4)},${Number(lng).toFixed(4)}`;
+            if (this._followHudAddressKey === key && this._followHudAddress) {
+                return Promise.resolve(this._followHudAddress);
+            }
+            if (this._addressCache.has(`hud:${key}`)) {
+                const cached = this._addressCache.get(`hud:${key}`);
+                this._followHudAddressKey = key;
+                this._followHudAddress = cached;
+                return Promise.resolve(cached);
+            }
+            if (this._followHudAddressInflight) {
+                return Promise.resolve(this._followHudAddress);
+            }
+            const g = global.google;
+            if (!g?.maps?.Geocoder) {
+                return Promise.resolve(null);
+            }
+            this._followHudAddressInflight = true;
+            const geocoder = new g.maps.Geocoder();
+            return new Promise((resolve) => {
+                geocoder.geocode({ location: { lat, lng } }, (results, status) => {
+                    this._followHudAddressInflight = false;
+                    const label = status === 'OK'
+                        ? (roadLabelFromGeocodeResults(results) || results?.[0]?.formatted_address || null)
+                        : null;
+                    this._addressCache.set(`hud:${key}`, label);
+                    this._followHudAddressKey = key;
+                    this._followHudAddress = label;
+                    resolve(label);
+                    if (this.followId) this.scheduleFollowHudUpdate(true);
+                });
+            });
+        }
+
+        renderFollowHud() {
+            const root = document.getElementById('tcFollowHud');
+            if (!root || !this.followId) return;
+            const id = this.followId;
+            const v = this.vehicles.get(id);
+            if (!v) return;
+            const i = this.cfg.i18n || {};
+            const st = this.states.get(id);
+            const lat = Number(st?.renderPos?.lat ?? v.lat);
+            const lng = Number(st?.renderPos?.lng ?? v.lng);
+            const heading = Number(st?.renderHeading ?? v.heading ?? v.course ?? v.angle ?? 0);
+            const speed = Math.max(0, Math.round(parseFloat(v.speed) || 0));
+            const statusColor = colorForPoint(v, this.stateColors);
+            const statusText = v.status_label || v.status || v.status_key || '—';
+            const name = v.title || v.name || `#${id}`;
+            const plate = v.plate || v.vehicle_number || '';
+            const compass = compassLabel(heading);
+            const gps = gpsQualityLabel(v, i);
+            const ago = formatRelativeAgo(parseGpsTimeMs(v), i);
+            const kmh = i.kmhUnit || 'km/h';
+
+            this.hudSetText(root, 'name', name);
+            this.hudSetText(root, 'plate', plate);
+            this.hudSetText(root, 'status', statusText);
+            const statusWrap = root.querySelector('[data-hud="status-wrap"]');
+            if (statusWrap) statusWrap.style.setProperty('--hud-status', statusColor);
+
+            this.hudSetText(root, 'speed', `${speed} ${kmh}`);
+            const ignChip = root.querySelector('[data-hud="ignition"]')?.closest('.tc-follow-hud__chip');
+            const ignOn = v.ignition === true || v.ignition === 1 || v.ignition === '1';
+            this.hudSetText(root, 'ignition', ignOn ? (i.hudIgnitionOn || 'Ignition ON') : (i.hudIgnitionOff || 'Ignition OFF'));
+            if (ignChip) {
+                ignChip.classList.toggle('tc-follow-hud__chip--ok', ignOn);
+                ignChip.classList.toggle('tc-follow-hud__chip--off', !ignOn);
+            }
+
+            this.hudSetText(
+                root,
+                'heading',
+                Number.isFinite(heading)
+                    ? `${compass || '—'} · ${Math.round(heading)}°`
+                    : '—',
+            );
+            this.hudSetText(root, 'gps', gps.text);
+            this.hudSetText(root, 'ago', ago);
+
+            const addr = this._followHudAddress
+                || (hasGeo(lat, lng) ? (i.hudAddressLoading || 'Resolving road…') : (i.hudAddressUnavailable || 'Address unavailable'));
+            this.hudSetText(root, 'address', addr);
+            if (hasGeo(lat, lng)) {
+                const key = `${Number(lat).toFixed(4)},${Number(lng).toFixed(4)}`;
+                if (this._followHudAddressKey !== key) {
+                    this.resolveFollowHudAddress(lat, lng);
+                }
+            }
+
+            const extra = root.querySelector('[data-hud="extra"]');
+            if (extra) {
+                const pills = [];
+                const progress = v.route_trip?.progress;
+                const eta = progress?.eta_human || progress?.estimated_arrival_time;
+                const remaining = Number(progress?.remaining_distance_km ?? progress?.navigation_remaining_km);
+                if (eta || (Number.isFinite(remaining) && remaining > 0)) {
+                    const bits = [];
+                    if (eta) bits.push(`${i.hudEta || 'ETA'} ${eta}`);
+                    if (Number.isFinite(remaining) && remaining > 0) {
+                        bits.push(`${i.hudRemaining || 'Left'} ${remaining.toFixed(remaining >= 10 ? 0 : 1)} km`);
+                    }
+                    pills.push(`<span class="tc-follow-hud__pill tc-follow-hud__pill--eta"><i class="fas fa-flag-checkered"></i>${escHtml(bits.join(' · '))}</span>`);
+                }
+
+                const limit = Number(v.speed_limit ?? v.speed_limit_kmh ?? OVER_SPEED);
+                if (Number.isFinite(limit) && speed > limit) {
+                    pills.push(`<span class="tc-follow-hud__pill tc-follow-hud__pill--warn"><i class="fas fa-triangle-exclamation"></i>${escHtml(i.hudOverspeed || 'Overspeed')} ${speed}/${Math.round(limit)}</span>`);
+                }
+
+                if (hasGeo(lat, lng)) {
+                    const fence = this.findContainingGeofence(lat, lng);
+                    if (fence?.name) {
+                        pills.push(`<span class="tc-follow-hud__pill tc-follow-hud__pill--geo"><i class="fas fa-draw-polygon"></i>${escHtml(i.hudGeofence || 'Geofence')}: ${escHtml(fence.name)}</span>`);
+                    }
+                }
+
+                const nextExtra = pills.join('');
+                if (extra.innerHTML !== nextExtra) extra.innerHTML = nextExtra;
+            }
         }
 
         /* ---------- History ---------- */
@@ -6604,6 +7007,7 @@
                 this._placesLoaded = true;
                 this.clearPlaces();
                 const fences = data.geofences || [];
+                this._geofenceData = fences;
                 if (fences.length === 0) { listEl.innerHTML = `<div class="tc-empty">${escHtml(this.cfg.i18n?.noData || 'No data')}</div>`; return; }
                 fences.forEach((g) => this.drawGeofence(g));
                 listEl.innerHTML = fences.map((g, i) => `<div class="tc-row" data-place="${i}">

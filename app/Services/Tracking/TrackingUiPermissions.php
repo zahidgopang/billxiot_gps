@@ -59,6 +59,7 @@ class TrackingUiPermissions
             'follow' => $workspace && $can('web.map.sidebar.vehicle_list'),
             'refresh' => $can('web.map.toolbar.refresh') || $can('web.map.auto_refresh'),
             'traffic' => $can('web.map.toolbar.traffic'),
+            'street_view' => $can('web.map.toolbar.street_view'),
             'layers' => $can('web.map.toolbar.layers'),
             'capture' => $workspace && $can('web.map.toolbar.fullscreen'),
         ];
@@ -113,6 +114,7 @@ class TrackingUiPermissions
             'follow' => true,
             'refresh' => true,
             'traffic' => true,
+            'street_view' => true,
             'layers' => true,
             'capture' => true,
         ];
@@ -161,7 +163,7 @@ class TrackingUiPermissions
             'vehicle_list' => false,
             'vehicle_search' => false,
             'vehicle_footer' => false,
-            'map_controls' => ['zoom' => true, 'fit' => false, 'follow' => false, 'refresh' => false, 'traffic' => false, 'layers' => false, 'capture' => false],
+            'map_controls' => ['zoom' => true, 'fit' => false, 'follow' => false, 'refresh' => false, 'traffic' => false, 'street_view' => false, 'layers' => false, 'capture' => false],
             'show_map_controls' => true,
             'route_progress' => false,
             'polyline' => false,
@@ -188,6 +190,7 @@ class TrackingUiPermissions
             'follow' => false,
             'refresh' => $can('web.map.toolbar.refresh') || $can('web.map.auto_refresh'),
             'traffic' => $can('web.map.toolbar.traffic'),
+            'street_view' => $can('web.map.toolbar.street_view'),
             'layers' => $can('web.map.toolbar.layers'),
             'capture' => $can('web.map.toolbar.fullscreen'),
         ];

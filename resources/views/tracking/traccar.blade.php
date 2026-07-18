@@ -1289,6 +1289,166 @@
             border: none;
         }
         .tc-map-controls .tc-ctrl-group .btn + .btn { border-top: 1px solid var(--tc-border); }
+        .tc-map-controls .tc-follow-overlays {
+            outline: 1px solid transparent;
+            transition: outline-color 0.16s ease, box-shadow 0.16s ease;
+        }
+        .tc-app--following .tc-map-controls .tc-follow-overlays {
+            outline-color: color-mix(in srgb, var(--tc-primary) 55%, transparent);
+            box-shadow: 0 0 0 3px color-mix(in srgb, var(--tc-primary) 18%, transparent), var(--tc-shadow);
+        }
+
+        /* Follow Mode Tracking HUD — top-center, compact, non-blocking */
+        .tc-follow-hud {
+            position: absolute;
+            top: 12px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 5;
+            width: min(520px, calc(100% - 112px));
+            pointer-events: none;
+            transition: opacity 0.18s ease, transform 0.18s ease;
+        }
+        .tc-follow-hud[hidden] { display: none !important; }
+        .tc-follow-hud__card {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            padding: 10px 14px;
+            border-radius: 14px;
+            background: color-mix(in srgb, var(--tc-surface, #0f172a) 78%, transparent);
+            border: 1px solid color-mix(in srgb, #fff 12%, transparent);
+            box-shadow: 0 10px 28px rgba(15, 23, 42, 0.28);
+            color: #f8fafc;
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+        }
+        .tc-follow-hud__top {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            min-width: 0;
+        }
+        .tc-follow-hud__identity { min-width: 0; flex: 1; }
+        .tc-follow-hud__name {
+            display: block;
+            font-size: 0.95rem;
+            font-weight: 700;
+            line-height: 1.2;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .tc-follow-hud__plate {
+            display: block;
+            font-size: 0.72rem;
+            opacity: 0.78;
+            letter-spacing: 0.02em;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .tc-follow-hud__status {
+            flex-shrink: 0;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border-radius: 999px;
+            font-size: 0.72rem;
+            font-weight: 700;
+            background: color-mix(in srgb, var(--hud-status, #94a3b8) 22%, transparent);
+            color: #fff;
+            border: 1px solid color-mix(in srgb, var(--hud-status, #94a3b8) 45%, transparent);
+        }
+        .tc-follow-hud__status-dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: var(--hud-status, #94a3b8);
+            box-shadow: 0 0 0 3px color-mix(in srgb, var(--hud-status, #94a3b8) 28%, transparent);
+        }
+        .tc-follow-hud__metrics {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px 10px;
+        }
+        .tc-follow-hud__chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 0.72rem;
+            font-weight: 600;
+            opacity: 0.95;
+            white-space: nowrap;
+        }
+        .tc-follow-hud__chip i {
+            width: 12px;
+            text-align: center;
+            opacity: 0.85;
+            font-size: 0.7rem;
+        }
+        .tc-follow-hud__chip--warn {
+            color: #fecaca;
+        }
+        .tc-follow-hud__chip--ok { color: #bbf7d0; }
+        .tc-follow-hud__chip--off { color: #cbd5e1; }
+        .tc-follow-hud__address {
+            display: flex;
+            align-items: flex-start;
+            gap: 6px;
+            font-size: 0.74rem;
+            line-height: 1.3;
+            opacity: 0.9;
+            min-width: 0;
+        }
+        .tc-follow-hud__address i { margin-top: 2px; opacity: 0.8; }
+        .tc-follow-hud__address span {
+            min-width: 0;
+            overflow: hidden;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+        }
+        .tc-follow-hud__extra {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+        .tc-follow-hud__extra:empty { display: none; }
+        .tc-follow-hud__pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 3px 8px;
+            border-radius: 999px;
+            font-size: 0.68rem;
+            font-weight: 700;
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.14);
+        }
+        .tc-follow-hud__pill--warn {
+            background: rgba(239, 68, 68, 0.22);
+            border-color: rgba(248, 113, 113, 0.45);
+            color: #fecaca;
+        }
+        .tc-follow-hud__pill--geo {
+            background: rgba(8, 145, 178, 0.22);
+            border-color: rgba(34, 211, 238, 0.4);
+        }
+        .tc-follow-hud__pill--eta {
+            background: rgba(37, 99, 235, 0.22);
+            border-color: rgba(96, 165, 250, 0.45);
+        }
+        @media (max-width: 768px) {
+            .tc-follow-hud {
+                top: 8px;
+                width: min(100% - 24px, calc(100% - 56px));
+            }
+            .tc-follow-hud__card { padding: 8px 10px; gap: 5px; border-radius: 12px; }
+            .tc-follow-hud__name { font-size: 0.86rem; }
+            .tc-follow-hud__metrics { gap: 4px 8px; }
+        }
 
         /* Per-vehicle kebab menu (Traccar-style row actions) */
         .tc-row-menu-btn {
@@ -1752,6 +1912,10 @@
             text-align: center;
         }
         .tc-streetview-nearest[hidden] { display: none !important; }
+        .tc-app--following .tc-streetview-nearest { top: 118px; }
+        @media (max-width: 768px) {
+            .tc-app--following .tc-streetview-nearest { top: 108px; }
+        }
 
         /* ===== Skeleton loaders + fade-in ===== */
         @keyframes tcShimmer { 0% { background-position: -320px 0; } 100% { background-position: 320px 0; } }
@@ -2285,6 +2449,32 @@
                         </div>
                     </div>
                     <div id="tcMap" aria-label="{{ __('app.tracking.live_map_aria') }}"></div>
+                    <div id="tcFollowHud" class="tc-follow-hud" hidden aria-live="polite">
+                        <div class="tc-follow-hud__card">
+                            <div class="tc-follow-hud__top">
+                                <div class="tc-follow-hud__identity">
+                                    <span class="tc-follow-hud__name" data-hud="name">—</span>
+                                    <span class="tc-follow-hud__plate" data-hud="plate"></span>
+                                </div>
+                                <span class="tc-follow-hud__status" data-hud="status-wrap">
+                                    <span class="tc-follow-hud__status-dot" aria-hidden="true"></span>
+                                    <span data-hud="status">—</span>
+                                </span>
+                            </div>
+                            <div class="tc-follow-hud__metrics">
+                                <span class="tc-follow-hud__chip" title="{{ __('app.tracking.lbl_speed') }}"><i class="fas fa-gauge-high" aria-hidden="true"></i><span data-hud="speed">—</span></span>
+                                <span class="tc-follow-hud__chip" title="{{ __('app.tracking.lbl_ignition') }}"><i class="fas fa-key" aria-hidden="true"></i><span data-hud="ignition">—</span></span>
+                                <span class="tc-follow-hud__chip" title="{{ __('app.tracking.hud_heading') }}"><i class="fas fa-compass" aria-hidden="true"></i><span data-hud="heading">—</span></span>
+                                <span class="tc-follow-hud__chip" title="{{ __('app.tracking.hud_gps') }}"><i class="fas fa-satellite-dish" aria-hidden="true"></i><span data-hud="gps">—</span></span>
+                                <span class="tc-follow-hud__chip" title="{{ __('app.tracking.hud_last_update') }}"><i class="fas fa-clock" aria-hidden="true"></i><span data-hud="ago">—</span></span>
+                            </div>
+                            <div class="tc-follow-hud__address" title="{{ __('app.tracking.hud_location') }}">
+                                <i class="fas fa-location-dot" aria-hidden="true"></i>
+                                <span data-hud="address">{{ __('app.tracking.hud_address_loading') }}</span>
+                            </div>
+                            <div class="tc-follow-hud__extra" data-hud="extra"></div>
+                        </div>
+                    </div>
                     <div id="tcStreetViewNearest" class="tc-streetview-nearest" hidden role="status" aria-live="polite">
                         {{ __('app.tracking.street_view_nearest_hint') }}
                     </div>
@@ -2461,10 +2651,19 @@
                             <i class="fas fa-sync-alt"></i>
                         </button>
                         @endif
-                        @if(! empty($mapCtl['traffic']))
-                        <button type="button" class="btn btn-light" id="tcTraffic" title="{{ __('app.tracking.layer_traffic') }}" aria-pressed="false">
-                            <i class="fas fa-traffic-light"></i>
-                        </button>
+                        @if(! empty($mapCtl['traffic']) || ! empty($mapCtl['street_view']))
+                        <div class="tc-ctrl-group tc-follow-overlays" id="tcFollowOverlays" title="{{ __('app.tracking.follow_overlays_hint') }}">
+                            @if(! empty($mapCtl['traffic']))
+                            <button type="button" class="btn btn-light" id="tcTraffic" title="{{ __('app.tracking.layer_traffic') }}" aria-pressed="false" aria-label="{{ __('app.tracking.layer_traffic') }}">
+                                <i class="fas fa-traffic-light"></i>
+                            </button>
+                            @endif
+                            @if(! empty($mapCtl['street_view']))
+                            <button type="button" class="btn btn-light" id="tcStreetViewToggle" title="{{ __('app.tracking.layer_street_view') }}" aria-pressed="false" aria-label="{{ __('app.tracking.layer_street_view') }}">
+                                <i class="fas fa-street-view"></i>
+                            </button>
+                            @endif
+                        </div>
                         @endif
                         @if(! empty($mapCtl['layers']))
                         <div class="tc-layer-wrap">
@@ -2705,6 +2904,24 @@
                 streetViewUnavailableTitle: @json(__('app.tracking.street_view_unavailable_title')),
                 streetViewUnavailableBody: @json(__('app.tracking.street_view_unavailable_body')),
                 streetViewNearestHint: @json(__('app.tracking.street_view_nearest_hint')),
+                hudHeading: @json(__('app.tracking.hud_heading')),
+                hudGps: @json(__('app.tracking.hud_gps')),
+                hudLastUpdate: @json(__('app.tracking.hud_last_update')),
+                hudAddressLoading: @json(__('app.tracking.hud_address_loading')),
+                hudAddressUnavailable: @json(__('app.tracking.hud_address_unavailable')),
+                hudIgnitionOn: @json(__('app.tracking.hud_ignition_on')),
+                hudIgnitionOff: @json(__('app.tracking.hud_ignition_off')),
+                hudGpsGood: @json(__('app.tracking.hud_gps_good')),
+                hudGpsFair: @json(__('app.tracking.hud_gps_fair')),
+                hudGpsPoor: @json(__('app.tracking.hud_gps_poor')),
+                hudEta: @json(__('app.tracking.hud_eta')),
+                hudRemaining: @json(__('app.tracking.hud_remaining')),
+                hudOverspeed: @json(__('app.tracking.hud_overspeed')),
+                hudGeofence: @json(__('app.tracking.hud_geofence')),
+                hudAgoJustNow: @json(__('app.tracking.hud_ago_just_now')),
+                hudAgoSec: @json(__('app.tracking.hud_ago_sec')),
+                hudAgoMin: @json(__('app.tracking.hud_ago_min')),
+                hudAgoHour: @json(__('app.tracking.hud_ago_hour')),
                 menuShare: @json(__('app.tracking.menu_share')),
                 menuSendCommand: @json(__('app.tracking.menu_send_command')),
                 menuEdit: @json(__('app.tracking.menu_edit')),
