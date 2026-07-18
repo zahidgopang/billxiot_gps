@@ -2737,13 +2737,16 @@
 
             const movingStatus = MOVING_KEYS.has(key);
             const spd = Math.max(0, parseFloat(merged.speed) || 0);
-            // Speed wins over status — ignition-ON idle at <2 km/h must freeze.
-            const moving = movingStatus && spd >= 2;
+            // Speed is authoritative for icon motion. Status keys can flicker
+            // (running→idle for one packet) and used to freeze the marker at 70+ km/h.
+            const moving = spd >= 2 || (movingStatus && spd >= 1.5);
 
             let h = parseFloat(merged.heading);
-            if (!Number.isFinite(h) || !moving) {
-                h = st.renderHeading != null ? st.renderHeading : 0;
+            // Missing heading on a live packet — keep last rendered course (don't spin to 0).
+            if (!Number.isFinite(h) && st.renderHeading != null) {
+                h = st.renderHeading;
             }
+            if (!Number.isFinite(h)) h = 0;
             merged.heading = h;
             st.lastPoint = merged;
             if (moving) this.commitGpsTrailPoint(st, merged.lat, merged.lng);

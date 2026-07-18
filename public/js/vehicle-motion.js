@@ -30,8 +30,10 @@
     var IDLE_RELOCATE_M = 25;
     /** Consider moving-target absorbed within this residual (meters). */
     var TARGET_ABSORB_M = 1.25;
-    /** Cap dead-reckon coast without a fix (seconds). */
+    /** Cap dead-reckon coast without a fix (seconds) — base; high speed extends this. */
     var MAX_COAST_S = 8;
+    /** Highway / fast cruise may get sparse GPS — allow longer coast so the icon doesn't freeze. */
+    var MAX_COAST_FAST_S = 18;
     /** Keep the shared rAF alive briefly after last motion (ms). */
     var IDLE_KEEPALIVE_MS = 250;
     /** Heading delta between fixes that starts sharp-turn / low-prediction mode. */
@@ -353,11 +355,18 @@
                     st.courseHeading = st.heading;
                     st.speedMps = st.targetSpeedMps;
                     st.hasTarget = false;
-                    // After a turn segment, hold prediction until the next fix so we
-                    // do not coast on a chord while the road is still bending.
-                    if (st.turnMode || st.suppressDr) {
+                    // Only pause coast after a real sharp turn. Holding suppressDr on
+                    // every absorb made highway markers freeze between GPS packets.
+                    var sharpTurn = (Number(st.turnHeadingDelta) || 0) >= SHARP_TURN_DEG;
+                    if (sharpTurn) {
                         st.suppressDr = true;
                         st.turnMode = false;
+                        st._suppressDrUntil = now + 700;
+                    } else {
+                        st.suppressDr = false;
+                        st.turnMode = false;
+                        st.turnHeadingDelta = 0;
+                        st._suppressDrUntil = 0;
                     }
                     if (st.speedMps < MIN_DR_MPS) {
                         enterIdle(st, { lat: st.lat, lng: st.lng }, now);
@@ -417,14 +426,32 @@
                 return;
             }
 
-            // Free coast between fixes — disabled during / after sharp turns until
-            // the next stable heading period (avoids shooting past the corner).
+            // Free coast between fixes. Brief suppress after sharp turns only.
+            if (st._suppressDrUntil && now >= st._suppressDrUntil) {
+                st.suppressDr = false;
+                st._suppressDrUntil = 0;
+            }
             if (st.suppressDr || st.turnMode) {
+                // At speed, still inch forward slowly so the icon never looks "stuck".
+                if (st.speedMps > MIN_DR_MPS * 4) {
+                    var creep = offsetMeters(
+                        { lat: st.lat, lng: st.lng },
+                        st.speedMps * dt * 0.35,
+                        st.courseHeading
+                    );
+                    st.lat = creep.lat;
+                    st.lng = creep.lng;
+                    lastActivityPerf = now;
+                }
                 return;
             }
 
             var coastAge = (now - st.lastFixReceivedAt) / 1000;
-            var canCoast = st.speedMps > MIN_DR_MPS && coastAge < MAX_COAST_S;
+            // Faster vehicles get longer coast windows (sparse telemetry at 70+ km/h).
+            var maxCoast = st.speedMps >= 12
+                ? MAX_COAST_FAST_S
+                : (st.speedMps >= 6 ? 12 : MAX_COAST_S);
+            var canCoast = st.speedMps > MIN_DR_MPS && coastAge < maxCoast;
             if (canCoast) {
                 var moved = offsetMeters(
                     { lat: st.lat, lng: st.lng },
@@ -433,6 +460,17 @@
                 );
                 st.lat = moved.lat;
                 st.lng = moved.lng;
+                lastActivityPerf = now;
+            } else if (st.speedMps > MIN_DR_MPS && coastAge < maxCoast + 4) {
+                // Soft decay instead of hard freeze when the gap is a bit long.
+                var fade = offsetMeters(
+                    { lat: st.lat, lng: st.lng },
+                    st.speedMps * dt * 0.45,
+                    st.courseHeading
+                );
+                st.lat = fade.lat;
+                st.lng = fade.lng;
+                st.speedMps *= Math.max(0.92, 1 - dt * 0.15);
                 lastActivityPerf = now;
             } else {
                 enterIdle(st, { lat: st.lat, lng: st.lng }, now);
@@ -503,9 +541,20 @@
             var gpsDist = haversineMeters(prev, to);
             var displayDist = haversineMeters({ lat: st.lat, lng: st.lng }, to);
 
-            // Genuine movement requires reported speed — GPS park jitter alone must
-            // never restart dead reckoning or heading updates (ignition-ON idle).
-            var genuineMove = flaggedMoving && speedKmh >= IDLE_SPEED_KMH;
+            // Prefer reported speed. If the device still reports cruise speed, keep
+            // moving even when a status flag briefly says "not moving".
+            var genuineMove = speedKmh >= IDLE_SPEED_KMH
+                || (flaggedMoving && speedKmh >= IDLE_SPEED_KMH * 0.75);
+
+            // One bad "stopped" packet while coasting at highway speed — ignore it.
+            if (!genuineMove && !st.idle && st.speedMps >= 6 && gpsDist < 12) {
+                st.lastFixMs = Math.max(st.lastFixMs, fixMs);
+                st.lastFixReceivedAt = now;
+                if (fix.color != null) st.color = fix.color;
+                if (fix.meta !== undefined) st.meta = fix.meta;
+                ensureLoop();
+                return;
+            }
 
             if (!genuineMove) {
                 st.lastFixMs = fixMs;
