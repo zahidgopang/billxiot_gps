@@ -1327,33 +1327,28 @@
         }
         .tc-follow-hud.is-dragging .tc-follow-hud__card {
             box-shadow:
-                0 18px 40px rgba(15, 23, 42, 0.35),
-                inset 0 0 0 1px rgba(255, 255, 255, 0.2);
+                0 16px 36px rgba(15, 23, 42, 0.18),
+                inset 0 0 0 1px rgba(255, 255, 255, 0.85);
         }
         .tc-follow-hud__card {
-            --hud-ink: #ffffff;
-            --hud-ink-soft: #f1f5f9;
-            --hud-halo:
-                0 0 1px rgba(0, 0, 0, 0.95),
-                0 1px 2px rgba(0, 0, 0, 0.9),
-                0 0 10px rgba(0, 0, 0, 0.55),
-                0 0 18px rgba(0, 0, 0, 0.35);
+            --hud-ink: #0f172a;
+            --hud-ink-soft: #475569;
             display: flex;
             flex-direction: column;
             gap: 7px;
             padding: 8px 12px 10px;
             border-radius: 16px;
-            /* Glass panel — map stays visible underneath */
+            /* Light frosted glass over the map */
             background:
-                linear-gradient(160deg, rgba(15, 23, 42, 0.38), rgba(15, 23, 42, 0.22)),
-                rgba(255, 255, 255, 0.06);
-            border: 1px solid rgba(255, 255, 255, 0.28);
+                linear-gradient(165deg, rgba(255, 255, 255, 0.94), rgba(248, 250, 252, 0.88)),
+                rgba(255, 255, 255, 0.72);
+            border: 1px solid rgba(148, 163, 184, 0.45);
             box-shadow:
-                0 10px 28px rgba(15, 23, 42, 0.28),
-                inset 0 1px 0 rgba(255, 255, 255, 0.18);
+                0 10px 28px rgba(15, 23, 42, 0.14),
+                inset 0 1px 0 rgba(255, 255, 255, 0.95);
             color: var(--hud-ink);
-            backdrop-filter: blur(16px) saturate(1.25);
-            -webkit-backdrop-filter: blur(16px) saturate(1.25);
+            backdrop-filter: blur(14px) saturate(1.2);
+            -webkit-backdrop-filter: blur(14px) saturate(1.2);
         }
         .tc-follow-hud__toolbar {
             display: flex;
@@ -1371,33 +1366,31 @@
             padding: 2px 6px;
             border: 0;
             border-radius: 8px;
-            background: rgba(0, 0, 0, 0.22);
-            color: #f8fafc;
+            background: rgba(241, 245, 249, 0.95);
+            color: #64748b;
             font-size: 0.68rem;
             font-weight: 800;
             letter-spacing: 0.04em;
             text-transform: uppercase;
             cursor: grab;
-            text-shadow: var(--hud-halo);
         }
         .tc-follow-hud__drag:active { cursor: grabbing; }
-        .tc-follow-hud__drag i { color: #e2e8f0; }
+        .tc-follow-hud__drag i { color: #94a3b8; }
         .tc-follow-hud__hide {
             width: 28px;
             height: 28px;
             border: 0;
             border-radius: 8px;
-            background: rgba(0, 0, 0, 0.28);
-            color: #fff;
+            background: rgba(241, 245, 249, 0.95);
+            color: #475569;
             display: inline-flex;
             align-items: center;
             justify-content: center;
             cursor: pointer;
-            text-shadow: var(--hud-halo);
         }
         .tc-follow-hud__hide:hover {
-            background: rgba(0, 0, 0, 0.42);
-            color: #fff;
+            background: #e2e8f0;
+            color: #0f172a;
         }
         .tc-follow-hud__top {
             display: flex;
@@ -1410,7 +1403,7 @@
             flex: 1;
             padding: 3px 8px;
             border-radius: 10px;
-            background: rgba(0, 0, 0, 0.28);
+            background: rgba(241, 245, 249, 0.9);
         }
         .tc-follow-hud__name {
             display: block;
@@ -1418,7 +1411,6 @@
             font-weight: 800;
             line-height: 1.2;
             color: var(--hud-ink);
-            text-shadow: var(--hud-halo);
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -1429,7 +1421,6 @@
             font-weight: 700;
             color: var(--hud-ink-soft);
             letter-spacing: 0.02em;
-            text-shadow: var(--hud-halo);
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -1443,17 +1434,16 @@
             border-radius: 999px;
             font-size: 0.72rem;
             font-weight: 800;
-            background: color-mix(in srgb, var(--hud-status, #94a3b8) 55%, rgba(0, 0, 0, 0.72));
-            color: #ffffff;
-            border: 1px solid color-mix(in srgb, var(--hud-status, #94a3b8) 75%, #fff);
-            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.65);
+            background: color-mix(in srgb, var(--hud-status, #94a3b8) 18%, #ffffff);
+            color: color-mix(in srgb, var(--hud-status, #64748b) 72%, #0f172a);
+            border: 1px solid color-mix(in srgb, var(--hud-status, #94a3b8) 45%, #e2e8f0);
         }
         .tc-follow-hud__status-dot {
             width: 7px;
             height: 7px;
             border-radius: 50%;
-            background: #fff;
-            box-shadow: 0 0 0 2px color-mix(in srgb, var(--hud-status, #94a3b8) 80%, #fff);
+            background: var(--hud-status, #94a3b8);
+            box-shadow: 0 0 0 2px color-mix(in srgb, var(--hud-status, #94a3b8) 28%, #fff);
         }
         .tc-follow-hud__metrics {
             display: flex;
@@ -1468,33 +1458,34 @@
             border-radius: 999px;
             font-size: 0.74rem;
             font-weight: 800;
-            color: #ffffff;
-            background: rgba(0, 0, 0, 0.34);
-            border: 1px solid rgba(255, 255, 255, 0.16);
-            text-shadow: var(--hud-halo);
+            color: #334155;
+            background: rgba(241, 245, 249, 0.95);
+            border: 1px solid rgba(203, 213, 225, 0.9);
             white-space: nowrap;
         }
         .tc-follow-hud__chip i {
             width: 12px;
             text-align: center;
-            color: #bfdbfe;
+            color: #64748b;
             font-size: 0.72rem;
-            filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.8));
         }
         .tc-follow-hud__chip--warn {
-            color: #ffe4e6;
-            background: rgba(127, 29, 29, 0.45);
+            color: #9f1239;
+            background: #fff1f2;
+            border-color: #fecdd3;
         }
         .tc-follow-hud__chip--ok {
-            color: #dcfce7;
-            background: rgba(20, 83, 45, 0.42);
+            color: #166534;
+            background: #f0fdf4;
+            border-color: #bbf7d0;
         }
-        .tc-follow-hud__chip--ok i { color: #86efac; }
+        .tc-follow-hud__chip--ok i { color: #16a34a; }
         .tc-follow-hud__chip--off {
-            color: #f1f5f9;
-            background: rgba(15, 23, 42, 0.4);
+            color: #475569;
+            background: #f8fafc;
+            border-color: #e2e8f0;
         }
-        .tc-follow-hud__chip--off i { color: #cbd5e1; }
+        .tc-follow-hud__chip--off i { color: #94a3b8; }
         .tc-follow-hud__address {
             display: flex;
             align-items: flex-start;
@@ -1504,16 +1495,14 @@
             font-size: 0.76rem;
             font-weight: 700;
             line-height: 1.35;
-            color: #ffffff;
-            background: rgba(0, 0, 0, 0.32);
-            border: 1px solid rgba(255, 255, 255, 0.12);
-            text-shadow: var(--hud-halo);
+            color: #334155;
+            background: rgba(241, 245, 249, 0.92);
+            border: 1px solid rgba(203, 213, 225, 0.85);
             min-width: 0;
         }
         .tc-follow-hud__address i {
             margin-top: 2px;
-            color: #bfdbfe;
-            filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.8));
+            color: #64748b;
         }
         .tc-follow-hud__address span {
             min-width: 0;
@@ -1521,7 +1510,7 @@
             display: -webkit-box;
             -webkit-line-clamp: 2;
             -webkit-box-orient: vertical;
-            color: #ffffff;
+            color: #334155;
         }
         .tc-follow-hud__extra {
             display: flex;
@@ -1537,25 +1526,24 @@
             border-radius: 999px;
             font-size: 0.7rem;
             font-weight: 800;
-            color: #ffffff;
-            background: rgba(0, 0, 0, 0.38);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            text-shadow: var(--hud-halo);
+            color: #334155;
+            background: #f1f5f9;
+            border: 1px solid #cbd5e1;
         }
         .tc-follow-hud__pill--warn {
-            background: rgba(153, 27, 27, 0.55);
-            border-color: rgba(254, 202, 202, 0.55);
-            color: #fff1f2;
+            background: #fff1f2;
+            border-color: #fecdd3;
+            color: #9f1239;
         }
         .tc-follow-hud__pill--geo {
-            background: rgba(14, 116, 144, 0.5);
-            border-color: rgba(165, 243, 252, 0.5);
-            color: #ecfeff;
+            background: #ecfeff;
+            border-color: #a5f3fc;
+            color: #0e7490;
         }
         .tc-follow-hud__pill--eta {
-            background: rgba(30, 64, 175, 0.52);
-            border-color: rgba(191, 219, 254, 0.5);
-            color: #eff6ff;
+            background: #eff6ff;
+            border-color: #bfdbfe;
+            color: #1d4ed8;
         }
         @media (max-width: 768px) {
             .tc-follow-hud {
@@ -2962,6 +2950,11 @@
                 statusParking: @json(__('app.map.timeline_parked')),
                 statusIdle: @json(__('app.map.timeline_idle')),
                 statusStopped: @json(__('app.map.status_stopped')),
+                statusRunning: @json(__('app.map.status_running')),
+                statusMoving: @json(__('app.map.status_moving')),
+                statusParked: @json(__('app.map.status_parked')),
+                statusDelayed: @json(__('app.map.status_delayed')),
+                statusStale: @json(__('app.map.status_stale')),
                 statusOffline: @json(__('app.map.status_offline')),
                 historyMarkers: @json(__('app.tracking.history_status_markers')),
                 colShow: @json(__('app.tracking.col_show')),

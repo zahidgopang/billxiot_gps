@@ -25,6 +25,42 @@
     const MOVING_KEYS = new Set(['running', 'moving']);
     const STOPPED_KEYS = new Set(['stopped', 'idle', 'parked', 'parking', 'ignition_off']);
     const OFFLINE_KEYS = new Set(['offline', 'stale', 'delayed', 'blocked']);
+    /** Mirror App\Services\Mobile\VehicleStatusSpec connectivity windows. */
+    const CONNECTIVITY_DELAYED_S = 120;
+    const CONNECTIVITY_STALE_S = 600;
+    const CONNECTIVITY_OFFLINE_S = 1800;
+
+    function connectivityTierFromAge(seconds) {
+        if (seconds == null || !Number.isFinite(seconds)) return 'offline';
+        if (seconds > CONNECTIVITY_OFFLINE_S) return 'offline';
+        if (seconds >= CONNECTIVITY_STALE_S) return 'stale';
+        if (seconds >= CONNECTIVITY_DELAYED_S) return 'delayed';
+        return 'live';
+    }
+
+    function statusLabelForKey(key, i18n) {
+        const i = i18n || {};
+        switch (String(key || '').toLowerCase()) {
+            case 'running': return i.statusRunning || 'Running';
+            case 'moving': return i.statusMoving || 'Moving';
+            case 'idle':
+            case 'stopped': return i.statusIdle || i.statusStopped || 'Idle';
+            case 'parked':
+            case 'parking':
+            case 'ignition_off': return i.statusParked || i.statusParking || 'Parked';
+            case 'delayed': return i.statusDelayed || 'Delayed';
+            case 'stale': return i.statusStale || 'Weak Signal / Stale';
+            case 'offline': return i.statusOffline || 'Offline';
+            default: return i.statusStopped || 'Stopped';
+        }
+    }
+
+    function motionKeyFromTelemetry(speed, ignition) {
+        const spd = Math.max(0, parseFloat(speed) || 0);
+        const ign = ignition === true || ignition === 1 || ignition === '1';
+        if (ign) return spd > 1 ? 'running' : 'idle';
+        return spd > 1 ? 'moving' : 'parked';
+    }
 
     function escHtml(s) {
         return String(s ?? '')
@@ -806,6 +842,9 @@
             this._followHudVisible = this.readFollowHudVisiblePreference();
             this._followHudDragBound = false;
             this._followHudDragging = false;
+            this._connectivityAgeTimer = null;
+            this._connectivityPollAt = 0;
+            this._clusterApplyAt = 0;
             this.pollTimer = null;
             this.pollInFlight = false;
             this.realtimeHealthy = false;
@@ -1258,6 +1297,7 @@
             } else if (this._needsHttpLivePoll()) {
                 this.startPolling();
             }
+            this.startConnectivityAging();
         }
 
         /** Apply cached SSR positions so markers/clusters render before the first poll. */
@@ -2573,10 +2613,22 @@
             return path;
         }
 
+        vehicleLooksMoving(point) {
+            if (!point) return false;
+            const key = point.status_key || '';
+            const motion = point.motion_status_key || point.last_known_status_key || '';
+            const spd = Math.max(
+                0,
+                parseFloat(point.speed) || 0,
+                parseFloat(point.last_known_speed) || 0,
+            );
+            return spd >= 2 || MOVING_KEYS.has(key) || MOVING_KEYS.has(motion);
+        }
+
         syncTrailPolyline(st, lat, lng, color, deviceId) {
             if (!this.map) return;
-            const key = st.lastPoint?.status_key || this.vehicles.get(deviceId)?.status_key || '';
-            if (!MOVING_KEYS.has(key)) {
+            const point = st.lastPoint || this.vehicles.get(deviceId);
+            if (!this.vehicleLooksMoving(point)) {
                 this.clearTrail(st);
                 return;
             }
@@ -2663,8 +2715,7 @@
                 st.marker.setPosition({ lat: pos.lat, lng: pos.lng });
             }
 
-            const key = st.lastPoint?.status_key || vehicle?.status_key || '';
-            if (MOVING_KEYS.has(key)) {
+            if (this.vehicleLooksMoving(st.lastPoint || vehicle)) {
                 this.syncTrailPolyline(st, pos.lat, pos.lng, color || colorForPoint(vehicle || {}, this.stateColors), id);
             }
         }
@@ -2729,16 +2780,25 @@
             }
 
             const key = merged.status_key || 'offline';
-            if (!MOVING_KEYS.has(key)) this.clearTrail(st);
+            const tier = merged.connectivity_tier
+                || (OFFLINE_KEYS.has(key) ? key : 'live');
+            if (!MOVING_KEYS.has(key) && tier === 'live') this.clearTrail(st);
 
             if (this.historyActive) { st.lastPoint = merged; return; }
 
             st.marker.setTitle(this.labelFor(merged));
 
-            const movingStatus = MOVING_KEYS.has(key);
-            const spd = Math.max(0, parseFloat(merged.speed) || 0);
+            const movingStatus = MOVING_KEYS.has(key)
+                || MOVING_KEYS.has(merged.motion_status_key)
+                || MOVING_KEYS.has(merged.last_known_status_key);
+            let spd = Math.max(0, parseFloat(merged.speed) || 0);
+            // Delayed/stale packets may zero speed while last-known cruise remains.
+            if (spd < 2 && tier !== 'live') {
+                const lastSpd = Math.max(0, parseFloat(merged.last_known_speed) || 0);
+                if (lastSpd >= 2) spd = lastSpd;
+            }
             // Speed is authoritative for icon motion. Status keys can flicker
-            // (running→idle for one packet) and used to freeze the marker at 70+ km/h.
+            // (running→idle / delayed) and used to freeze the marker at 70+ km/h.
             const moving = spd >= 2 || (movingStatus && spd >= 1.5);
 
             let h = parseFloat(merged.heading);
@@ -2769,7 +2829,17 @@
             } else {
                 this.placeVehicleMarker(st, id, merged.lat, merged.lng, liveColor, h);
             }
-            this.scheduleRenderLiveClusters();
+            // Cluster rebuild every GPS fix freezes/flickers markers — throttle hard.
+            // Followed / panel vehicle is cluster-break already; skip rebuild for those.
+            const breakId = this.activeClusterBreakId();
+            if (breakId != null && Number(breakId) === Number(id)) {
+                return;
+            }
+            const nowCluster = performance.now();
+            if (!this._clusterApplyAt || nowCluster - this._clusterApplyAt > 2200) {
+                this._clusterApplyAt = nowCluster;
+                this.scheduleRenderLiveClusters();
+            }
         }
 
         showLiveLayer(show) {
@@ -2785,6 +2855,158 @@
             });
             if (show && !this.historyActive) this.scheduleRenderLiveClusters(true);
             else this.clearLiveClusters();
+        }
+
+        /* ---------- Connectivity aging (delayed / stale / offline) ---------- */
+        startConnectivityAging() {
+            if (this._connectivityAgeTimer) return;
+            this._connectivityAgeTimer = global.setInterval(() => {
+                if (document.hidden) return;
+                this.tickConnectivityAging();
+            }, 1000);
+        }
+
+        stopConnectivityAging() {
+            if (!this._connectivityAgeTimer) return;
+            global.clearInterval(this._connectivityAgeTimer);
+            this._connectivityAgeTimer = null;
+        }
+
+        /**
+         * Recompute delayed/stale/offline from last GPS time while Reverb is quiet.
+         * Keeps Tracking HUD, bottom sheet, list badge, and marker color live.
+         */
+        tickConnectivityAging() {
+            const i18n = this.cfg.i18n || {};
+            const colors = this.stateColors || {};
+            let anyChanged = false;
+            let needFocusedPoll = false;
+            const focusIds = new Set(
+                [this.followId, this._panelDeviceId, this._focusedVehicleId]
+                    .filter((id) => id != null)
+                    .map((id) => Number(id)),
+            );
+
+            this.vehicles.forEach((v, id) => {
+                if (!v) return;
+                const fixMs = parseGpsTimeMs(v);
+                if (fixMs == null) return;
+                const ageSec = Math.max(0, Math.round((Date.now() - fixMs) / 1000));
+                const tier = connectivityTierFromAge(ageSec);
+                const prevTier = v.connectivity_tier || 'live';
+                const prevKey = v.status_key || 'offline';
+
+                let nextKey;
+                let nextLabel;
+                if (tier === 'live') {
+                    const motionKey = v.motion_status_key
+                        || motionKeyFromTelemetry(v.speed, v.ignition);
+                    // Restore live motion labels if we previously aged past live.
+                    if (prevTier !== 'live' || OFFLINE_KEYS.has(prevKey)) {
+                        nextKey = motionKey;
+                        nextLabel = statusLabelForKey(motionKey, i18n);
+                    } else {
+                        return;
+                    }
+                } else {
+                    nextKey = tier;
+                    nextLabel = statusLabelForKey(tier, i18n);
+                }
+
+                if (prevKey === nextKey && prevTier === tier) {
+                    // Still refresh "ago" on the followed HUD every second.
+                    if (this.followId === id) this.scheduleFollowHudUpdate(false);
+                    return;
+                }
+
+                const motionKey = v.motion_status_key
+                    || motionKeyFromTelemetry(v.speed, v.ignition);
+                const motionLabel = v.motion_status
+                    || statusLabelForKey(motionKey, i18n);
+                const nextColor = colors[nextKey] || colorForPoint({ status_key: nextKey }, colors);
+
+                const updated = {
+                    ...v,
+                    status_key: nextKey,
+                    status: nextLabel,
+                    status_label: nextLabel,
+                    connectivity_tier: tier,
+                    color: nextColor,
+                    last_known_status: v.last_known_status || (prevTier === 'live' ? (v.status_label || v.status) : motionLabel),
+                    last_known_status_key: v.last_known_status_key || (prevTier === 'live' ? prevKey : motionKey),
+                    motion_status_key: motionKey,
+                    motion_status: motionLabel,
+                };
+                this.vehicles.set(id, updated);
+                anyChanged = true;
+
+                const st = this.states.get(id);
+                if (st?.lastPoint) {
+                    st.lastPoint = { ...st.lastPoint, ...updated };
+                }
+
+                const statusText = updated.status_label || updated.status || nextKey;
+                const statusEl = document.querySelector(`[data-status="${id}"]`);
+                if (statusEl) {
+                    statusEl.style.setProperty('--st', nextColor);
+                    statusEl.textContent = statusText;
+                }
+                const iconEl = document.querySelector(`[data-veh-icon="${id}"]`);
+                if (iconEl) {
+                    iconEl.style.color = nextColor;
+                    iconEl.title = statusText;
+                }
+                const metaEl = document.querySelector(`[data-meta="${id}"]`);
+                if (metaEl) metaEl.innerHTML = this.metaHtml(updated);
+
+                if (st?.marker) {
+                    st._iconSig = null;
+                    this.placeVehicleMarker(
+                        st,
+                        id,
+                        st.renderPos?.lat ?? updated.lat,
+                        st.renderPos?.lng ?? updated.lng,
+                        nextColor,
+                        st.renderHeading ?? updated.heading,
+                    );
+                }
+
+                this.updatePanelLive(updated);
+                if (this.followId === id) this.scheduleFollowHudUpdate(true);
+                if (focusIds.has(Number(id)) && tier !== 'live') needFocusedPoll = true;
+            });
+
+            if (anyChanged) this.updateCounts();
+
+            // Pull fresh odometer / panel fields for focused vehicles once they age out.
+            if (needFocusedPoll) {
+                const now = Date.now();
+                if (!this._connectivityPollAt || now - this._connectivityPollAt > 8000) {
+                    this._connectivityPollAt = now;
+                    this.pollFocusedLive();
+                }
+            }
+        }
+
+        /** Lightweight live-json for follow / open panel only (works even when Reverb is healthy). */
+        async pollFocusedLive() {
+            const ids = [...new Set(
+                [this.followId, this._panelDeviceId, this._focusedVehicleId]
+                    .filter((id) => id != null && this.visible.has(Number(id)))
+                    .map((id) => Number(id)),
+            )];
+            if (!ids.length || this.pollInFlight) return;
+            this.pollInFlight = true;
+            try {
+                const url = `${this.cfg.liveJsonUrl}?ids=${ids.join(',')}&_=${Date.now()}`;
+                const res = await fetch(url, { credentials: 'same-origin', cache: 'no-store' });
+                if (!res.ok) return;
+                const data = await res.json();
+                (data.devices || []).forEach((d) => this.applyPoint(d.id, d));
+            } catch (_) { /* ignore */ }
+            finally {
+                this.pollInFlight = false;
+            }
         }
 
         /* ---------- Polling + realtime ---------- */
@@ -6356,6 +6578,12 @@
             const i = this.cfg.i18n || {};
             const kmh = i.kmhUnit || 'km/h';
             const dash = '—';
+            const panelView = {
+                ...v,
+                status: v.status_label || v.status,
+                status_label: v.status_label || v.status,
+                color: colorForPoint(v, this.stateColors),
+            };
 
             const footerTitle = document.getElementById('tcFooterTitle');
             if (footerTitle) footerTitle.textContent = this.labelFor(v);
@@ -6368,8 +6596,8 @@
 
             const statusEl = document.getElementById('tcPanelStatus');
             if (statusEl) {
-                statusEl.innerHTML = this.panelStatusHtml(v, i);
-                statusEl.style.color = colorForPoint(v, this.stateColors);
+                statusEl.innerHTML = this.panelStatusHtml(panelView, i);
+                statusEl.style.color = panelView.color;
             }
 
             const statusDurEl = document.getElementById('tcPanelStatusDuration');
@@ -6418,6 +6646,29 @@
                         this.map.panTo({ lat: Number(v.lat), lng: Number(v.lng) });
                         if (this.map.getZoom() < 15) this.map.setZoom(16);
                     }
+                });
+            }
+
+            // Keep cached panel in sync so tab re-renders don't flash stale status/odo.
+            if (this._panel) {
+                Object.assign(this._panel, {
+                    status: panelView.status,
+                    status_label: panelView.status_label,
+                    status_key: v.status_key,
+                    connectivity_tier: v.connectivity_tier,
+                    last_known_status: v.last_known_status,
+                    color: panelView.color,
+                    speed: v.speed,
+                    ignition: v.ignition,
+                    odometer: odoKm != null ? odoKm : this._panel.odometer,
+                    odometer_km: odoKm != null ? odoKm : this._panel.odometer_km,
+                    altitude: v.altitude != null ? v.altitude : this._panel.altitude,
+                    heading: v.heading != null ? v.heading : this._panel.heading,
+                    lat: v.lat != null ? v.lat : this._panel.lat,
+                    lng: v.lng != null ? v.lng : this._panel.lng,
+                    recorded_at: v.recorded_at || this._panel.recorded_at,
+                    last_update: v.last_update || this._panel.last_update,
+                    recorded_at_human: v.recorded_at_human || this._panel.recorded_at_human,
                 });
             }
         }

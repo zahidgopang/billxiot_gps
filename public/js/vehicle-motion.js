@@ -13,7 +13,9 @@
     var EARTH_RADIUS_M = 6371000;
     var MAX_DT_S = 0.1;
     /** Soft catch-up time constant (seconds) for position (straight driving). */
-    var RECONCILE_TAU_S = 0.65;
+    var RECONCILE_TAU_S = 0.48;
+    /** Highway catch-up — close residual faster so the icon never lags/freezes. */
+    var FAST_RECONCILE_TAU_S = 0.32;
     /** Slower residual pull during sharp turns (accuracy over catch-up). */
     var TURN_RECONCILE_TAU_S = 1.35;
     /** Hard cap — one natural turn, never several full revolutions. */
@@ -31,9 +33,9 @@
     /** Consider moving-target absorbed within this residual (meters). */
     var TARGET_ABSORB_M = 1.25;
     /** Cap dead-reckon coast without a fix (seconds) — base; high speed extends this. */
-    var MAX_COAST_S = 8;
+    var MAX_COAST_S = 10;
     /** Highway / fast cruise may get sparse GPS — allow longer coast so the icon doesn't freeze. */
-    var MAX_COAST_FAST_S = 18;
+    var MAX_COAST_FAST_S = 24;
     /** Keep the shared rAF alive briefly after last motion (ms). */
     var IDLE_KEEPALIVE_MS = 250;
     /** Heading delta between fixes that starts sharp-turn / low-prediction mode. */
@@ -214,18 +216,21 @@
             }
 
             // Micro-motion noise filter (helps hundreds of concurrent markers).
+            // At cruise speed, emit more often so the icon never looks stuck.
             if (!extra?.snap && st._lastEmitLat != null) {
                 var jump = haversineMeters(
                     { lat: st._lastEmitLat, lng: st._lastEmitLng },
                     { lat: st.lat, lng: st.lng }
                 );
                 var dH = Math.abs(shortestHeadingDelta(st._lastEmitHeading || 0, st.heading));
-                var minMove = vehicles.size > 200 ? 0.45 : (vehicles.size > 80 ? 0.3 : 0.18);
-                if (jump < minMove && dH < 0.6 && st.hasTarget) {
-                    // Still reconciling but visually unchanged — skip frame.
+                var fast = st.speedMps >= 8;
+                var minMove = fast
+                    ? 0.08
+                    : (vehicles.size > 200 ? 0.45 : (vehicles.size > 80 ? 0.3 : 0.18));
+                if (jump < minMove && dH < (fast ? 0.35 : 0.6) && st.hasTarget) {
                     return;
                 }
-                if (jump < minMove * 0.5 && dH < 0.35 && !st.hasTarget) {
+                if (jump < minMove * 0.5 && dH < (fast ? 0.2 : 0.35) && !st.hasTarget) {
                     return;
                 }
             }
@@ -410,13 +415,16 @@
                     st.lng = lerp(st.lng, st.targetLng, pull);
                 } else {
                     // Straight / gentle: light heading-aligned step + normal attract.
-                    var fwd = Math.min(speed * dt * 0.4, err * 0.45);
+                    var cruise = speed >= 12;
+                    var fwdGain = cruise ? 0.7 : 0.45;
+                    var fwd = Math.min(speed * dt * fwdGain, err * (cruise ? 0.65 : 0.45));
                     if (fwd > 0.05 && !st.suppressDr) {
                         var step = offsetMeters(display, fwd, st.heading);
                         st.lat = step.lat;
                         st.lng = step.lng;
                     }
-                    var alpha = 1 - Math.exp(-dt / RECONCILE_TAU_S);
+                    var tau = cruise ? FAST_RECONCILE_TAU_S : RECONCILE_TAU_S;
+                    var alpha = 1 - Math.exp(-dt / tau);
                     st.lat = lerp(st.lat, st.targetLat, alpha);
                     st.lng = lerp(st.lng, st.targetLng, alpha);
                 }
@@ -448,9 +456,9 @@
 
             var coastAge = (now - st.lastFixReceivedAt) / 1000;
             // Faster vehicles get longer coast windows (sparse telemetry at 70+ km/h).
-            var maxCoast = st.speedMps >= 12
+            var maxCoast = st.speedMps >= 16
                 ? MAX_COAST_FAST_S
-                : (st.speedMps >= 6 ? 12 : MAX_COAST_S);
+                : (st.speedMps >= 12 ? 18 : (st.speedMps >= 6 ? 14 : MAX_COAST_S));
             var canCoast = st.speedMps > MIN_DR_MPS && coastAge < maxCoast;
             if (canCoast) {
                 var moved = offsetMeters(
@@ -461,16 +469,17 @@
                 st.lat = moved.lat;
                 st.lng = moved.lng;
                 lastActivityPerf = now;
-            } else if (st.speedMps > MIN_DR_MPS && coastAge < maxCoast + 4) {
+            } else if (st.speedMps > MIN_DR_MPS && coastAge < maxCoast + 6) {
                 // Soft decay instead of hard freeze when the gap is a bit long.
+                var fadeGain = st.speedMps >= 12 ? 0.55 : 0.45;
                 var fade = offsetMeters(
                     { lat: st.lat, lng: st.lng },
-                    st.speedMps * dt * 0.45,
+                    st.speedMps * dt * fadeGain,
                     st.courseHeading
                 );
                 st.lat = fade.lat;
                 st.lng = fade.lng;
-                st.speedMps *= Math.max(0.92, 1 - dt * 0.15);
+                st.speedMps *= Math.max(0.94, 1 - dt * 0.12);
                 lastActivityPerf = now;
             } else {
                 enterIdle(st, { lat: st.lat, lng: st.lng }, now);
