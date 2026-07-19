@@ -12,9 +12,12 @@
 
     // Riyadh, Saudi Arabia — default when no vehicles are on the map.
     const DEFAULT_CENTER = { lat: 24.7136, lng: 46.6753 };
-    const TRAIL_MAX = 120;
+    /** Live trail: short “tail” only — not the full trip path. */
+    const TRAIL_MAX_POINTS = 20;
+    /** Drop oldest vertices once the trail exceeds this length (meters). */
+    const TRAIL_MAX_LENGTH_M = 250;
     // Minimum travelled distance (m) before a new GPS vertex is committed to the trail.
-    const TRAIL_MIN_STEP_M = 2.0;
+    const TRAIL_MIN_STEP_M = 4.0;
     const MEDIUM_SPEED = 60;
     const OVER_SPEED = 80;
     const STOP_MIN_SEC = 120;
@@ -700,6 +703,27 @@
     function distMeters(a, b) {
         if (!a || !b) return 0;
         return haversineKm(a.lat, a.lng, b.lat, b.lng) * 1000;
+    }
+
+    /**
+     * Keep the live trail as a short rolling tail (point count + length).
+     * Oldest vertices fall off as the vehicle moves.
+     */
+    function trimLiveTrail(points) {
+        if (!Array.isArray(points) || points.length === 0) return;
+        while (points.length > TRAIL_MAX_POINTS) points.shift();
+        if (points.length < 2) return;
+
+        let total = 0;
+        let cutAt = 0;
+        for (let i = points.length - 1; i > 0; i -= 1) {
+            total += distMeters(points[i - 1], points[i]);
+            if (total > TRAIL_MAX_LENGTH_M) {
+                cutAt = i;
+                break;
+            }
+        }
+        if (cutAt > 0) points.splice(0, cutAt);
     }
 
     /** Dead-reckon a point along heading (meters) — used between slow GPS reports. */
@@ -2569,6 +2593,7 @@
 
         /**
          * Commit a real GPS fix to the travelled-path buffer (not animation frames).
+         * Buffer is a short rolling tail — oldest points are dropped automatically.
          */
         commitGpsTrailPoint(st, lat, lng) {
             const head = normalizeGps(lat, lng);
@@ -2582,9 +2607,10 @@
             const stepM = distMeters(last, head);
             if (stepM >= TRAIL_MIN_STEP_M) {
                 committed.push({ ...head });
-                while (committed.length > TRAIL_MAX) committed.shift();
+                trimLiveTrail(committed);
             } else if (stepM > 0.05) {
                 committed[committed.length - 1] = { ...head };
+                trimLiveTrail(committed);
             }
         }
 

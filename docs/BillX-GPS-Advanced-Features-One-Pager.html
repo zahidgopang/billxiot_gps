@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>BillX GPS — Advanced Features (1-Page Overview)</title>
+  <style>
+    @page { size: A4; margin: 10mm 12mm; }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      font-family: "Segoe UI", Calibri, "Helvetica Neue", Arial, sans-serif;
+      color: #0f172a;
+      background: #fff;
+      font-size: 9.2pt;
+      line-height: 1.28;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    .page {
+      width: 210mm;
+      min-height: 297mm;
+      max-width: 100%;
+      margin: 0 auto;
+      padding: 10mm 12mm;
+    }
+    @media screen {
+      body { background: #e2e8f0; padding: 16px; }
+      .page {
+        background: #fff;
+        box-shadow: 0 8px 28px rgba(15, 23, 42, 0.14);
+        min-height: auto;
+      }
+      .toolbar {
+        width: 210mm;
+        max-width: 100%;
+        margin: 0 auto 12px;
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+      .toolbar button {
+        border: 0;
+        border-radius: 8px;
+        padding: 8px 14px;
+        font-weight: 700;
+        cursor: pointer;
+        background: #0369a1;
+        color: #fff;
+      }
+      .toolbar span { color: #475569; font-size: 12px; }
+    }
+    @media print {
+      body { background: #fff; padding: 0; }
+      .page { width: auto; padding: 0; box-shadow: none; }
+      .toolbar { display: none !important; }
+    }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      gap: 12px;
+      border-bottom: 2.5px solid #0369a1;
+      padding-bottom: 7px;
+      margin-bottom: 8px;
+    }
+    .brand h1 {
+      margin: 0;
+      font-size: 16pt;
+      letter-spacing: -0.02em;
+      color: #0c4a6e;
+    }
+    .brand p {
+      margin: 2px 0 0;
+      color: #475569;
+      font-size: 8.5pt;
+    }
+    .meta {
+      text-align: right;
+      color: #64748b;
+      font-size: 8pt;
+      white-space: nowrap;
+    }
+    .pitch {
+      background: linear-gradient(90deg, #f0f9ff, #f8fafc);
+      border: 1px solid #bae6fd;
+      border-radius: 8px;
+      padding: 6px 9px;
+      margin-bottom: 8px;
+      color: #334155;
+      font-size: 8.4pt;
+    }
+    .pitch strong { color: #0c4a6e; }
+
+    h2 {
+      margin: 7px 0 4px;
+      font-size: 9.2pt;
+      color: #0369a1;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      border-bottom: 1px solid #e2e8f0;
+      padding-bottom: 2px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 2px;
+    }
+    th, td {
+      border: 1px solid #e2e8f0;
+      padding: 3px 5px;
+      vertical-align: top;
+      text-align: left;
+    }
+    th {
+      background: #f1f5f9;
+      color: #334155;
+      font-size: 7.6pt;
+      font-weight: 800;
+    }
+    td { font-size: 7.8pt; }
+    td.hrs {
+      white-space: nowrap;
+      font-weight: 700;
+      color: #0f172a;
+      width: 52px;
+      text-align: center;
+    }
+    td.plat {
+      width: 58px;
+      color: #475569;
+      white-space: nowrap;
+      font-size: 7.4pt;
+    }
+    td.feat { font-weight: 700; color: #0f172a; width: 118px; }
+
+    .why-box {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+      margin-top: 6px;
+    }
+    .card {
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 6px 8px;
+      background: #fafafa;
+    }
+    .card h3 {
+      margin: 0 0 3px;
+      font-size: 8.4pt;
+      color: #0c4a6e;
+    }
+    .card p { margin: 0; font-size: 7.7pt; color: #475569; }
+    .totals {
+      margin-top: 7px;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 5px;
+    }
+    .total {
+      border-radius: 7px;
+      background: #0c4a6e;
+      color: #fff;
+      padding: 5px 6px;
+      text-align: center;
+    }
+    .total span { display: block; font-size: 7pt; opacity: 0.85; }
+    .total strong { font-size: 9pt; }
+    footer {
+      margin-top: 7px;
+      padding-top: 5px;
+      border-top: 1px solid #e2e8f0;
+      color: #64748b;
+      font-size: 7.2pt;
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div class="toolbar">
+    <button type="button" onclick="window.print()">Print / Save as PDF</button>
+    <span>Use A4, margins default, background graphics ON.</span>
+  </div>
+
+  <div class="page">
+    <header>
+      <div class="brand">
+        <h1>BillX GPS — Advanced Features</h1>
+        <p>Client overview · Same logic on Mobile App &amp; Web · Beyond basic live map</p>
+      </div>
+      <div class="meta">
+        1-page brief<br />
+        Effort = build + harden + test (hrs)
+      </div>
+    </header>
+
+    <div class="pitch">
+      <strong>Basic GPS</strong> shows where a vehicle was last seen.
+      <strong>BillX advanced layer</strong> shows how it is moving now, whether the signal is healthy,
+      trip progress on assigned routes, replayable history, plus geofences, alerts, and commands —
+      with smooth motion even when GPS updates are sparse.
+    </div>
+
+    <h2>1) Live tracking experience</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Feature</th>
+          <th>Platform</th>
+          <th>Why advanced</th>
+          <th>Hrs</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="feat">Follow Mode</td>
+          <td class="plat">App + Web</td>
+          <td>Camera stays locked on the moving vehicle — not a one-time “center map”.</td>
+          <td class="hrs">40–70</td>
+        </tr>
+        <tr>
+          <td class="feat">Tracking HUD</td>
+          <td class="plat">Web / App</td>
+          <td>Live speed, status, heading, GPS quality, address &amp; last update while following.</td>
+          <td class="hrs">30–50</td>
+        </tr>
+        <tr>
+          <td class="feat">Smooth motion + dead reckoning</td>
+          <td class="plat">App + Web</td>
+          <td>Icon keeps moving between GPS packets (critical at highway speeds).</td>
+          <td class="hrs">80–140</td>
+        </tr>
+        <tr>
+          <td class="feat">Realtime push (WebSocket)</td>
+          <td class="plat">App + Web</td>
+          <td>Locations pushed live; auto-fallback to polling if the socket drops.</td>
+          <td class="hrs">80–130</td>
+        </tr>
+        <tr>
+          <td class="feat">Street View + Traffic</td>
+          <td class="plat">Web</td>
+          <td>Street-level view synced to the vehicle; live road congestion on the map.</td>
+          <td class="hrs">90–135</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>2) Smart status (identical on App &amp; Web)</h2>
+    <table>
+      <thead>
+        <tr><th>Feature</th><th>Platform</th><th>Why advanced</th><th>Hrs</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="feat">Status engine</td>
+          <td class="plat">App + Web</td>
+          <td>Running / Idle / Moving / Parked from ignition + speed; Delayed / Stale / Offline from GPS age. Offline ≠ ignition off.</td>
+          <td class="hrs">60–100</td>
+        </tr>
+        <tr>
+          <td class="feat">Status duration</td>
+          <td class="plat">App + Web</td>
+          <td>Shows how long the current state has lasted (needs transition history).</td>
+          <td class="hrs">24–40</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>3) History, routes &amp; fleet operations</h2>
+    <table>
+      <thead>
+        <tr><th>Feature</th><th>Platform</th><th>Why advanced</th><th>Hrs</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="feat">History playback</td>
+          <td class="plat">App + Web</td>
+          <td>Play / pause / scrub trip history like a video — not only a static line.</td>
+          <td class="hrs">100–160</td>
+        </tr>
+        <tr>
+          <td class="feat">Lite / fast history</td>
+          <td class="plat">App + API</td>
+          <td>Loads a light route first so multi-day history does not freeze phones.</td>
+          <td class="hrs">30–50</td>
+        </tr>
+        <tr>
+          <td class="feat">Route trip progress + smart matching</td>
+          <td class="plat">App + Web</td>
+          <td>% complete, remaining km, ETA; on-route / off-route / arrived logic.</td>
+          <td class="hrs">190–330</td>
+        </tr>
+        <tr>
+          <td class="feat">Geofences + smart alerts</td>
+          <td class="plat">App + Web</td>
+          <td>Zones with enter/exit; rule-based alerts via push / email / WhatsApp.</td>
+          <td class="hrs">170–300</td>
+        </tr>
+        <tr>
+          <td class="feat">Remote commands + odometer</td>
+          <td class="plat">App + Web</td>
+          <td>Send tracker commands with status lifecycle; GPS odometer with client baseline.</td>
+          <td class="hrs">120–200</td>
+        </tr>
+        <tr>
+          <td class="feat">Mobile performance stack</td>
+          <td class="plat">App</td>
+          <td>Overlay marker + throttled camera so follow mode stays smooth on mid-range Android.</td>
+          <td class="hrs">180–320</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="why-box">
+      <div class="card">
+        <h3>Why clients call this “advanced”</h3>
+        <p>Basic trackers answer “where?” BillX also answers “how is it moving?”, “is GPS healthy?”, “is the trip on plan?”, and “what happened on the route?” — with the same rules on phone and browser.</p>
+      </div>
+      <div class="card">
+        <h3>How to use the hour ranges</h3>
+        <p>Hours are engineering effort (design, build, harden, test), not calendar days. Parallel work and shared backend reduce delivery time. Ranges reflect complexity, not a fixed quote.</p>
+      </div>
+    </div>
+
+    <div class="totals">
+      <div class="total"><span>Live + status core</span><strong>~300–500 hrs</strong></div>
+      <div class="total"><span>History + playback</span><strong>~200–350 hrs</strong></div>
+      <div class="total"><span>Routes + ops</span><strong>~480–830 hrs</strong></div>
+      <div class="total"><span>Mobile performance</span><strong>~180–320 hrs</strong></div>
+    </div>
+
+    <footer>
+      <span>BillX GPS · Advanced Features One-Pager · For client discussion</span>
+      <span>Open this file → Print → Save as PDF (A4)</span>
+    </footer>
+  </div>
+</body>
+</html>
