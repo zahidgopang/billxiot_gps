@@ -35,7 +35,14 @@ class HistoryAnalyticsService
 
     /**
      * @param  Collection<int, DeviceLocation|object>  $points
-     * @param  array{point_statuses?: bool, include_track_points?: bool, skip_timeline?: bool, minimal_stats?: bool}  $options
+     * @param  array{
+     *   point_statuses?: bool,
+     *   include_track_points?: bool,
+     *   skip_timeline?: bool,
+     *   minimal_stats?: bool,
+     *   stop_min_seconds?: int,
+     *   overspeed_kmh?: float|int
+     * }  $options
      * @return array<string, mixed>
      */
     public function analyze(Collection $points, array $options = []): array
@@ -43,6 +50,11 @@ class HistoryAnalyticsService
         $data = $this->sortedPoints($points);
         $includeTrackPoints = $options['include_track_points'] ?? true;
         $minimalStats = $options['minimal_stats'] ?? false;
+        $stopMinSeconds = max(1, (int) ($options['stop_min_seconds'] ?? self::STOP_MIN_SECONDS));
+        $overspeedKmh = (float) ($options['overspeed_kmh'] ?? self::OVERSPEED_KMH);
+        if ($overspeedKmh <= 0) {
+            $overspeedKmh = (float) self::OVERSPEED_KMH;
+        }
 
         if ($data === []) {
             return $this->emptyStats();
@@ -60,7 +72,7 @@ class HistoryAnalyticsService
         $movingPoints = [];
         $idlePoints = [];
 
-        $flushStop = function () use (&$stopRun, &$stops, $minimalStats): void {
+        $flushStop = function () use (&$stopRun, &$stops, $minimalStats, $stopMinSeconds): void {
             if ($minimalStats) {
                 $stopRun = [];
 
@@ -77,7 +89,7 @@ class HistoryAnalyticsService
             $t1 = $this->pointTime($stopRun[count($stopRun) - 1]);
             $dur = $this->segmentDurationSeconds($t0, $t1);
 
-            if ($dur >= self::STOP_MIN_SECONDS) {
+            if ($dur >= $stopMinSeconds) {
                 $mid = $stopRun[(int) floor(count($stopRun) / 2)];
                 $motion = $this->motionKey($mid);
                 $stops[] = [
@@ -132,7 +144,7 @@ class HistoryAnalyticsService
                 if ($spd > $maxSpeed) {
                     $maxSpeed = $spd;
                 }
-                if ($spd > self::OVERSPEED_KMH) {
+                if ($spd > $overspeedKmh) {
                     $overspeedEvents++;
                 }
 

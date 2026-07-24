@@ -148,6 +148,8 @@ Route::middleware([
 
         Route::get('/reports/generate', [MobileReportController::class, 'generate']);
         Route::get('/reports/export', [MobileReportController::class, 'export']);
+        Route::get('/reports/catalog', [MobileReportController::class, 'catalog']);
+        Route::get('/reports/history-export', [MobileReportController::class, 'historyExport']);
     });
 });
 

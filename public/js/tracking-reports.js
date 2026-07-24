@@ -10,6 +10,12 @@
     const EXPORT_BATCH_SIZE = 4;
     const i18n = cfg.i18n || {};
     const colSets = i18n.columns || {};
+    const fieldSets = i18n.fields || {};
+
+    const FILTER_STORAGE_KEY = 'gt.reports.filters.v1';
+    const MODE_STORAGE_KEY = 'gt.reports.mode.v1';
+    const CUSTOM_FIELDS_PREFIX = 'gt.report.custom.fields.';
+    const lockedType = cfg.lockedType ? String(cfg.lockedType) : null;
 
     const state = {
         columns: [],
@@ -20,9 +26,376 @@
         lastPayload: null,
         runId: 0,
         abortController: null,
+        mode: 'standard', // standard | custom
     };
 
     const $ = (id) => document.getElementById(id);
+
+    function defaultFilters() {
+        return {
+            ignore_empty: false,
+            show_coordinates: true,
+            show_addresses: false,
+            markers_instead_of_addresses: false,
+            zones_instead_of_addresses: false,
+            stop_preset: '1',
+            stop_custom_minutes: '',
+            speed_limit_kmh: '',
+        };
+    }
+
+    function readFiltersFromDom() {
+        const stops = $('gtFilterStops')?.value || '1';
+        const custom = $('gtFilterStopsCustom')?.value || '';
+        return {
+            ignore_empty: !!$('gtFilterIgnoreEmpty')?.checked,
+            show_coordinates: !!$('gtFilterShowCoordinates')?.checked,
+            show_addresses: !!$('gtFilterShowAddresses')?.checked,
+            markers_instead_of_addresses: !!$('gtFilterMarkersInstead')?.checked,
+            zones_instead_of_addresses: !!$('gtFilterZonesInstead')?.checked,
+            stop_preset: stops,
+            stop_custom_minutes: custom,
+            speed_limit_kmh: ($('gtFilterSpeedLimit')?.value || '').trim(),
+        };
+    }
+
+    function applyFiltersToDom(filters) {
+        const f = { ...defaultFilters(), ...(filters || {}) };
+        if ($('gtFilterIgnoreEmpty')) $('gtFilterIgnoreEmpty').checked = !!f.ignore_empty;
+        if ($('gtFilterShowCoordinates')) $('gtFilterShowCoordinates').checked = f.show_coordinates !== false;
+        if ($('gtFilterShowAddresses')) $('gtFilterShowAddresses').checked = !!f.show_addresses;
+        if ($('gtFilterMarkersInstead')) $('gtFilterMarkersInstead').checked = !!f.markers_instead_of_addresses;
+        if ($('gtFilterZonesInstead')) $('gtFilterZonesInstead').checked = !!f.zones_instead_of_addresses;
+        if ($('gtFilterStops')) $('gtFilterStops').value = f.stop_preset || '1';
+        if ($('gtFilterStopsCustom')) $('gtFilterStopsCustom').value = f.stop_custom_minutes || '';
+        if ($('gtFilterSpeedLimit')) $('gtFilterSpeedLimit').value = f.speed_limit_kmh || '';
+        syncStopsCustomVisibility();
+    }
+
+    function persistFilters() {
+        try {
+            sessionStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify(readFiltersFromDom()));
+        } catch (_) { /* ignore quota / private mode */ }
+    }
+
+    function restoreFilters() {
+        try {
+            const raw = sessionStorage.getItem(FILTER_STORAGE_KEY);
+            if (!raw) {
+                applyFiltersToDom(defaultFilters());
+                return;
+            }
+            applyFiltersToDom(JSON.parse(raw));
+        } catch (_) {
+            applyFiltersToDom(defaultFilters());
+        }
+    }
+
+    function syncStopsCustomVisibility() {
+        const custom = $('gtFilterStopsCustom');
+        if (!custom) return;
+        custom.hidden = ($('gtFilterStops')?.value || '') !== 'custom';
+    }
+
+    function stopMinSeconds() {
+        const preset = $('gtFilterStops')?.value || '1';
+        if (preset === 'custom') {
+            const mins = Math.max(1, parseInt($('gtFilterStopsCustom')?.value || '1', 10) || 1);
+            return mins * 60;
+        }
+        return Math.max(1, (parseInt(preset, 10) || 1) * 60);
+    }
+
+    const LOCATION_REPORT_TYPES = [
+        'trips', 'stops', 'trips_stops', 'events', 'positions', 'overspeeds',
+        'zone_inout', 'fuel_fillings', 'current_position',
+    ];
+
+    function wantsAddressColumns() {
+        if (isCustomMode()) {
+            const keys = selectedFieldKeys(false);
+            const addressKeys = new Set(i18n.addressFieldKeys || ['address', 'start_address', 'end_address']);
+            return keys.some((k) => addressKeys.has(k));
+        }
+        return !!$('gtFilterShowAddresses')?.checked
+            || !!$('gtFilterMarkersInstead')?.checked
+            || !!$('gtFilterZonesInstead')?.checked;
+    }
+
+    function showCoordinates() {
+        if (isCustomMode()) {
+            const keys = selectedFieldKeys(false);
+            const coordKeys = new Set(i18n.coordFieldKeys || ['lat', 'lng', 'start_lat', 'start_lng', 'end_lat', 'end_lng']);
+            return keys.some((k) => coordKeys.has(k));
+        }
+        return !!$('gtFilterShowCoordinates')?.checked;
+    }
+
+    function isCustomMode() {
+        return state.mode === 'custom';
+    }
+
+    function fieldsFor(type) {
+        return fieldSets[type] || fieldSets.summary || [];
+    }
+
+    function customFieldsStorageKey(type) {
+        return CUSTOM_FIELDS_PREFIX + (type || 'summary');
+    }
+
+    function selectedFieldKeys(requireCustom = true) {
+        if (requireCustom && !isCustomMode()) return null;
+        if (!isCustomMode()) return null;
+        return [...document.querySelectorAll('#gtCustomFields input[type="checkbox"]:checked')]
+            .map((el) => el.value)
+            .filter(Boolean);
+    }
+
+    function loadSavedCustomFields(type) {
+        try {
+            const raw = localStorage.getItem(customFieldsStorageKey(type));
+            if (!raw) return null;
+            const parsed = JSON.parse(raw);
+            return Array.isArray(parsed) ? parsed.map(String) : null;
+        } catch (_) {
+            return null;
+        }
+    }
+
+    function saveCustomFields(type, keys) {
+        try {
+            localStorage.setItem(customFieldsStorageKey(type), JSON.stringify(keys || []));
+        } catch (_) { /* ignore */ }
+    }
+
+    function rebuildCustomFields() {
+        const host = $('gtCustomFields');
+        if (!host) return;
+        const type = $('gtReportType')?.value || 'summary';
+        const fields = fieldsFor(type);
+        const saved = loadSavedCustomFields(type);
+        // null = never saved → default all on; [] = user cleared → keep empty.
+        const selected = new Set(saved === null ? fields.map((f) => f.key) : saved);
+
+        host.innerHTML = fields.map((f) => {
+            const id = `gtCustomField_${f.key}`;
+            const checked = selected.has(f.key) ? ' checked' : '';
+            return `<div class="form-check">`
+                + `<input class="form-check-input" type="checkbox" id="${id}" value="${escapeHtml(f.key)}"${checked}>`
+                + `<label class="form-check-label" for="${id}">${escapeHtml(f.label)}</label>`
+                + `</div>`;
+        }).join('');
+
+        host.querySelectorAll('input[type="checkbox"]').forEach((el) => {
+            el.addEventListener('change', () => {
+                saveCustomFields(type, selectedFieldKeys(false) || []);
+                if (state.lastPayload) rerenderFromPayload(state.lastPayload);
+            });
+        });
+    }
+
+    function setReportMode(mode) {
+        state.mode = mode === 'custom' ? 'custom' : 'standard';
+        try { localStorage.setItem(MODE_STORAGE_KEY, state.mode); } catch (_) { /* ignore */ }
+
+        const stdBtn = $('gtReportModeStandard');
+        const cusBtn = $('gtReportModeCustom');
+        stdBtn?.classList.toggle('is-active', state.mode === 'standard');
+        cusBtn?.classList.toggle('is-active', state.mode === 'custom');
+        stdBtn?.setAttribute('aria-selected', state.mode === 'standard' ? 'true' : 'false');
+        cusBtn?.setAttribute('aria-selected', state.mode === 'custom' ? 'true' : 'false');
+
+        const panel = $('gtCustomFieldsPanel');
+        if (panel) panel.hidden = state.mode !== 'custom';
+
+        if (state.mode === 'custom') rebuildCustomFields();
+        if (state.lastPayload) rerenderFromPayload(state.lastPayload);
+        else {
+            state.columns = projectColumns(columnsFor($('gtReportType')?.value || 'summary'));
+            renderHead();
+            renderPage();
+        }
+    }
+
+    function projectColumns(columns) {
+        const keys = selectedFieldKeys();
+        if (keys === null) return columns;
+        if (!keys.length) return [];
+        const type = $('gtReportType')?.value || 'summary';
+        const labelByKey = {};
+        fieldsFor(type).forEach((f) => { labelByKey[f.key] = f.label; });
+        const out = [];
+        keys.forEach((key) => {
+            const label = labelByKey[key];
+            if (!label) return;
+            const idx = columns.indexOf(label);
+            if (idx >= 0) out.push(label);
+        });
+        return out;
+    }
+
+    function projectFlat(flat) {
+        const keys = selectedFieldKeys();
+        if (keys === null) return flat;
+        if (!keys.length) {
+            return { ...flat, columns: [], rows: (flat.rows || []).map(() => []) };
+        }
+        const labelByKey = {};
+        fieldsFor(flat.type || $('gtReportType')?.value || 'summary').forEach((f) => {
+            labelByKey[f.key] = f.label;
+        });
+        const indices = [];
+        const columns = [];
+        keys.forEach((key) => {
+            const label = labelByKey[key];
+            if (!label) return;
+            const idx = flat.columns.indexOf(label);
+            if (idx >= 0) {
+                indices.push(idx);
+                columns.push(label);
+            }
+        });
+        if (!indices.length) {
+            return { ...flat, columns: [], rows: (flat.rows || []).map(() => []) };
+        }
+        return {
+            ...flat,
+            columns,
+            rows: (flat.rows || []).map((row) => indices.map((i) => row[i] ?? '')),
+        };
+    }
+
+    function isLocationReportType(type) {
+        return LOCATION_REPORT_TYPES.includes(type || $('gtReportType')?.value || '');
+    }
+
+    function locationText(row) {
+        if (!row || typeof row !== 'object') return '';
+        return row.location_label || row.address || row.resolved_address
+            || row.start_address || row.resolved_zone || row.resolved_marker || '';
+    }
+
+    function updateFilterHelp() {
+        const help = $('gtReportFiltersHelp');
+        if (!help) return;
+        const type = $('gtReportType')?.value || 'summary';
+        help.classList.remove('is-warn');
+        if (!isLocationReportType(type) && (wantsAddressColumns() || !showCoordinates())) {
+            help.textContent = i18n.filterHelpNoLocationType || i18n.filterHelpLocation || '';
+            help.classList.add('is-warn');
+            return;
+        }
+        if ($('gtFilterShowAddresses')?.checked && !cfg.hasGoogleMapsKey) {
+            help.textContent = i18n.filterHelpGeocodeMissing || i18n.filterHelpLocation || '';
+            help.classList.add('is-warn');
+            return;
+        }
+        help.textContent = i18n.filterHelpLocation || '';
+    }
+
+    function deviceLooksEmpty(type, d) {
+        if (!d) return true;
+        switch (type) {
+            case 'trips': return !(d.trips || []).length;
+            case 'stops': return !(d.stops || []).length;
+            case 'trips_stops': return !(d.segments || []).length;
+            case 'events': return !(d.events || []).length;
+            case 'overspeeds': return !(d.overspeeds || []).length;
+            case 'zone_inout': return !((d.zone_events || d.events || []).length);
+            case 'fuel_fillings': return !(d.fillings || []).length;
+            case 'positions': return !(d.positions || []).length && !(d.point_count > 0);
+            case 'route': return !(d.point_count > 0) && !(d.points || []).length;
+            case 'mileage': return !(d.days || []).length;
+            case 'summary': return !(Number(d.total_distance_km) > 0) && !(d.trip_count > 0) && !(d.stop_count > 0);
+            case 'odometer': return !(Number(d.total_distance_km) > 0) && !(Number(d.odometer_delta_km) > 0);
+            case 'diesel': return !(Number(d.total_distance_km) > 0);
+            case 'speed':
+            case 'altitude': return !(d.series || []).length;
+            case 'ignition': return !(d.changes || []).length;
+            case 'service': return !(d.services || []).length;
+            case 'tasks': return !(d.tasks || []).length;
+            case 'current_position': return d.lat == null || d.lng == null;
+            default: return false;
+        }
+    }
+
+    function applyClientFilters(payload) {
+        if (!payload || typeof payload !== 'object') return payload;
+        const type = payload.type || $('gtReportType')?.value || 'summary';
+        let devices = Array.isArray(payload.devices) ? [...payload.devices] : [];
+        if (readFiltersFromDom().ignore_empty) {
+            devices = devices.filter((d) => !deviceLooksEmpty(type, d));
+        }
+        return { ...payload, devices };
+    }
+
+    function rerenderFromPayload(payload) {
+        if (!payload) return;
+        const filtered = applyClientFilters(payload);
+        state.lastPayload = payload;
+        const flat = projectFlat(flatten(filtered));
+        state.columns = flat.columns;
+        state.rows = flat.rows;
+        renderKpis(flat);
+        renderHead();
+        renderPage();
+        if (!state.rows.length) {
+            showEmpty(i18n.noData || 'No data for the selected report and period.');
+        } else {
+            const empty = $('gtReportEmpty');
+            if (empty) { empty.hidden = true; empty.textContent = ''; }
+        }
+    }
+
+    function onFilterChanged(sourceId) {
+        persistFilters();
+        updateFilterHelp();
+        if (sourceId === 'gtFilterStops') syncStopsCustomVisibility();
+
+        const displayOnly = sourceId === 'gtFilterShowCoordinates';
+        if (displayOnly) {
+            if (state.lastPayload) rerenderFromPayload(state.lastPayload);
+            return;
+        }
+
+        // Server-backed filters: auto re-run so Location/empty/stops data actually appears.
+        if (selectedIds().length && (state.lastPayload || sourceId)) {
+            runReport();
+        } else if (state.lastPayload) {
+            rerenderFromPayload(state.lastPayload);
+        }
+    }
+
+    function appendFilterParams(p) {
+        const f = readFiltersFromDom();
+        p.set('ignore_empty', f.ignore_empty ? '1' : '0');
+        p.set('show_coordinates', f.show_coordinates ? '1' : '0');
+        p.set('show_addresses', f.show_addresses ? '1' : '0');
+        p.set('markers_instead_of_addresses', f.markers_instead_of_addresses ? '1' : '0');
+        p.set('zones_instead_of_addresses', f.zones_instead_of_addresses ? '1' : '0');
+        p.set('stop_min_seconds', String(stopMinSeconds()));
+        if (f.speed_limit_kmh !== '') {
+            p.set('speed_limit_kmh', f.speed_limit_kmh);
+        }
+        return p;
+    }
+
+    function updateFilterVisibility() {
+        const type = $('gtReportType')?.value || 'summary';
+        const map = i18n.filterApplicability || {};
+        const typeKeys = Array.isArray(map[type]) ? map[type] : [];
+        document.querySelectorAll('#gtReportFilters [data-filter-key]').forEach((el) => {
+            const key = el.getAttribute('data-filter-key');
+            if (key === 'speed_limit') {
+                el.hidden = !(type === 'overspeeds' || type === 'summary' || typeKeys.includes('speed_limit'));
+            } else {
+                el.hidden = false;
+            }
+        });
+        const box = $('gtReportFilters');
+        if (box) box.hidden = false;
+        updateFilterHelp();
+    }
 
     function escapeHtml(value) {
         return String(value ?? '')
@@ -66,6 +439,24 @@
         return value ? (i18n.ignitionOn || 'On') : (i18n.ignitionOff || 'Off');
     }
 
+    function formatReportTime(value) {
+        if (value == null || value === '') return '';
+        const raw = String(value);
+        const ms = Date.parse(raw);
+        if (!Number.isFinite(ms)) return raw;
+        try {
+            return new Date(ms).toLocaleString(undefined, {
+                year: 'numeric',
+                month: 'short',
+                day: '2-digit',
+                hour: 'numeric',
+                minute: '2-digit',
+            });
+        } catch (_) {
+            return raw;
+        }
+    }
+
     function numCell(value) {
         return `<span class="gt-report-num" dir="ltr">${escapeHtml(value)}</span>`;
     }
@@ -100,6 +491,19 @@
         p.set('to', dateTimeParam('gtReportTo'));
         p.set('ids', selectedIdsParam());
         p.set('lang', reportLang());
+        appendFilterParams(p);
+        if (isCustomMode()) {
+            const keys = selectedFieldKeys(false) || [];
+            if (keys.length) p.set('fields', keys.join(','));
+            // Custom field picks override filter checkboxes for address/coord columns.
+            const addressKeys = new Set(i18n.addressFieldKeys || ['address', 'start_address', 'end_address']);
+            const coordKeys = new Set(i18n.coordFieldKeys || ['lat', 'lng', 'start_lat', 'start_lng', 'end_lat', 'end_lng']);
+            p.set('show_addresses', keys.some((k) => addressKeys.has(k)) ? '1' : '0');
+            p.set('show_coordinates', keys.some((k) => coordKeys.has(k)) ? '1' : '0');
+            // Avoid marker/zone address modes overriding explicit field selection.
+            p.set('markers_instead_of_addresses', '0');
+            p.set('zones_instead_of_addresses', '0');
+        }
         return p;
     }
 
@@ -108,7 +512,41 @@
     }
 
     function columnsFor(type) {
-        return colSets[type] || colSets.summary || [];
+        let cols = [...(colSets[type] || colSets.summary || [])];
+        if (!showCoordinates()) {
+            const hideLabels = new Set(i18n.coordLabels || []);
+            cols = cols.filter((c) => !hideLabels.has(c));
+        }
+        if (wantsAddressColumns() && isLocationReportType(type)) {
+            const addressLabel = i18n.colAddress || i18n.colLocation || 'Location';
+            const startAddress = i18n.colStartAddress || 'Start address';
+            const endAddress = i18n.colEndAddress || 'End address';
+            const mapsIdx = cols.findIndex((c) => {
+                const l = String(c).toLowerCase();
+                return l.includes('map') || l.includes('خرائط');
+            });
+            const at = mapsIdx >= 0 ? mapsIdx : cols.length;
+            if (type === 'trips') {
+                cols.splice(at, 0, startAddress, endAddress);
+            } else {
+                cols.splice(at, 0, addressLabel);
+            }
+        }
+        return cols;
+    }
+
+    function pushCoords(row, ...values) {
+        if (showCoordinates()) {
+            values.forEach((v) => row.push(v));
+        }
+        return row;
+    }
+
+    function pushAddress(row, ...values) {
+        if (wantsAddressColumns()) {
+            values.forEach((v) => row.push(v ?? ''));
+        }
+        return row;
     }
 
     function queryParamsForIds(ids, runId, fromOverride, toOverride) {
@@ -158,7 +596,14 @@
     function mergeDeviceWindowRows(parts) {
         if (!parts.length) return null;
         if (parts.length === 1) return parts[0];
-        const base = { ...parts[0] };
+        // Prefer a window that actually has GPS so start odometer/time are not null.
+        const ranked = [...parts].sort((a, b) => {
+            const aPts = Number(a.point_count || a.position_count || 0);
+            const bPts = Number(b.point_count || b.position_count || 0);
+            if (aPts === bPts) return 0;
+            return bPts > 0 && aPts === 0 ? 1 : (aPts > 0 && bPts === 0 ? -1 : 0);
+        });
+        const base = { ...ranked[0] };
         const sumN = (key) => parts.reduce((s, d) => s + (Number(d[key]) || 0), 0);
         const maxN = (key) => Math.max(0, ...parts.map((d) => Number(d[key]) || 0));
         const cat = (key) => parts.flatMap((d) => (Array.isArray(d[key]) ? d[key] : []));
@@ -186,16 +631,64 @@
             ? round2((base.fuel_liters / base.total_distance_km) * 100)
             : 0;
 
-        ['trips', 'stops', 'segments', 'days', 'events', 'positions', 'points'].forEach((key) => {
+        // Odometer report: keep first start / last end across date windows (do not sum deltas).
+        let startOdo = null;
+        let endOdo = null;
+        let startTime = null;
+        let endTime = null;
+        parts.forEach((p) => {
+            if (p.start_odometer_km != null && p.start_odometer_km !== '' && startOdo == null) {
+                startOdo = Number(p.start_odometer_km);
+            }
+            if (p.end_odometer_km != null && p.end_odometer_km !== '') {
+                endOdo = Number(p.end_odometer_km);
+            }
+            if (p.start_time && (!startTime || String(p.start_time) < String(startTime))) {
+                startTime = p.start_time;
+            }
+            if (p.end_time && (!endTime || String(p.end_time) > String(endTime))) {
+                endTime = p.end_time;
+            }
+        });
+        if (startOdo != null) base.start_odometer_km = startOdo;
+        if (endOdo != null) base.end_odometer_km = endOdo;
+        if (startOdo != null && endOdo != null) {
+            base.odometer_delta_km = round2(Math.max(0, endOdo - startOdo));
+            // Keep traveled distance aligned with device odometer across windows.
+            if (!(Number(base.total_distance_km) > 0)) {
+                base.total_distance_km = base.odometer_delta_km;
+            } else {
+                // Prefer odometer delta when both exist (more stable than summed GPS windows).
+                base.total_distance_km = base.odometer_delta_km;
+            }
+        }
+        if (startTime) {
+            base.start_time = startTime;
+            base.start_time_display = formatReportTime(startTime);
+        }
+        if (endTime) {
+            base.end_time = endTime;
+            base.end_time_display = formatReportTime(endTime);
+        }
+
+        ['trips', 'stops', 'segments', 'days', 'events', 'positions', 'points', 'overspeeds', 'fillings', 'series', 'changes', 'services', 'tasks', 'zone_events'].forEach((key) => {
             const rows = cat(key);
             if (rows.length) {
                 base[key] = rows;
                 if (key === 'trips') base.trip_count = rows.length;
                 if (key === 'stops') base.stop_count = rows.length;
                 if (key === 'days') base.day_count = rows.length;
-                if (key === 'events') base.event_count = rows.length;
+                if (key === 'events' || key === 'zone_events') base.event_count = rows.length;
                 if (key === 'positions') base.position_count = rows.length;
-                if (key === 'points') base.point_count = rows.length;
+                if (key === 'points' || key === 'series') base.point_count = rows.length;
+                if (key === 'overspeeds') base.overspeed_count = rows.length;
+                if (key === 'fillings') {
+                    base.filling_count = rows.length;
+                    base.total_filled_liters = round2(rows.reduce((s, r) => s + (Number(r.liters) || 0), 0));
+                }
+                if (key === 'changes') base.change_count = rows.length;
+                if (key === 'services') base.service_count = rows.length;
+                if (key === 'tasks') base.task_count = rows.length;
             }
         });
         return base;
@@ -244,6 +737,10 @@
             totals.total_distance_km = round2(devices.reduce((s, d) => s + (Number(d.total_distance_km) || 0), 0));
             totals.day_count = devices.reduce((s, d) => s + (Number(d.day_count) || 0), 0);
             totals.trip_count = devices.reduce((s, d) => s + (Number(d.trip_count) || 0), 0);
+        } else if (first.type === 'odometer') {
+            totals.device_count = devices.length;
+            totals.total_distance_km = round2(devices.reduce((s, d) => s + (Number(d.total_distance_km) || 0), 0));
+            totals.moving_time_seconds = devices.reduce((s, d) => s + (Number(d.moving_time_seconds) || 0), 0);
         } else if (first.type === 'diesel') {
             totals.device_count = devices.length;
             totals.total_distance_km = round2(devices.reduce((s, d) => s + (Number(d.total_distance_km) || 0), 0));
@@ -389,16 +886,16 @@
             ]));
         } else if (type === 'trips') {
             devices.forEach((d) => (d.trips || []).forEach((t) => {
-                rows.push([
+                const tripRow = [
                     d.device_name,
                     d.plate || '',
                     d.driver || '',
                     t.start_time || '',
                     t.end_time || '',
-                    formatCoord(t.start_lat),
-                    formatCoord(t.start_lng),
-                    formatCoord(t.end_lat),
-                    formatCoord(t.end_lng),
+                ];
+                pushCoords(tripRow, formatCoord(t.start_lat), formatCoord(t.start_lng), formatCoord(t.end_lat), formatCoord(t.end_lng));
+                pushAddress(tripRow, t.start_address || locationText(t) || '', t.end_address || '');
+                tripRow.push(
                     t.start_maps_url || '',
                     t.end_maps_url || '',
                     t.distance_km,
@@ -408,18 +905,19 @@
                     t.route_point_count ?? 0,
                     t.max_speed_kmh,
                     t.average_speed_kmh,
-                ]);
+                );
+                rows.push(tripRow);
                 (t.stops || []).forEach((s) => {
-                    rows.push([
+                    const stopRow = [
                         d.device_name,
                         d.plate || '',
                         '',
                         s.start_display || s.start || '',
                         s.end_display || s.end || '',
-                        formatCoord(s.lat),
-                        formatCoord(s.lng),
-                        '',
-                        '',
+                    ];
+                    pushCoords(stopRow, formatCoord(s.lat), formatCoord(s.lng), '', '');
+                    pushAddress(stopRow, locationText(s), '');
+                    stopRow.push(
                         s.maps_url || '',
                         '',
                         '',
@@ -429,25 +927,29 @@
                         '',
                         '',
                         '',
-                    ]);
+                    );
+                    rows.push(stopRow);
                 });
             }));
         } else if (type === 'stops') {
-            devices.forEach((d) => (d.stops || []).forEach((s) => rows.push([
-                d.device_name,
-                d.plate || '',
-                s.status_label || '',
-                s.start_display || s.start || '',
-                s.end_display || s.end || '',
-                formatDuration(s.duration_seconds),
-                formatCoord(s.lat),
-                formatCoord(s.lng),
-                s.maps_url || '',
-            ])));
+            devices.forEach((d) => (d.stops || []).forEach((s) => {
+                const row = [
+                    d.device_name,
+                    d.plate || '',
+                    s.status_label || '',
+                    s.start_display || s.start || '',
+                    s.end_display || s.end || '',
+                    formatDuration(s.duration_seconds),
+                ];
+                pushCoords(row, formatCoord(s.lat), formatCoord(s.lng));
+                pushAddress(row, locationText(s));
+                row.push(s.maps_url || '');
+                rows.push(row);
+            }));
         } else if (type === 'trips_stops') {
             devices.forEach((d) => (d.segments || []).forEach((seg) => {
                 const isTrip = seg.kind === 'trip';
-                rows.push([
+                const row = [
                     d.device_name,
                     d.plate || '',
                     seg.kind_label || seg.kind || '',
@@ -455,11 +957,11 @@
                     seg.end_time || seg.end_display || seg.end || '',
                     formatDuration(seg.duration_seconds),
                     isTrip ? (seg.distance_km ?? 0) : '',
-                    formatCoord(isTrip ? seg.start_lat : seg.lat),
-                    formatCoord(isTrip ? seg.start_lng : seg.lng),
-                    seg.maps_url || seg.start_maps_url || '',
-                    isTrip ? (seg.stop_count ?? 0) : '',
-                ]);
+                ];
+                pushCoords(row, formatCoord(isTrip ? seg.start_lat : seg.lat), formatCoord(isTrip ? seg.start_lng : seg.lng));
+                pushAddress(row, locationText(seg) || seg.start_address || '');
+                row.push(seg.maps_url || seg.start_maps_url || '', isTrip ? (seg.stop_count ?? 0) : '');
+                rows.push(row);
             }));
         } else if (type === 'mileage') {
             devices.forEach((d) => (d.days || []).forEach((day) => rows.push([
@@ -474,6 +976,32 @@
                 day.start_maps_url || '',
                 day.end_maps_url || '',
             ])));
+        } else if (type === 'odometer') {
+            devices.forEach((d) => {
+                const startOdo = d.start_odometer_km != null && d.start_odometer_km !== ''
+                    ? Number(d.start_odometer_km)
+                    : null;
+                const endOdo = d.end_odometer_km != null && d.end_odometer_km !== ''
+                    ? Number(d.end_odometer_km)
+                    : null;
+                const delta = d.odometer_delta_km != null && d.odometer_delta_km !== ''
+                    ? Number(d.odometer_delta_km)
+                    : (startOdo != null && endOdo != null ? round2(Math.max(0, endOdo - startOdo)) : null);
+                const traveled = d.total_distance_km != null
+                    ? Number(d.total_distance_km)
+                    : (delta != null ? delta : 0);
+                rows.push([
+                    d.device_name,
+                    d.plate || '',
+                    Number.isFinite(traveled) ? traveled : 0,
+                    formatDuration(d.moving_time_seconds),
+                    startOdo != null && Number.isFinite(startOdo) ? startOdo : '—',
+                    endOdo != null && Number.isFinite(endOdo) ? endOdo : '—',
+                    delta != null && Number.isFinite(delta) ? delta : '—',
+                    d.start_time_display || formatReportTime(d.start_time) || '—',
+                    d.end_time_display || formatReportTime(d.end_time) || '—',
+                ]);
+            });
         } else if (type === 'diesel') {
             const periodLabel = i18n.segPeriod || 'Period total';
             const tripLabel = i18n.segTrip || 'Trip';
@@ -523,31 +1051,159 @@
                 ]));
             });
         } else if (type === 'events') {
-            devices.forEach((d) => (d.events || []).forEach((e) => rows.push([
-                d.device_name,
-                d.plate || '',
-                e.time_display || e.time || '',
-                e.event_type || e.type || '',
-                e.title || '',
-                e.message || '',
-                e.geofence || '',
-                formatCoord(e.lat),
-                formatCoord(e.lng),
-                e.maps_url || '',
-                e.speed ?? '',
-            ])));
+            devices.forEach((d) => (d.events || []).forEach((e) => {
+                const row = [
+                    d.device_name,
+                    d.plate || '',
+                    e.time_display || e.time || '',
+                    e.event_type || e.type || '',
+                    e.title || '',
+                    e.message || '',
+                    e.geofence || '',
+                ];
+                pushCoords(row, formatCoord(e.lat), formatCoord(e.lng));
+                pushAddress(row, locationText(e));
+                row.push(e.maps_url || '', e.speed ?? '');
+                rows.push(row);
+            }));
         } else if (type === 'positions') {
-            devices.forEach((d) => (d.positions || []).forEach((p) => rows.push([
+            devices.forEach((d) => (d.positions || []).forEach((p) => {
+                const row = [
+                    d.device_name,
+                    d.plate || '',
+                    p.time_display || p.time || '',
+                ];
+                pushCoords(row, formatCoord(p.lat), formatCoord(p.lng));
+                pushAddress(row, locationText(p));
+                row.push(
+                    p.maps_url || '',
+                    p.speed ?? 0,
+                    formatCoord(p.heading),
+                    formatIgnition(p.ignition),
+                    p.status || '',
+                );
+                rows.push(row);
+            }));
+        } else if (type === 'overspeeds') {
+            devices.forEach((d) => (d.overspeeds || []).forEach((o) => {
+                const row = [
+                    d.device_name,
+                    d.plate || '',
+                    o.start_time || '',
+                    o.end_time || '',
+                    formatDuration(o.duration_seconds),
+                    o.max_speed_kmh ?? '',
+                    o.limit_kmh ?? d.overspeed_limit_kmh ?? '',
+                ];
+                pushAddress(row, locationText(o));
+                row.push(o.maps_url || '');
+                rows.push(row);
+            }));
+        } else if (type === 'zone_inout') {
+            devices.forEach((d) => (d.zone_events || d.events || []).forEach((e) => {
+                const row = [
+                    d.device_name,
+                    d.plate || '',
+                    e.time_display || e.time || '',
+                    e.event_type || e.type || '',
+                    e.geofence || '',
+                    e.title || '',
+                ];
+                pushCoords(row, formatCoord(e.lat), formatCoord(e.lng));
+                pushAddress(row, locationText(e));
+                row.push(e.maps_url || '');
+                rows.push(row);
+            }));
+        } else if (type === 'fuel_fillings') {
+            devices.forEach((d) => (d.fillings || []).forEach((f) => {
+                const row = [
+                    d.device_name,
+                    d.plate || '',
+                    f.time || '',
+                    f.liters ?? '',
+                    f.level_before ?? '',
+                    f.level_after ?? '',
+                ];
+                pushCoords(row, formatCoord(f.lat), formatCoord(f.lng));
+                pushAddress(row, locationText(f));
+                row.push(f.maps_url || '');
+                rows.push(row);
+            }));
+        } else if (type === 'current_position') {
+            devices.forEach((d) => {
+                const row = [
+                    d.device_name,
+                    d.plate || '',
+                    d.driver || '',
+                    d.time || '',
+                    d.status || '',
+                    d.speed ?? '',
+                    d.heading ?? '',
+                    d.altitude ?? '',
+                    formatIgnition(d.ignition),
+                ];
+                pushCoords(row, formatCoord(d.lat), formatCoord(d.lng));
+                pushAddress(row, locationText(d));
+                row.push(d.maps_url || '');
+                rows.push(row);
+            });
+        } else if (type === 'object_info') {
+            devices.forEach((d) => rows.push([
                 d.device_name,
                 d.plate || '',
-                p.time_display || p.time || '',
+                d.driver || '',
+                d.imei || '',
+                d.model || '',
+                d.phone || '',
+                d.status || '',
+                d.last_update || '',
+                d.speed ?? '',
+                formatIgnition(d.ignition),
+                d.odometer_km ?? '',
+                d.maps_url || '',
+            ]));
+        } else if (type === 'service') {
+            devices.forEach((d) => (d.services || []).forEach((s) => rows.push([
+                d.device_name,
+                d.plate || '',
+                s.name || '',
+                s.summary || '',
+                s.status || '',
+                s.current_odometer_label || '',
+                s.odometer_left_label || '',
+                s.days_left_label || '',
+            ])));
+        } else if (type === 'tasks') {
+            devices.forEach((d) => (d.tasks || []).forEach((t) => rows.push([
+                d.device_name,
+                d.plate || '',
+                t.name || '',
+                t.start || '',
+                t.destination || '',
+                t.priority || '',
+                t.status || '',
+                t.time_from || '',
+                t.time_to || '',
+            ])));
+        } else if (type === 'speed' || type === 'altitude') {
+            devices.forEach((d) => (d.series || []).forEach((p) => rows.push([
+                d.device_name,
+                d.plate || '',
+                p.time || '',
+                p.value ?? '',
                 formatCoord(p.lat),
                 formatCoord(p.lng),
                 p.maps_url || '',
-                p.speed ?? 0,
-                formatCoord(p.heading),
-                formatIgnition(p.ignition),
-                p.status || '',
+            ])));
+        } else if (type === 'ignition') {
+            devices.forEach((d) => (d.changes || []).forEach((c) => rows.push([
+                d.device_name,
+                d.plate || '',
+                c.time || '',
+                formatIgnition(c.ignition),
+                formatCoord(c.lat),
+                formatCoord(c.lng),
+                c.maps_url || '',
             ])));
         } else if (type === 'route') {
             devices.forEach((d) => rows.push([
@@ -606,6 +1262,12 @@
                 [i18n.kpiDistance, `${totals.total_distance_km ?? 0} km`],
                 [i18n.kpiDays || 'Days', totals.day_count ?? flat.rows.length],
                 [i18n.kpiTrips, totals.trip_count ?? 0],
+            ];
+        } else if (type === 'odometer') {
+            items = [
+                [i18n.kpiDevices, totals.device_count ?? flat.devices.length],
+                [i18n.kpiDistance, `${totals.total_distance_km ?? 0} km`],
+                [i18n.kpiMoving, formatDuration(totals.moving_time_seconds)],
             ];
         } else if (type === 'diesel') {
             items = [
@@ -735,7 +1397,7 @@
     }
 
     function resetReportView() {
-        state.columns = columnsFor($('gtReportType').value);
+        state.columns = projectColumns(columnsFor($('gtReportType').value));
         state.rows = [];
         state.page = 1;
         state.lastPayload = null;
@@ -802,6 +1464,10 @@
             showEmpty(i18n.selectVehicle || 'Select at least one vehicle.');
             return;
         }
+        if (isCustomMode() && !(selectedFieldKeys(false) || []).length) {
+            showEmpty(i18n.customPickOne || 'Select at least one field.');
+            return;
+        }
 
         if (state.abortController) {
             state.abortController.abort();
@@ -844,7 +1510,7 @@
                 updateProgress();
                 const merged = mergeReportPayloads(partials, requestedIds);
                 state.lastPayload = merged;
-                const flat = flatten(merged);
+                const flat = projectFlat(flatten(applyClientFilters(merged)));
                 state.columns = flat.columns;
                 state.rows = flat.rows;
                 renderKpis(flat);
@@ -865,7 +1531,12 @@
 
             const merged = mergeReportPayloads(partials, requestedIds);
             state.lastPayload = merged;
-            const flat = flatten(merged);
+            const flat = projectFlat(flatten(applyClientFilters(merged)));
+            state.columns = flat.columns;
+            state.rows = flat.rows;
+            renderKpis(flat);
+            renderHead();
+            renderPage();
 
             if (flat.type === 'route') {
                 const mapDevice = routeMapDevice(flat.devices || [], requestedIds);
@@ -874,6 +1545,8 @@
                     loadMap(mapDevice.points);
                 }
             }
+
+            updateFilterHelp();
 
             if (!state.rows.length) {
                 showEmpty(i18n.noData || 'No data for the selected report and period.');
@@ -901,6 +1574,10 @@
         const ids = selectedIds();
         if (!ids.length) {
             showEmpty(i18n.selectVehicle || 'Select at least one vehicle.');
+            return;
+        }
+        if (isCustomMode() && !(selectedFieldKeys(false) || []).length) {
+            showEmpty(i18n.customPickOne || 'Select at least one field.');
             return;
         }
 
@@ -1020,8 +1697,38 @@
         }, 1500);
     }
 
+    function vehiclePickerLabels() {
+        return [...document.querySelectorAll('#gtReportVehicles label[data-search]')];
+    }
+
+    function visibleVehicleCheckboxes() {
+        return vehiclePickerLabels()
+            .filter((label) => !label.classList.contains('is-filtered-out'))
+            .map((label) => label.querySelector('input[type="checkbox"]'))
+            .filter(Boolean);
+    }
+
+    function filterReportVehicles(query) {
+        const q = String(query || '').trim().toLowerCase();
+        const labels = vehiclePickerLabels();
+        let visible = 0;
+        labels.forEach((label) => {
+            const hay = label.getAttribute('data-search') || (label.textContent || '').toLowerCase();
+            const match = !q || hay.includes(q);
+            label.classList.toggle('is-filtered-out', !match);
+            if (match) visible += 1;
+        });
+        const empty = $('gtReportVehicleEmpty');
+        if (empty) empty.hidden = visible > 0 || labels.length === 0;
+    }
+
     function setVehicleChecks(checked) {
-        document.querySelectorAll('#gtReportVehicles input[type="checkbox"]').forEach((el) => {
+        // When a search filter is active, only toggle the visible matches.
+        const boxes = visibleVehicleCheckboxes();
+        const targets = boxes.length
+            ? boxes
+            : [...document.querySelectorAll('#gtReportVehicles input[type="checkbox"]')];
+        targets.forEach((el) => {
             el.checked = checked;
         });
     }
@@ -1066,21 +1773,85 @@
         applyDatePreset('today');
     }
 
-    $('gtReportRun')?.addEventListener('click', runReport);
+    function bindClick(id, handler) {
+        $(id)?.addEventListener('click', handler);
+    }
+
+    bindClick('gtReportRun', runReport);
     $('gtReportType')?.addEventListener('change', () => {
+        updateFilterVisibility();
+        persistFilters();
+        if (isCustomMode()) rebuildCustomFields();
         resetReportView();
-        state.columns = columnsFor($('gtReportType').value);
+        state.columns = projectColumns(columnsFor($('gtReportType').value));
         renderHead();
         renderPage();
     });
-    $('gtReportCsv')?.addEventListener('click', () => exportFmt('csv'));
-    $('gtReportXlsx')?.addEventListener('click', () => exportFmt('xlsx'));
-    $('gtReportPdf')?.addEventListener('click', () => exportFmt('pdf'));
+    bindClick('gtReportCsv', () => exportFmt('csv'));
+    bindClick('gtReportXlsx', () => exportFmt('xlsx'));
+    bindClick('gtReportPdf', () => exportFmt('pdf'));
     $('gtReportSelectAll')?.addEventListener('click', () => setVehicleChecks(true));
     $('gtReportSelectNone')?.addEventListener('click', () => setVehicleChecks(false));
+    $('gtReportVehicleSearch')?.addEventListener('input', (ev) => {
+        filterReportVehicles(ev.target?.value);
+    });
     document.querySelectorAll('[data-report-preset]').forEach((btn) => {
         btn.addEventListener('click', () => applyDatePreset(btn.getAttribute('data-report-preset')));
     });
 
+    bindClick('gtReportModeStandard', () => setReportMode('standard'));
+    bindClick('gtReportModeCustom', () => setReportMode('custom'));
+    bindClick('gtCustomFieldsSelectAll', () => {
+        document.querySelectorAll('#gtCustomFields input[type="checkbox"]').forEach((el) => { el.checked = true; });
+        const type = $('gtReportType')?.value || 'summary';
+        saveCustomFields(type, selectedFieldKeys(false) || []);
+        if (state.lastPayload) rerenderFromPayload(state.lastPayload);
+    });
+    bindClick('gtCustomFieldsClear', () => {
+        document.querySelectorAll('#gtCustomFields input[type="checkbox"]').forEach((el) => { el.checked = false; });
+        const type = $('gtReportType')?.value || 'summary';
+        saveCustomFields(type, []);
+        if (state.lastPayload) rerenderFromPayload(state.lastPayload);
+    });
+
+    const filterPersistIds = [
+        'gtFilterIgnoreEmpty', 'gtFilterShowCoordinates', 'gtFilterShowAddresses',
+        'gtFilterMarkersInstead', 'gtFilterZonesInstead', 'gtFilterStops',
+        'gtFilterStopsCustom', 'gtFilterSpeedLimit',
+    ];
+    filterPersistIds.forEach((id) => {
+        const el = $(id);
+        if (!el) return;
+        el.addEventListener('change', () => onFilterChanged(id));
+        // Debounce free-text numeric filters so we don't spam regenerate while typing.
+        if (id === 'gtFilterStopsCustom' || id === 'gtFilterSpeedLimit') {
+            let timer = null;
+            el.addEventListener('input', () => {
+                persistFilters();
+                clearTimeout(timer);
+                timer = setTimeout(() => onFilterChanged(id), 500);
+            });
+        }
+    });
+
+    restoreFilters();
+    updateFilterVisibility();
+    updateFilterHelp();
     initDateTimes();
+    filterReportVehicles('');
+    if (lockedType) {
+        const typeEl = $('gtReportType');
+        if (typeEl) typeEl.value = lockedType;
+        setReportMode('standard');
+        state.columns = projectColumns(columnsFor(lockedType));
+        renderHead();
+        renderPage();
+    } else {
+        try {
+            const savedMode = localStorage.getItem(MODE_STORAGE_KEY);
+            setReportMode(savedMode === 'custom' ? 'custom' : 'standard');
+        } catch (_) {
+            setReportMode('standard');
+        }
+    }
 })(window);

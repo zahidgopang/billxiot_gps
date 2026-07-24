@@ -453,23 +453,34 @@ class GlobalTrackingController extends Controller
         }
 
         try {
-            $reports = app(\App\Services\Tracking\Reports\ReportService::class);
-            $export = app(\App\Services\Tracking\Reports\ReportExportService::class);
+            $from = $range['from'];
+            $to = $range['to'] ?? $range['from']->copy()->endOfDay();
             \App\Services\Tracking\Reports\ReportService::applyTimeLimit(
                 count($ids),
-                $range['from'],
-                $range['to'] ?? $range['from']->copy()->endOfDay(),
+                $from,
+                $to,
                 forExport: true,
             );
             $request->session()->save();
+
+            if ($format === 'pdf') {
+                return app(\App\Services\Tracking\Reports\HistoryPdfExportService::class)
+                    ->export($user, $ids, $from, $to);
+            }
+
+            $reports = app(\App\Services\Tracking\Reports\ReportService::class);
+            $export = app(\App\Services\Tracking\Reports\ReportExportService::class);
 
             $report = $reports->generate(
                 $user,
                 'trips_stops',
                 $ids,
-                $range['from'],
-                $range['to'] ?? $range['from']->copy()->endOfDay(),
+                $from,
+                $to,
                 forExport: true,
+                filters: new \App\Services\Tracking\Reports\ReportFilters(
+                    showAddresses: true,
+                ),
             );
 
             return $export->export($report, $format);
@@ -555,8 +566,8 @@ class GlobalTrackingController extends Controller
 
     private function prepareHeavyHistoryRequest(): void
     {
-        @ini_set('memory_limit', '512M');
-        @set_time_limit(180);
+        @ini_set('memory_limit', '1024M');
+        @set_time_limit(300);
     }
 
     private function historyFailureJson(\Throwable $e): JsonResponse

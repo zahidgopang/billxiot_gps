@@ -15,7 +15,11 @@ class ReportExportServiceTest extends TestCase
     {
         $service = new ReportExportService;
 
-        foreach (['summary', 'trips', 'stops', 'trips_stops', 'mileage', 'diesel', 'events', 'route', 'positions'] as $type) {
+        foreach ([
+            'summary', 'trips', 'stops', 'trips_stops', 'mileage', 'odometer', 'diesel', 'events', 'route', 'positions',
+            'overspeeds', 'zone_inout', 'fuel_fillings', 'current_position', 'object_info',
+            'service', 'tasks', 'speed', 'altitude', 'ignition',
+        ] as $type) {
             $report = $this->sampleReport($type);
             $rows = $service->tableRows($report, $type);
 
@@ -205,6 +209,81 @@ class ReportExportServiceTest extends TestCase
                 'heading' => 90,
                 'ignition' => true,
                 'status' => 'Moving',
+            ]],
+            'start_odometer_km' => 1000,
+            'end_odometer_km' => 1012.5,
+            'odometer_delta_km' => 12.5,
+            'overspeed_limit_kmh' => 80,
+            'overspeeds' => [[
+                'start_time' => '10:00',
+                'end_time' => '10:02',
+                'duration_seconds' => 120,
+                'max_speed_kmh' => 110,
+                'limit_kmh' => 80,
+                'maps_url' => 'https://www.google.com/maps/search/?api=1&query=21.500000,39.900000',
+            ]],
+            'zone_events' => [[
+                'time_display' => '11:00',
+                'event_type' => 'geofence_enter',
+                'geofence' => 'Depot',
+                'title' => 'Entered',
+                'lat' => 21.5,
+                'lng' => 39.9,
+                'maps_url' => 'https://www.google.com/maps/search/?api=1&query=21.500000,39.900000',
+            ]],
+            'fillings' => [[
+                'time' => '12:00',
+                'liters' => 40,
+                'level_before' => 10,
+                'level_after' => 50,
+                'lat' => 21.5,
+                'lng' => 39.9,
+                'maps_url' => 'https://www.google.com/maps/search/?api=1&query=21.500000,39.900000',
+            ]],
+            'time' => '18:00',
+            'status' => 'Running',
+            'speed' => 40,
+            'heading' => 90,
+            'altitude' => 120,
+            'ignition' => true,
+            'lat' => 21.4,
+            'lng' => 39.8,
+            'maps_url' => 'https://www.google.com/maps/search/?api=1&query=21.400000,39.800000',
+            'imei' => '123456789012345',
+            'model' => 'Tracker',
+            'phone' => '+966500000000',
+            'last_update' => '18:00',
+            'odometer_km' => 1200,
+            'services' => [[
+                'name' => 'Oil change',
+                'summary' => 'Every 5000 km',
+                'status' => 'soon',
+                'current_odometer_label' => '4800 km',
+                'odometer_left_label' => '200 km',
+                'days_left_label' => '5 days',
+            ]],
+            'tasks' => [[
+                'name' => 'Delivery',
+                'start' => 'Warehouse',
+                'destination' => 'Client',
+                'priority' => 'normal',
+                'status' => 'new',
+                'time_from' => '2026-07-01 08:00',
+                'time_to' => '2026-07-01 12:00',
+            ]],
+            'series' => [[
+                'time' => '08:05',
+                'value' => 40,
+                'lat' => 21.4,
+                'lng' => 39.8,
+                'maps_url' => 'https://www.google.com/maps/search/?api=1&query=21.400000,39.800000',
+            ]],
+            'changes' => [[
+                'time' => '08:00',
+                'ignition' => true,
+                'lat' => 21.4,
+                'lng' => 39.8,
+                'maps_url' => 'https://www.google.com/maps/search/?api=1&query=21.400000,39.800000',
             ]],
         ];
 

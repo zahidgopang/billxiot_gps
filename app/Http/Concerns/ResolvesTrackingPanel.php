@@ -56,6 +56,7 @@ trait ResolvesTrackingPanel
             'live' => 'tracking.index',
             'history' => 'tracking.history',
             'reports' => 'tracking.reports.index',
+            'odometer' => 'tracking.odometer.index',
             'events' => 'tracking.events.index',
             'geofences' => 'tracking.geofences.index',
             'notifications' => 'tracking.notifications.index',

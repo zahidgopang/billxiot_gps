@@ -19,7 +19,8 @@ final class ArabicPdfText
         }
 
         try {
-            return self::engine()->utf8Glyphs($text, 1000);
+            // Higher limit so full street addresses are not cut mid-string in PDFs.
+            return self::engine()->utf8Glyphs($text, 4000);
         } catch (\Throwable) {
             return $text;
         }

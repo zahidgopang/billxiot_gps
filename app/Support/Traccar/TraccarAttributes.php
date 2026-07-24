@@ -81,7 +81,11 @@ final class TraccarAttributes
                 ?? $attributes['satInView']
                 ?? $attributes['satVisible']
                 ?? null,
-            'odometer' => $attributes['odometer'] ?? null,
+            // Traccar commonly stores cumulative meters as totalDistance (not odometer).
+            'odometer' => $attributes['odometer']
+                ?? $attributes['totalDistance']
+                ?? $attributes['total_distance']
+                ?? null,
             'fuel' => self::firstNumeric($attributes, [
                 'fuel',
                 'fuelLevel',

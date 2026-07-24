@@ -8,6 +8,7 @@ use App\Http\Concerns\ResolvesTrackingPanel;
 use App\Http\Controllers\Controller;
 use App\Services\Tracking\GlobalTrackingService;
 use App\Services\Tracking\Reports\ReportExportService;
+use App\Services\Tracking\Reports\ReportFilters;
 use App\Services\Tracking\Reports\ReportService;
 use App\Support\Tracking\HistoryRangeBounds;
 use Carbon\Carbon;
@@ -62,13 +63,28 @@ class ReportController extends Controller
             // Release session lock so parallel report requests (one device each) are not serialized.
             $request->session()->save();
 
+            $filters = ReportFilters::fromRequest($request);
+            $fieldKeys = \App\Services\Tracking\Reports\ReportLabels::parseFieldKeys(
+                $request->input('fields', $request->query('fields'))
+            );
+            if ($fieldKeys !== null) {
+                $fieldKeys = \App\Services\Tracking\Reports\ReportLabels::sanitizeFieldKeys($type, $fieldKeys);
+            }
+
             $report = $this->reports->generate(
                 $request->user(),
                 $type,
                 $ids,
                 $range['from'],
                 $range['to'],
+                forExport: false,
+                filters: $filters,
             );
+
+            if ($fieldKeys !== null) {
+                $report['meta'] = is_array($report['meta'] ?? null) ? $report['meta'] : [];
+                $report['meta']['fields'] = $fieldKeys;
+            }
 
             return $this->noStoreJson(array_merge(
                 ['success' => true, '_nonce' => $nonce],
@@ -100,9 +116,16 @@ class ReportController extends Controller
             ReportService::applyTimeLimit(count($ids), $range['from'], $range['to'], forExport: true);
             $type = (string) $request->input('type', $request->query('type', 'summary'));
             $format = (string) $request->input('format', $request->query('format', 'csv'));
+            $fieldKeys = \App\Services\Tracking\Reports\ReportLabels::parseFieldKeys(
+                $request->input('fields', $request->query('fields'))
+            );
+            if ($fieldKeys !== null) {
+                $fieldKeys = \App\Services\Tracking\Reports\ReportLabels::sanitizeFieldKeys($type, $fieldKeys);
+            }
 
             $request->session()->save();
 
+            $filters = ReportFilters::fromRequest($request);
             $report = $this->reports->generate(
                 $request->user(),
                 $type,
@@ -110,9 +133,10 @@ class ReportController extends Controller
                 $range['from'],
                 $range['to'],
                 forExport: true,
+                filters: $filters,
             );
 
-            return $this->export->export($report, $format);
+            return $this->export->export($report, $format, $fieldKeys);
         } catch (\Throwable $e) {
             report($e);
 

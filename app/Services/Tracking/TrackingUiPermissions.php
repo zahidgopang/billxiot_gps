@@ -37,6 +37,7 @@ class TrackingUiPermissions
 
         $hub = [
             'reports' => $can('web.reports.view'),
+            'odometer' => $can('web.reports.view'),
             'geofences' => $can('web.geofence.view'),
             'maintenance' => $can('web.tracking.hub.maintenance'),
             'drivers' => $can('web.tracking.hub.drivers'),
@@ -92,6 +93,7 @@ class TrackingUiPermissions
     {
         $hub = [
             'reports' => true,
+            'odometer' => true,
             'geofences' => true,
             'maintenance' => true,
             'drivers' => true,
@@ -146,7 +148,7 @@ class TrackingUiPermissions
     private function denyAll(): array
     {
         $falseHub = array_fill_keys([
-            'reports', 'geofences', 'maintenance', 'drivers', 'commands', 'tasks', 'notifications', 'settings',
+            'reports', 'odometer', 'geofences', 'maintenance', 'drivers', 'commands', 'tasks', 'notifications', 'settings',
         ], false);
 
         $falseTabs = array_fill_keys(['objects', 'events', 'places', 'history'], false);
@@ -181,7 +183,7 @@ class TrackingUiPermissions
     private function liveMapOnly(callable $can): array
     {
         $falseHub = array_fill_keys([
-            'reports', 'geofences', 'maintenance', 'drivers', 'commands', 'tasks', 'notifications', 'settings',
+            'reports', 'odometer', 'geofences', 'maintenance', 'drivers', 'commands', 'tasks', 'notifications', 'settings',
         ], false);
 
         $mapControls = [

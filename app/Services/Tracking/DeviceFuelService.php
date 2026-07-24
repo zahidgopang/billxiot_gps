@@ -20,7 +20,7 @@ class DeviceFuelService
     private const MIN_DROP_L = 0.2;
 
     /** Treat sudden increases above this as refills (liters). */
-    private const MIN_REFILL_L = 3.0;
+    public const MIN_REFILL_L = 3.0;
 
     public function consumptionLPer100km(Device $device): ?float
     {

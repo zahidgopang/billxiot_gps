@@ -10,9 +10,15 @@ use App\Models\VehicleEvent;
 use App\Services\Mobile\VehicleStatusSpec;
 use App\Services\Tracking\DeviceFuelService;
 use App\Services\Tracking\DeviceHistoryFetcher;
+use App\Services\Tracking\DeviceOdometerService;
+use App\Services\Tracking\DevicePositionLoader;
 use App\Services\Tracking\GlobalTrackingService;
 use App\Services\Tracking\HistoryAnalyticsService;
+use App\Services\Tracking\MaintenanceService;
+use App\Services\Tracking\TaskService;
+use App\Services\Tracking\TrackingSettingsService;
 use App\Support\DateTime\AppDateTime;
+use App\Support\Tracking\TelemetryFormatter;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 
@@ -61,6 +67,19 @@ class ReportService
 
     private bool $forExport = false;
 
+    private ReportFilters $filters;
+
+    /** Report types that do not need GPS history prefetch. */
+    private const LIGHTWEIGHT_TYPES = [
+        'current_position',
+        'object_info',
+        'service',
+        'tasks',
+    ];
+
+    /** @var list<array<string, mixed>>|null */
+    private ?array $maintenanceCache = null;
+
     public function __construct(
         private DeviceHistoryFetcher $historyFetcher,
         private HistoryAnalyticsService $historyAnalytics,
@@ -68,7 +87,14 @@ class ReportService
         private GlobalTrackingService $tracking,
         private \App\Contracts\Tracking\PositionReaderInterface $positions,
         private DeviceFuelService $fuel,
-    ) {}
+        private MaintenanceService $maintenance,
+        private TaskService $tasks,
+        private DevicePositionLoader $positionLoader,
+        private TrackingSettingsService $trackingSettings,
+        private ReportLocationLabelResolver $locationLabels,
+    ) {
+        $this->filters = ReportFilters::defaults();
+    }
 
     /**
      * PHP execution budget for report generate/export requests.
@@ -109,12 +135,22 @@ class ReportService
      * @param  list<int>  $deviceIds
      * @return array<string, mixed>
      */
-    public function generate(User $actor, string $type, array $deviceIds, Carbon $from, ?Carbon $to, bool $forExport = false): array
-    {
+    public function generate(
+        User $actor,
+        string $type,
+        array $deviceIds,
+        Carbon $from,
+        ?Carbon $to,
+        bool $forExport = false,
+        ?ReportFilters $filters = null,
+    ): array {
         $this->locationCache = [];
         $this->statsCache = [];
         $this->sortedPointsCache = [];
+        $this->maintenanceCache = null;
         $this->forExport = $forExport;
+        $this->filters = $filters ?? ReportFilters::defaults();
+        $this->locationLabels->clearCache();
 
         $requestedCount = count($deviceIds);
         $ids = array_slice(
@@ -129,16 +165,28 @@ class ReportService
                 'devices' => [],
                 'from' => $from->toIso8601String(),
                 'to' => $to?->toIso8601String(),
-                'meta' => ['devices_requested' => $requestedCount, 'devices_in_report' => 0],
+                'meta' => [
+                    'devices_requested' => $requestedCount,
+                    'devices_in_report' => 0,
+                    'filters' => $this->filters->toArray(),
+                ],
             ];
         }
 
         $devices = Device::query()->whereIn('id', $ids)->get()->keyBy('id');
-        $this->prefetchLocations($devices->values()->all(), $from, $to);
+        $needsHistory = ! in_array($type, self::LIGHTWEIGHT_TYPES, true);
+        if ($needsHistory) {
+            $this->prefetchLocations($devices->values()->all(), $from, $to);
+        }
+        if (in_array($type, ['current_position', 'object_info'], true)) {
+            // Positions live in Traccar (tc_positions) — never eager-load Eloquent latestLocation.
+            $this->positionLoader->attachLatestToMany($devices);
+        }
 
         $results = [];
         $positionsTruncated = false;
         $analyticsDownsampled = false;
+        $skippedEmpty = 0;
 
         foreach ($ids as $id) {
             $device = $devices->get($id);
@@ -153,11 +201,24 @@ class ReportService
                 'stops' => $this->stopsReport($device, $from, $to, $type),
                 'trips_stops' => $this->tripsStopsReport($device, $from, $to, $type),
                 'mileage' => $this->mileageReport($device, $from, $to, $type),
+                'odometer' => $this->odometerReport($device, $from, $to),
                 'diesel' => $this->dieselReport($device, $from, $to, $type),
                 'summary' => $this->summaryReport($device, $from, $to, $type),
                 'events' => $this->eventsReport($device, $from, $to),
+                'overspeeds' => $this->overspeedsReport($device, $from, $to),
+                'zone_inout' => $this->zoneInOutReport($device, $from, $to),
+                'fuel_fillings' => $this->fuelFillingsReport($device, $from, $to),
+                'current_position' => $this->currentPositionReport($device),
+                'object_info' => $this->objectInfoReport($device),
+                'service' => $this->serviceReport($device, $actor),
+                'tasks' => $this->tasksReport($device, $actor, $from, $to),
+                'speed' => $this->telemetrySeriesReport($device, $from, $to, 'speed'),
+                'altitude' => $this->telemetrySeriesReport($device, $from, $to, 'altitude'),
+                'ignition' => $this->ignitionChangesReport($device, $from, $to),
                 default => $this->summaryReport($device, $from, $to, 'summary'),
             };
+
+            $row = $this->enrichDeviceLocations($device, $type, $row);
 
             if (($row['positions_truncated'] ?? false) === true) {
                 $positionsTruncated = true;
@@ -169,7 +230,11 @@ class ReportService
 
             unset($row['analytics_downsampled']);
 
-            $results[] = $row;
+            if ($this->filters->ignoreEmpty && $this->isDeviceReportEmpty($type, $row)) {
+                $skippedEmpty++;
+            } else {
+                $results[] = $row;
+            }
 
             if (count($ids) > 1 && ! $this->forExport) {
                 $rangeKey = $from->toIso8601String().'|'.($to?->toIso8601String() ?? '');
@@ -191,6 +256,10 @@ class ReportService
                 'devices_capped' => $requestedCount > self::MAX_DEVICES,
                 'positions_truncated' => $positionsTruncated,
                 'analytics_downsampled' => $analyticsDownsampled,
+                'devices_skipped_empty' => $skippedEmpty,
+                'filters' => $this->filters->toArray(),
+                'geocode_available' => $this->locationLabels->geocodeConfigured(),
+                'location_labels_requested' => $this->filters->needsLocationLabels(),
             ],
         ];
     }
@@ -328,7 +397,71 @@ class ReportService
      */
     private function tripsStopsReport(Device $device, Carbon $from, ?Carbon $to, string $reportType): array
     {
-        $collection = $this->loadLocationCollection($device, $from, $to);
+        return $this->composeTripsStops(
+            $device,
+            $this->loadLocationCollection($device, $from, $to),
+            $from,
+            $to,
+        );
+    }
+
+    /**
+     * Build trips/stops from an already-loaded GPS collection (History PDF with fallback routes).
+     *
+     * @param  Collection<int, DeviceLocation>  $locations
+     * @param  array{attach_route_points?: bool, enrich_addresses?: bool}  $options
+     * @return array<string, mixed>
+     */
+    public function tripsStopsFromLocations(
+        Device $device,
+        Collection $locations,
+        ?ReportFilters $filters = null,
+        array $options = [],
+    ): array {
+        $previousFilters = $this->filters;
+        $previousExport = $this->forExport;
+        $attachRoutePoints = (bool) ($options['attach_route_points'] ?? false);
+        $enrichAddresses = (bool) ($options['enrich_addresses'] ?? false);
+
+        $this->filters = $filters ?? new ReportFilters(
+            showCoordinates: true,
+            showAddresses: $enrichAddresses,
+        );
+        // Route polylines on every trip are heavy; PDF only needs aggregates + table rows.
+        $this->forExport = $attachRoutePoints;
+        $this->locationLabels->clearCache();
+        unset($this->sortedPointsCache[$device->id]);
+        // Avoid colliding with generate() stats cache keys for the same device.
+        $this->statsCache = [];
+
+        try {
+            $from = now()->subSecond();
+            $to = now();
+            $row = $this->composeTripsStops($device, $locations, $from, $to);
+
+            if ($enrichAddresses && $this->filters->needsLocationLabels()) {
+                return $this->enrichDeviceLocations($device, 'trips_stops', $row);
+            }
+
+            return $row;
+        } finally {
+            $this->filters = $previousFilters;
+            $this->forExport = $previousExport;
+            unset($this->sortedPointsCache[$device->id]);
+            $this->statsCache = [];
+        }
+    }
+
+    /**
+     * @param  Collection<int, DeviceLocation>  $collection
+     * @return array<string, mixed>
+     */
+    private function composeTripsStops(
+        Device $device,
+        Collection $collection,
+        Carbon $from,
+        ?Carbon $to,
+    ): array {
         $stats = $this->statsFor($device, $collection, 'trips', $from, $to);
         $sorted = $this->sortedPointsForDevice($device, $collection);
         $stops = $this->decorateStopsWithMaps($stats['stops'] ?? []);
@@ -389,6 +522,89 @@ class ReportService
             'end_time' => $stats['end_time'] ?? null,
             'days' => $days,
             'day_count' => count($days),
+            'analytics_downsampled' => $stats['analytics_downsampled'] ?? false,
+        ]);
+    }
+
+    /**
+     * Distance traveled in the selected range (odometer / trip distance report).
+     *
+     * @return array<string, mixed>
+     */
+    private function odometerReport(Device $device, Carbon $from, ?Carbon $to): array
+    {
+        $collection = $this->loadLocationCollection($device, $from, $to);
+        $stats = $this->statsFor($device, $collection, 'summary', $from, $to);
+        $sorted = $this->sortedPointsForDevice($device, $collection);
+
+        $startOdo = null;
+        $endOdo = null;
+        $firstAt = null;
+        $lastAt = null;
+
+        foreach ($sorted as $point) {
+            $at = $this->pointRecordedAt($point);
+            if ($at) {
+                if ($firstAt === null) {
+                    $firstAt = $at;
+                }
+                $lastAt = $at;
+            }
+
+            $km = TelemetryFormatter::odometerKm($point->odometer ?? null);
+            if ($km === null) {
+                continue;
+            }
+            if ($startOdo === null) {
+                $startOdo = $km;
+            }
+            $endOdo = $km;
+        }
+
+        // Prefer client baseline + GPS accumulation when set (matches live panel).
+        // Single history scan for start+end (avoids loading baseline→end twice).
+        $odometer = app(DeviceOdometerService::class);
+        if ($odometer->hasBaseline($device)) {
+            $startAt = $firstAt ?? $from;
+            $endAt = $lastAt ?? ($to ?? now());
+            $pair = $odometer->displayKmBetween($device, $startAt, $endAt);
+            if ($pair['start'] !== null) {
+                $startOdo = $pair['start'];
+            }
+            if ($pair['end'] !== null) {
+                $endOdo = $pair['end'];
+            }
+        }
+
+        // Full GPS path distance (corrected for downsampling in statsFor).
+        $gpsDistanceKm = round((float) ($stats['total_distance_km'] ?? 0), 2);
+        $odometerDelta = ($startOdo !== null && $endOdo !== null)
+            ? round(max(0, $endOdo - $startOdo), 2)
+            : null;
+
+        // Prefer device odometer delta when present — matches dashboard odometer units
+        // and avoids GPS jitter on dense tracks. Fall back to GPS path distance.
+        $distanceKm = $odometerDelta !== null && $odometerDelta > 0
+            ? $odometerDelta
+            : $gpsDistanceKm;
+
+        return array_merge($this->deviceMeta($device), [
+            'total_distance_km' => $distanceKm,
+            'gps_distance_km' => $gpsDistanceKm,
+            'odometer_delta_km' => $odometerDelta,
+            'start_odometer_km' => $startOdo,
+            'end_odometer_km' => $endOdo,
+            'moving_time_seconds' => (int) ($stats['moving_time_seconds'] ?? 0),
+            // Keep ISO for window merging; UI formats for display.
+            'start_time' => $firstAt
+                ? app_datetime_api($firstAt)
+                : ($stats['start_time'] ?? null),
+            'end_time' => $lastAt
+                ? app_datetime_api($lastAt)
+                : ($stats['end_time'] ?? null),
+            'start_time_display' => $firstAt ? app_datetime_format($firstAt) : null,
+            'end_time_display' => $lastAt ? app_datetime_format($lastAt) : null,
+            'point_count' => $collection->count(),
             'analytics_downsampled' => $stats['analytics_downsampled'] ?? false,
         ]);
     }
@@ -562,6 +778,381 @@ class ReportService
     }
 
     /**
+     * Overspeed segments from GPS (Traccar “Overspeeds”).
+     *
+     * @return array<string, mixed>
+     */
+    private function overspeedsReport(Device $device, Carbon $from, ?Carbon $to): array
+    {
+        $collection = $this->loadLocationCollection($device, $from, $to);
+        $sorted = $this->sortedPointsForDevice($device, $collection);
+        $limit = $this->resolvedOverspeedLimitKmh($device);
+
+        $segments = [];
+        $open = null;
+
+        foreach ($sorted as $point) {
+            $spd = (float) ($point->speed ?? 0);
+            $at = $this->pointRecordedAt($point);
+            $lat = $point->lat !== null ? (float) $point->lat : null;
+            $lng = $point->lng !== null ? (float) $point->lng : null;
+
+            if ($spd > $limit) {
+                if ($open === null) {
+                    $open = [
+                        'start_at' => $at,
+                        'end_at' => $at,
+                        'max_speed_kmh' => $spd,
+                        'start_lat' => $lat,
+                        'start_lng' => $lng,
+                        'end_lat' => $lat,
+                        'end_lng' => $lng,
+                        'point_count' => 1,
+                    ];
+                } else {
+                    $open['end_at'] = $at;
+                    $open['max_speed_kmh'] = max((float) $open['max_speed_kmh'], $spd);
+                    $open['end_lat'] = $lat;
+                    $open['end_lng'] = $lng;
+                    $open['point_count']++;
+                }
+                continue;
+            }
+
+            if ($open !== null) {
+                $segments[] = $this->formatOverspeedSegment($open, $limit);
+                $open = null;
+            }
+        }
+        if ($open !== null) {
+            $segments[] = $this->formatOverspeedSegment($open, $limit);
+        }
+
+        return array_merge($this->deviceMeta($device), [
+            'overspeed_limit_kmh' => $limit,
+            'overspeeds' => $segments,
+            'overspeed_count' => count($segments),
+        ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $open
+     * @return array<string, mixed>
+     */
+    private function formatOverspeedSegment(array $open, float $limit): array
+    {
+        /** @var Carbon|null $start */
+        $start = $open['start_at'] instanceof Carbon ? $open['start_at'] : null;
+        /** @var Carbon|null $end */
+        $end = $open['end_at'] instanceof Carbon ? $open['end_at'] : null;
+        $duration = ($start && $end) ? max(0, (int) $end->diffInSeconds($start)) : 0;
+
+        return [
+            'start_time' => $start ? app_datetime_format($start) : null,
+            'end_time' => $end ? app_datetime_format($end) : null,
+            'duration_seconds' => $duration,
+            'max_speed_kmh' => round((float) $open['max_speed_kmh'], 1),
+            'limit_kmh' => $limit,
+            'start_lat' => $open['start_lat'],
+            'start_lng' => $open['start_lng'],
+            'end_lat' => $open['end_lat'],
+            'end_lng' => $open['end_lng'],
+            'maps_url' => $this->googleMapsUrl(
+                $open['start_lat'] !== null ? (float) $open['start_lat'] : null,
+                $open['start_lng'] !== null ? (float) $open['start_lng'] : null,
+            ),
+            'point_count' => (int) $open['point_count'],
+        ];
+    }
+
+    /**
+     * Geofence enter/exit (Traccar “Zone in/out”).
+     *
+     * @return array<string, mixed>
+     */
+    private function zoneInOutReport(Device $device, Carbon $from, ?Carbon $to): array
+    {
+        $full = $this->eventsReport($device, $from, $to);
+        $events = array_values(array_filter(
+            $full['events'] ?? [],
+            function (array $event): bool {
+                $type = strtolower((string) ($event['event_type'] ?? $event['type'] ?? ''));
+
+                return in_array($type, [
+                    VehicleEvent::TYPE_GEOFENCE_ENTER,
+                    VehicleEvent::TYPE_GEOFENCE_EXIT,
+                    'geofenceenter',
+                    'geofenceexit',
+                ], true);
+            }
+        ));
+
+        return array_merge($this->deviceMeta($device), [
+            'events' => $events,
+            'event_count' => count($events),
+            'zone_events' => $events,
+            'zone_event_count' => count($events),
+        ]);
+    }
+
+    /**
+     * Fuel fillings detected from sensor rises (Traccar “Fuel fillings”).
+     *
+     * @return array<string, mixed>
+     */
+    private function fuelFillingsReport(Device $device, Carbon $from, ?Carbon $to): array
+    {
+        $collection = $this->loadLocationCollection($device, $from, $to);
+        $sorted = $this->sortedPointsForDevice($device, $collection);
+        $fillings = [];
+        $prevLiters = null;
+
+        foreach ($sorted as $point) {
+            $liters = $this->fuel->readingToLiters($point->fuel ?? null, $device);
+            if ($liters === null) {
+                continue;
+            }
+            if ($prevLiters === null) {
+                $prevLiters = $liters;
+                continue;
+            }
+
+            $rise = $liters - $prevLiters;
+            if ($rise >= DeviceFuelService::MIN_REFILL_L) {
+                $lat = $point->lat !== null ? (float) $point->lat : null;
+                $lng = $point->lng !== null ? (float) $point->lng : null;
+                $fillings[] = [
+                    'time' => app_datetime_format($point->recorded_at),
+                    'liters' => round($rise, 2),
+                    'level_before' => round($prevLiters, 2),
+                    'level_after' => round($liters, 2),
+                    'lat' => $lat,
+                    'lng' => $lng,
+                    'maps_url' => $this->googleMapsUrl($lat, $lng),
+                ];
+            }
+            $prevLiters = $liters;
+        }
+
+        return array_merge($this->deviceMeta($device), [
+            'fillings' => $fillings,
+            'filling_count' => count($fillings),
+            'total_filled_liters' => round(array_sum(array_map(
+                fn (array $f) => (float) ($f['liters'] ?? 0),
+                $fillings
+            )), 2),
+        ]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function currentPositionReport(Device $device): array
+    {
+        $loc = $device->latestLocation;
+        if (! $loc) {
+            return array_merge($this->deviceMeta($device), [
+                'has_position' => false,
+                'time' => null,
+                'lat' => null,
+                'lng' => null,
+                'maps_url' => null,
+                'speed' => null,
+                'heading' => null,
+                'altitude' => null,
+                'ignition' => null,
+                'status' => (string) __('app.map.status_offline'),
+                'status_key' => 'offline',
+            ]);
+        }
+
+        $lat = $loc->lat !== null ? (float) $loc->lat : null;
+        $lng = $loc->lng !== null ? (float) $loc->lng : null;
+        $age = $loc->recorded_at ? (int) $loc->recorded_at->diffInSeconds(now()) : null;
+        $resolved = VehicleStatusSpec::resolve(
+            $age,
+            (float) ($loc->speed ?? 0),
+            (bool) ($loc->ignition ?? false),
+        );
+
+        return array_merge($this->deviceMeta($device), [
+            'has_position' => $lat !== null && $lng !== null,
+            'time' => app_datetime_format($loc->recorded_at),
+            'lat' => $lat,
+            'lng' => $lng,
+            'maps_url' => $this->googleMapsUrl($lat, $lng),
+            'speed' => $loc->speed !== null ? round((float) $loc->speed, 1) : null,
+            'heading' => $loc->heading !== null ? round((float) $loc->heading, 1) : null,
+            'altitude' => $loc->altitude !== null ? round((float) $loc->altitude, 1) : null,
+            'ignition' => $loc->ignition,
+            'status' => $resolved['label'],
+            'status_key' => $resolved['key'],
+            'connectivity_tier' => $resolved['tier'],
+        ]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function objectInfoReport(Device $device): array
+    {
+        $current = $this->currentPositionReport($device);
+
+        $odometer = $device->latestLocation?->odometer;
+
+        return array_merge($this->deviceMeta($device), [
+            'imei' => (string) ($device->imei ?? ''),
+            'model' => (string) ($device->vehicle_model ?? $device->model ?? ''),
+            'phone' => (string) ($device->driverContactNumber() ?? ''),
+            'status' => $current['status'] ?? null,
+            'status_key' => $current['status_key'] ?? null,
+            'connectivity_tier' => $current['connectivity_tier'] ?? null,
+            'last_update' => $current['time'] ?? null,
+            'lat' => $current['lat'] ?? null,
+            'lng' => $current['lng'] ?? null,
+            'maps_url' => $current['maps_url'] ?? null,
+            'speed' => $current['speed'] ?? null,
+            'ignition' => $current['ignition'] ?? null,
+            'odometer_km' => $odometer !== null ? round(((float) $odometer) / 1000, 1) : null,
+        ]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function serviceReport(Device $device, User $actor): array
+    {
+        $this->maintenanceCache ??= $this->maintenance->listForActor($actor);
+        $items = [];
+        foreach ($this->maintenanceCache as $row) {
+            $objectIds = $row['object_ids'] ?? [];
+            if (! in_array((int) $device->id, array_map('intval', $objectIds), true)) {
+                continue;
+            }
+            $items[] = [
+                'name' => (string) ($row['name'] ?? ''),
+                'summary' => (string) ($row['summary'] ?? ''),
+                'status' => (string) ($row['status'] ?? ''),
+                'current_odometer_label' => $row['current_odometer_label'] ?? null,
+                'odometer_left_label' => $row['odometer_left_label'] ?? null,
+                'days_left_label' => $row['days_left_label'] ?? null,
+            ];
+        }
+
+        return array_merge($this->deviceMeta($device), [
+            'services' => $items,
+            'service_count' => count($items),
+        ]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function tasksReport(Device $device, User $actor, Carbon $from, ?Carbon $to): array
+    {
+        $rows = $this->tasks->listForActor($actor, [
+            'device_id' => $device->id,
+            'from' => $from->toDateTimeString(),
+            'to' => ($to ?? now())->toDateTimeString(),
+        ]);
+
+        $tasks = array_map(static function (array $task): array {
+            return [
+                'name' => (string) ($task['name'] ?? ''),
+                'start' => (string) ($task['start'] ?? ''),
+                'destination' => (string) ($task['destination'] ?? ''),
+                'priority' => (string) ($task['priority'] ?? ''),
+                'status' => (string) ($task['status'] ?? ''),
+                'time_from' => (string) ($task['time_from'] ?? ''),
+                'time_to' => (string) ($task['time_to'] ?? ''),
+            ];
+        }, $rows);
+
+        return array_merge($this->deviceMeta($device), [
+            'tasks' => $tasks,
+            'task_count' => count($tasks),
+        ]);
+    }
+
+    /**
+     * Tabular series for Speed / Altitude graphical-style reports.
+     *
+     * @return array<string, mixed>
+     */
+    private function telemetrySeriesReport(Device $device, Carbon $from, ?Carbon $to, string $metric): array
+    {
+        $collection = $this->loadLocationCollection($device, $from, $to);
+        $sorted = $this->sortedPointsForDevice($device, $collection);
+        $cap = $this->forExport
+            ? self::MAX_POSITIONS_EXPORT_PER_DEVICE
+            : self::MAX_POSITIONS_WEB_PER_DEVICE;
+        $step = count($sorted) <= $cap ? 1 : (int) ceil(count($sorted) / $cap);
+        $series = [];
+
+        for ($i = 0; $i < count($sorted); $i += $step) {
+            $point = $sorted[$i];
+            $lat = $point->lat !== null ? (float) $point->lat : null;
+            $lng = $point->lng !== null ? (float) $point->lng : null;
+            $value = $metric === 'altitude'
+                ? ($point->altitude !== null ? round((float) $point->altitude, 1) : null)
+                : ($point->speed !== null ? round((float) $point->speed, 1) : null);
+
+            $series[] = [
+                'time' => app_datetime_format($point->recorded_at),
+                'value' => $value,
+                'lat' => $lat,
+                'lng' => $lng,
+                'maps_url' => $this->googleMapsUrl($lat, $lng),
+            ];
+        }
+
+        return array_merge($this->deviceMeta($device), [
+            'metric' => $metric,
+            'series' => $series,
+            'point_count' => count($series),
+            'positions_truncated' => count($sorted) > count($series),
+        ]);
+    }
+
+    /**
+     * Ignition on/off change log (Traccar “Ignition” graphical counterpart as table).
+     *
+     * @return array<string, mixed>
+     */
+    private function ignitionChangesReport(Device $device, Carbon $from, ?Carbon $to): array
+    {
+        $collection = $this->loadLocationCollection($device, $from, $to);
+        $sorted = $this->sortedPointsForDevice($device, $collection);
+        $changes = [];
+        $prev = null;
+
+        foreach ($sorted as $point) {
+            if ($point->ignition === null) {
+                continue;
+            }
+            $on = (bool) $point->ignition;
+            if ($prev !== null && $prev === $on) {
+                continue;
+            }
+            $lat = $point->lat !== null ? (float) $point->lat : null;
+            $lng = $point->lng !== null ? (float) $point->lng : null;
+            $changes[] = [
+                'time' => app_datetime_format($point->recorded_at),
+                'ignition' => $on,
+                'lat' => $lat,
+                'lng' => $lng,
+                'maps_url' => $this->googleMapsUrl($lat, $lng),
+            ];
+            $prev = $on;
+        }
+
+        return array_merge($this->deviceMeta($device), [
+            'changes' => $changes,
+            'change_count' => count($changes),
+        ]);
+    }
+
+    /**
      * @return array<string, mixed>
      */
     private function deviceMeta(Device $device): array
@@ -670,6 +1261,20 @@ class ReportService
             ];
         }
 
+        if ($type === 'odometer') {
+            return [
+                'device_count' => count($devices),
+                'total_distance_km' => round(array_sum(array_map(
+                    fn (array $d) => (float) ($d['total_distance_km'] ?? 0),
+                    $devices
+                )), 2),
+                'moving_time_seconds' => array_sum(array_map(
+                    fn (array $d) => (int) ($d['moving_time_seconds'] ?? 0),
+                    $devices
+                )),
+            ];
+        }
+
         if ($type === 'diesel') {
             $totalDistance = round(array_sum(array_map(
                 fn (array $d) => (float) ($d['total_distance_km'] ?? 0),
@@ -726,6 +1331,84 @@ class ReportService
                     $devices
                 )),
             ];
+        }
+
+        if ($type === 'overspeeds') {
+            return [
+                'device_count' => count($devices),
+                'overspeed_count' => array_sum(array_map(
+                    fn (array $d) => (int) ($d['overspeed_count'] ?? 0),
+                    $devices
+                )),
+            ];
+        }
+
+        if ($type === 'zone_inout') {
+            return [
+                'device_count' => count($devices),
+                'event_count' => array_sum(array_map(
+                    fn (array $d) => (int) ($d['zone_event_count'] ?? $d['event_count'] ?? 0),
+                    $devices
+                )),
+            ];
+        }
+
+        if ($type === 'fuel_fillings') {
+            return [
+                'device_count' => count($devices),
+                'filling_count' => array_sum(array_map(
+                    fn (array $d) => (int) ($d['filling_count'] ?? 0),
+                    $devices
+                )),
+                'total_filled_liters' => round(array_sum(array_map(
+                    fn (array $d) => (float) ($d['total_filled_liters'] ?? 0),
+                    $devices
+                )), 2),
+            ];
+        }
+
+        if (in_array($type, ['speed', 'altitude'], true)) {
+            return [
+                'device_count' => count($devices),
+                'point_count' => array_sum(array_map(
+                    fn (array $d) => (int) ($d['point_count'] ?? 0),
+                    $devices
+                )),
+            ];
+        }
+
+        if ($type === 'ignition') {
+            return [
+                'device_count' => count($devices),
+                'change_count' => array_sum(array_map(
+                    fn (array $d) => (int) ($d['change_count'] ?? 0),
+                    $devices
+                )),
+            ];
+        }
+
+        if ($type === 'service') {
+            return [
+                'device_count' => count($devices),
+                'service_count' => array_sum(array_map(
+                    fn (array $d) => (int) ($d['service_count'] ?? 0),
+                    $devices
+                )),
+            ];
+        }
+
+        if ($type === 'tasks') {
+            return [
+                'device_count' => count($devices),
+                'task_count' => array_sum(array_map(
+                    fn (array $d) => (int) ($d['task_count'] ?? 0),
+                    $devices
+                )),
+            ];
+        }
+
+        if (in_array($type, ['current_position', 'object_info'], true)) {
+            return ['device_count' => count($devices)];
         }
 
         return ['device_count' => count($devices)];
@@ -847,6 +1530,8 @@ class ReportService
             'point_statuses' => false,
             'include_track_points' => false,
             'minimal_stats' => false,
+            'stop_min_seconds' => $this->filters->stopMinSeconds,
+            'overspeed_kmh' => $this->resolvedOverspeedLimitKmh($device),
         ]);
 
         // Always correct distance + max speed from the full GPS collection when
@@ -891,6 +1576,8 @@ class ReportService
             $reportType,
             $from->toIso8601String(),
             $to?->toIso8601String() ?? '',
+            (string) $this->filters->stopMinSeconds,
+            (string) ($this->filters->speedLimitKmh ?? 'default'),
         ]);
     }
 
@@ -1033,7 +1720,7 @@ class ReportService
 
         $movingKeys = ['running', 'moving'];
         $breakKeys = ['parked', 'stopped', 'idle', 'offline'];
-        $stopMin = HistoryAnalyticsService::STOP_MIN_SECONDS;
+        $stopMin = $this->filters->stopMinSeconds;
         $count = 0;
         $hasMoving = false;
         $breakSec = 0;
@@ -1090,7 +1777,7 @@ class ReportService
 
         $movingKeys = ['running', 'moving'];
         $breakKeys = ['parked', 'stopped', 'idle', 'offline'];
-        $stopMin = HistoryAnalyticsService::STOP_MIN_SECONDS;
+        $stopMin = $this->filters->stopMinSeconds;
         $trips = [];
         $bucket = [];
         $breakSec = 0;
@@ -1278,6 +1965,152 @@ class ReportService
 
             return $stop;
         }, $stops);
+    }
+
+    private function resolvedOverspeedLimitKmh(Device $device): float
+    {
+        if ($this->filters->speedLimitKmh !== null && $this->filters->speedLimitKmh > 0) {
+            return (float) $this->filters->speedLimitKmh;
+        }
+
+        $settings = $this->trackingSettings->forDevice($device);
+        $limit = (float) ($settings['overspeed_kmh'] ?? config('tracking.overspeed_kmh', HistoryAnalyticsService::OVERSPEED_KMH));
+
+        return $limit > 0 ? $limit : (float) HistoryAnalyticsService::OVERSPEED_KMH;
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     * @return array<string, mixed>
+     */
+    private function enrichDeviceLocations(Device $device, string $type, array $row): array
+    {
+        if (! $this->filters->needsLocationLabels()) {
+            return $row;
+        }
+
+        if (isset($row['stops']) && is_array($row['stops'])) {
+            $row['stops'] = array_map(
+                fn (array $stop) => $this->locationLabels->enrichPointRow($stop, $device, $this->filters),
+                $row['stops']
+            );
+        }
+
+        if (isset($row['trips']) && is_array($row['trips'])) {
+            $row['trips'] = array_map(function (array $trip) use ($device): array {
+                $start = $this->locationLabels->resolve(
+                    isset($trip['start_lat']) ? (float) $trip['start_lat'] : null,
+                    isset($trip['start_lng']) ? (float) $trip['start_lng'] : null,
+                    $device,
+                    $this->filters,
+                );
+                $end = $this->locationLabels->resolve(
+                    isset($trip['end_lat']) ? (float) $trip['end_lat'] : null,
+                    isset($trip['end_lng']) ? (float) $trip['end_lng'] : null,
+                    $device,
+                    $this->filters,
+                );
+                $trip['start_address'] = $start['location_label'];
+                $trip['end_address'] = $end['location_label'];
+                $trip['address'] = $start['location_label'];
+                if (isset($trip['stops']) && is_array($trip['stops'])) {
+                    $trip['stops'] = array_map(
+                        fn (array $stop) => $this->locationLabels->enrichPointRow($stop, $device, $this->filters),
+                        $trip['stops']
+                    );
+                }
+
+                return $trip;
+            }, $row['trips']);
+        }
+
+        if (isset($row['segments']) && is_array($row['segments'])) {
+            $row['segments'] = array_map(function (array $seg) use ($device): array {
+                if (($seg['kind'] ?? '') === 'trip') {
+                    $start = $this->locationLabels->resolve(
+                        isset($seg['start_lat']) ? (float) $seg['start_lat'] : null,
+                        isset($seg['start_lng']) ? (float) $seg['start_lng'] : null,
+                        $device,
+                        $this->filters,
+                    );
+                    $seg['address'] = $start['location_label'];
+                    $seg['start_address'] = $start['location_label'];
+
+                    return $seg;
+                }
+
+                return $this->locationLabels->enrichPointRow($seg, $device, $this->filters);
+            }, $row['segments']);
+        }
+
+        foreach (['events', 'zone_events', 'fillings', 'overspeeds', 'positions'] as $listKey) {
+            if (! isset($row[$listKey]) || ! is_array($row[$listKey])) {
+                continue;
+            }
+
+            $max = $listKey === 'positions'
+                ? ($this->forExport ? 500 : 120)
+                : 5000;
+            $count = 0;
+            $row[$listKey] = array_map(function (array $item) use ($device, $listKey, &$count, $max): array {
+                if ($count >= $max) {
+                    return $item;
+                }
+                $count++;
+
+                if ($listKey === 'overspeeds') {
+                    $resolved = $this->locationLabels->resolve(
+                        isset($item['start_lat']) ? (float) $item['start_lat'] : null,
+                        isset($item['start_lng']) ? (float) $item['start_lng'] : null,
+                        $device,
+                        $this->filters,
+                    );
+                    $item['address'] = $resolved['location_label'];
+                    $item['location_label'] = $resolved['location_label'];
+
+                    return $item;
+                }
+
+                return $this->locationLabels->enrichPointRow($item, $device, $this->filters);
+            }, $row[$listKey]);
+        }
+
+        if ($type === 'current_position') {
+            $row = $this->locationLabels->enrichPointRow($row, $device, $this->filters);
+        }
+
+        return $row;
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     */
+    private function isDeviceReportEmpty(string $type, array $row): bool
+    {
+        return match ($type) {
+            'trips' => ((int) ($row['trip_count'] ?? count($row['trips'] ?? []))) === 0,
+            'stops' => ((int) ($row['stop_count'] ?? count($row['stops'] ?? []))) === 0,
+            'trips_stops' => ((int) ($row['trip_count'] ?? 0)) === 0 && ((int) ($row['stop_count'] ?? 0)) === 0,
+            'events' => ((int) ($row['event_count'] ?? count($row['events'] ?? []))) === 0,
+            'overspeeds' => ((int) ($row['overspeed_count'] ?? count($row['overspeeds'] ?? []))) === 0,
+            'zone_inout' => count($row['zone_events'] ?? $row['events'] ?? []) === 0,
+            'fuel_fillings' => count($row['fillings'] ?? []) === 0,
+            'positions' => ((int) ($row['point_count'] ?? count($row['positions'] ?? []))) === 0,
+            'route' => ((int) ($row['point_count'] ?? 0)) === 0,
+            'mileage' => count($row['days'] ?? []) === 0 || (float) ($row['total_distance_km'] ?? 0) <= 0,
+            'summary' => (float) ($row['total_distance_km'] ?? 0) <= 0
+                && ((int) ($row['trip_count'] ?? 0)) === 0
+                && ((int) ($row['stop_count'] ?? 0)) === 0,
+            'odometer' => (float) ($row['total_distance_km'] ?? 0) <= 0
+                && (float) ($row['odometer_delta_km'] ?? 0) <= 0,
+            'diesel' => (float) ($row['total_distance_km'] ?? 0) <= 0,
+            'speed', 'altitude' => count($row['series'] ?? []) === 0,
+            'ignition' => count($row['changes'] ?? []) === 0,
+            'service' => count($row['services'] ?? []) === 0,
+            'tasks' => count($row['tasks'] ?? []) === 0,
+            'current_position' => ($row['lat'] ?? null) === null || ($row['lng'] ?? null) === null,
+            default => false,
+        };
     }
 
     private function googleMapsUrl(?float $lat, ?float $lng): ?string

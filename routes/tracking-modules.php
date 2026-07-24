@@ -4,6 +4,7 @@ use App\Http\Controllers\GlobalTrackingController;
 use App\Http\Controllers\Tracking\CommandsController;
 use App\Http\Controllers\Tracking\DriversController;
 use App\Http\Controllers\Tracking\MaintenanceController;
+use App\Http\Controllers\Tracking\OdometerReportController;
 use App\Http\Controllers\Tracking\ReportController;
 use App\Http\Controllers\Tracking\TrackingEventsController;
 use App\Http\Controllers\Tracking\TrackingGeofencesController;
@@ -47,6 +48,10 @@ return function (): void {
         Route::match(['get', 'post'], '/generate', [ReportController::class, 'generate'])->name('generate');
         Route::match(['get', 'post'], '/export', [ReportController::class, 'export'])->name('export');
     });
+
+    Route::get('/odometer', [OdometerReportController::class, 'index'])
+        ->middleware('permission:web.reports.view')
+        ->name('odometer.index');
 
     Route::prefix('events')->name('events.')->middleware('permission:web.events.view')->group(function () {
         Route::get('/', [TrackingEventsController::class, 'index'])->name('index');

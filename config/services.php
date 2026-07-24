@@ -50,6 +50,11 @@ return [
         'maps_key' => env('GOOGLE_MAPS_API_KEY'),
         /** Map ID for Advanced Markers — Google Cloud Console → Map Management */
         'maps_map_id' => env('GOOGLE_MAPS_MAP_ID'),
+        /**
+         * Server-side Geocoding key (IP restriction / unrestricted).
+         * Browser keys with HTTP referer restrictions cannot call Geocoding from PHP.
+         */
+        'geocoding_key' => env('GOOGLE_GEOCODING_API_KEY', env('GOOGLE_MAPS_SERVER_KEY')),
     ],
 
 ];

@@ -82,6 +82,9 @@ final class TraccarAppFields
 
     public const KEY_ODOMETER_LAST_ACCUM_LNG = 'odometer_last_accum_lng';
 
+    /** Bump when GPS accumulation filters change so stale inflated totals are rebuilt. */
+    public const KEY_ODOMETER_ACCUM_VERSION = 'odometer_accum_version';
+
     /** Average diesel use in liters per 100 km (estimated consumption). */
     public const KEY_FUEL_CONSUMPTION_L_PER_100KM = 'fuel_consumption_l_per_100km';
 

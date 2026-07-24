@@ -1,5 +1,5 @@
 @extends($layout)
-@section('title', __('app.tracking.reports_title') . ' - ' . __('app.brand'))
+@section('title', __('app.tracking.odometer_title') . ' - ' . __('app.brand'))
 @push('styles')
 @include('tracking.partials.module-styles')
 <style>
@@ -58,7 +58,6 @@
         letter-spacing: -0.01em;
         color: var(--apple-secondary);
         margin-bottom: 0.15rem;
-        text-transform: none;
     }
     .gt-report-kpi-value {
         font-size: 0.9375rem;
@@ -68,20 +67,13 @@
         direction: ltr;
         unicode-bidi: embed;
     }
-    #gtReportMap {
-        height: 280px;
-        border-radius: 12px;
-        border: 0.5px solid var(--tc-border);
-    }
     .gt-report-vehicle-actions {
         display: flex;
         gap: 0.35rem;
         margin-bottom: 0.35rem;
     }
     .gt-report-vehicle-actions .btn { font-size: 0.72rem; padding: 0.15rem 0.45rem; }
-    .gt-report-vehicle-search {
-        margin-bottom: 0.35rem;
-    }
+    .gt-report-vehicle-search { margin-bottom: 0.35rem; }
     .gt-vehicle-picker label.is-filtered-out { display: none !important; }
     .gt-report-vehicle-empty {
         padding: 0.35rem 0.15rem;
@@ -89,39 +81,6 @@
     }
     .gt-report-vehicle-empty[hidden] { display: none !important; }
     .gt-report-subtitle { color: var(--apple-secondary); font-size: 0.8125rem; margin-bottom: 1rem; letter-spacing: -0.01em; }
-    .gt-report-mode-tabs {
-        display: flex;
-        gap: 0.35rem;
-        margin-bottom: 0.85rem;
-        flex-wrap: wrap;
-    }
-    .gt-report-mode-tabs .btn {
-        border-radius: 999px;
-        font-size: 0.78rem;
-        padding: 0.28rem 0.75rem;
-    }
-    .gt-report-mode-tabs .btn.is-active {
-        background: var(--apple-blue, #007aff);
-        border-color: var(--apple-blue, #007aff);
-        color: #fff;
-    }
-    .gt-custom-fields {
-        max-height: 180px;
-        overflow-y: auto;
-        border: 0.5px solid var(--tc-border-soft);
-        border-radius: 10px;
-        padding: 0.4rem 0.55rem;
-        background: var(--apple-bg-group, #f5f5f7);
-    }
-    .gt-custom-fields .form-check {
-        margin-bottom: 0.2rem;
-    }
-    .gt-custom-fields-actions {
-        display: flex;
-        gap: 0.35rem;
-        margin-bottom: 0.35rem;
-    }
-    .gt-custom-fields-actions .btn { font-size: 0.72rem; padding: 0.15rem 0.45rem; }
     .gt-report-presets { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-bottom: 0.35rem; }
     .gt-report-presets .btn { font-size: 0.72rem; padding: 0.15rem 0.5rem; border-radius: 999px; }
     .gt-report-loading-text { font-size: 0.8125rem; color: var(--tc-text-muted); margin-top: 0.35rem; }
@@ -185,25 +144,6 @@
         color: var(--apple-label);
         line-height: 1.3;
     }
-    .gt-report-filters .gt-filter-field {
-        margin-top: 0.5rem;
-    }
-    .gt-report-filters .gt-filter-field[hidden],
-    .gt-report-filters .form-check[hidden] {
-        display: none !important;
-    }
-    .gt-report-filters .form-control-sm,
-    .gt-report-filters .form-select-sm {
-        font-size: 0.78rem;
-    }
-    .gt-report-filters-help {
-        font-size: 0.72rem;
-        line-height: 1.35;
-        margin: 0;
-    }
-    .gt-report-filters-help.is-warn {
-        color: #b54708 !important;
-    }
     .gt-report-actions {
         position: sticky;
         bottom: 0;
@@ -228,61 +168,12 @@
 <div class="gt-module-page">
     @include('tracking.partials.hub-nav')
     <div class="gt-module-card">
-        <h5 class="mb-1">{{ __('app.tracking.reports_title') }}</h5>
-        <p class="gt-report-subtitle">{{ __('app.tracking.report_subtitle') }}</p>
-        <div class="gt-report-mode-tabs" role="tablist" aria-label="{{ __('app.tracking.reports_title') }}">
-            <button type="button" class="btn btn-outline-secondary btn-sm is-active" id="gtReportModeStandard" data-report-mode="standard" role="tab" aria-selected="true">
-                {{ __('app.tracking.report_mode_standard') }}
-            </button>
-            <button type="button" class="btn btn-outline-secondary btn-sm" id="gtReportModeCustom" data-report-mode="custom" role="tab" aria-selected="false">
-                {{ __('app.tracking.report_mode_custom') }}
-            </button>
-        </div>
+        <h5 class="mb-1">{{ __('app.tracking.odometer_title') }}</h5>
+        <p class="gt-report-subtitle">{{ __('app.tracking.odometer_subtitle') }}</p>
         <div class="gt-report-layout">
-            <aside class="gt-report-sidebar" aria-label="{{ __('app.tracking.reports_title') }}">
-                <div>
-                    <label class="form-label small">{{ __('app.tracking.report_type') }}</label>
-                    <select id="gtReportType" class="form-select form-select-sm">
-                        <optgroup label="{{ __('app.tracking.report_group_general') }}">
-                            <option value="summary">{{ __('app.tracking.report_summary') }}</option>
-                            <option value="object_info">{{ __('app.tracking.report_object_info') }}</option>
-                            <option value="current_position">{{ __('app.tracking.report_current_position') }}</option>
-                        </optgroup>
-                        <optgroup label="{{ __('app.tracking.report_group_text') }}">
-                            <option value="trips">{{ __('app.tracking.report_trips') }}</option>
-                            <option value="trips_stops">{{ __('app.tracking.report_trips_stops') }}</option>
-                            <option value="stops">{{ __('app.tracking.report_stops') }}</option>
-                            <option value="mileage">{{ __('app.tracking.report_mileage') }}</option>
-                            <option value="odometer">{{ __('app.tracking.report_odometer') }}</option>
-                            <option value="overspeeds">{{ __('app.tracking.report_overspeeds') }}</option>
-                            <option value="zone_inout">{{ __('app.tracking.report_zone_inout') }}</option>
-                            <option value="events">{{ __('app.tracking.report_events') }}</option>
-                            <option value="diesel">{{ __('app.tracking.report_diesel') }}</option>
-                            <option value="fuel_fillings">{{ __('app.tracking.report_fuel_fillings') }}</option>
-                            <option value="service">{{ __('app.tracking.report_service') }}</option>
-                            <option value="tasks">{{ __('app.tracking.report_tasks') }}</option>
-                        </optgroup>
-                        <optgroup label="{{ __('app.tracking.report_group_graphical') }}">
-                            <option value="speed">{{ __('app.tracking.report_speed') }}</option>
-                            <option value="altitude">{{ __('app.tracking.report_altitude') }}</option>
-                            <option value="ignition">{{ __('app.tracking.report_ignition') }}</option>
-                        </optgroup>
-                        <optgroup label="{{ __('app.tracking.report_group_map') }}">
-                            <option value="route">{{ __('app.tracking.report_route') }}</option>
-                            <option value="positions">{{ __('app.tracking.report_positions') }}</option>
-                        </optgroup>
-                    </select>
-                </div>
+            <aside class="gt-report-sidebar" aria-label="{{ __('app.tracking.odometer_title') }}">
+                <input type="hidden" id="gtReportType" value="odometer">
 
-                <div id="gtCustomFieldsPanel" hidden>
-                    <p class="text-muted small mb-1">{{ __('app.tracking.report_custom_help') }}</p>
-                    <div class="gt-custom-fields-actions">
-                        <button type="button" class="btn btn-outline-secondary btn-sm" id="gtCustomFieldsSelectAll">{{ __('app.tracking.report_custom_select_all') }}</button>
-                        <button type="button" class="btn btn-outline-secondary btn-sm" id="gtCustomFieldsClear">{{ __('app.tracking.report_custom_clear') }}</button>
-                    </div>
-                    <label class="form-label small">{{ __('app.tracking.report_custom_fields') }}</label>
-                    <div class="gt-custom-fields" id="gtCustomFields" role="group" aria-label="{{ __('app.tracking.report_custom_fields') }}"></div>
-                </div>
                 <div>
                     <label class="form-label small">{{ __('app.tracking.report_language') }}</label>
                     <select id="gtReportLang" class="form-select form-select-sm">
@@ -304,61 +195,9 @@
 
                 <div class="gt-report-filters" id="gtReportFilters">
                     <div class="gt-report-filters-title">{{ __('app.tracking.report_filters') }}</div>
-                    <p class="gt-report-filters-help text-muted small mb-2" id="gtReportFiltersHelp">
-                        {{ __('app.tracking.report_filter_help_location') }}
-                    </p>
-                    <p class="gt-report-filters-help text-muted small mb-2">
-                        {{ __('app.tracking.report_filter_help_priority') }}
-                    </p>
                     <div class="form-check" data-filter-key="ignore_empty">
                         <input class="form-check-input" type="checkbox" id="gtFilterIgnoreEmpty">
                         <label class="form-check-label" for="gtFilterIgnoreEmpty">{{ __('app.tracking.report_filter_ignore_empty') }}</label>
-                    </div>
-                    <div class="form-check" data-filter-key="show_coordinates">
-                        <input class="form-check-input" type="checkbox" id="gtFilterShowCoordinates" checked>
-                        <label class="form-check-label" for="gtFilterShowCoordinates">{{ __('app.tracking.report_filter_show_coordinates') }}</label>
-                    </div>
-                    <div class="form-check" data-filter-key="show_addresses">
-                        <input class="form-check-input" type="checkbox" id="gtFilterShowAddresses">
-                        <label class="form-check-label" for="gtFilterShowAddresses">{{ __('app.tracking.report_filter_show_addresses') }}</label>
-                    </div>
-                    <div class="form-check" data-filter-key="markers_instead_of_addresses">
-                        <input class="form-check-input" type="checkbox" id="gtFilterMarkersInstead">
-                        <label class="form-check-label" for="gtFilterMarkersInstead">{{ __('app.tracking.report_filter_markers_instead') }}</label>
-                    </div>
-                    <div class="form-check" data-filter-key="zones_instead_of_addresses">
-                        <input class="form-check-input" type="checkbox" id="gtFilterZonesInstead">
-                        <label class="form-check-label" for="gtFilterZonesInstead">{{ __('app.tracking.report_filter_zones_instead') }}</label>
-                    </div>
-                    <div class="gt-filter-field" data-filter-key="stops">
-                        <label class="form-label small mb-1" for="gtFilterStops">{{ __('app.tracking.report_filter_stops') }}</label>
-                        <select id="gtFilterStops" class="form-select form-select-sm">
-                            <option value="1" selected>{{ __('app.tracking.report_filter_stops_option', ['min' => 1]) }}</option>
-                            <option value="5">{{ __('app.tracking.report_filter_stops_option', ['min' => 5]) }}</option>
-                            <option value="10">{{ __('app.tracking.report_filter_stops_option', ['min' => 10]) }}</option>
-                            <option value="15">{{ __('app.tracking.report_filter_stops_option', ['min' => 15]) }}</option>
-                            <option value="30">{{ __('app.tracking.report_filter_stops_option', ['min' => 30]) }}</option>
-                            <option value="60">{{ __('app.tracking.report_filter_stops_option', ['min' => 60]) }}</option>
-                            <option value="custom">{{ __('app.tracking.report_filter_stops_custom') }}</option>
-                        </select>
-                        <input type="number"
-                               id="gtFilterStopsCustom"
-                               class="form-control form-control-sm mt-1 admin-ltr"
-                               dir="ltr"
-                               min="1"
-                               step="1"
-                               placeholder="{{ __('app.tracking.report_filter_stops_custom_placeholder') }}"
-                               hidden>
-                    </div>
-                    <div class="gt-filter-field" data-filter-key="speed_limit">
-                        <label class="form-label small mb-1" for="gtFilterSpeedLimit">{{ __('app.tracking.report_filter_speed_limit') }}</label>
-                        <input type="number"
-                               id="gtFilterSpeedLimit"
-                               class="form-control form-control-sm admin-ltr"
-                               dir="ltr"
-                               min="1"
-                               step="1"
-                               placeholder="{{ __('app.tracking.report_filter_speed_limit_placeholder') }}">
                     </div>
                 </div>
 
@@ -443,11 +282,8 @@
         'rowsPerPage' => __('app.tracking.report_rows_per_page'),
         'noData' => __('app.tracking.report_no_data'),
         'loadFailed' => __('app.tracking.report_load_failed'),
-        'ignitionOn' => __('app.tracking.report_ignition_on'),
-        'ignitionOff' => __('app.tracking.report_ignition_off'),
         'selectVehicle' => __('app.tracking.report_select_vehicle'),
         'devicesCapped' => __('app.tracking.report_devices_capped'),
-        'positionsTruncated' => __('app.tracking.report_positions_truncated'),
         'analyticsDownsampled' => __('app.tracking.report_analytics_downsampled'),
         'presetToday' => __('app.tracking.report_preset_today'),
         'presetYesterday' => __('app.tracking.report_preset_yesterday'),
@@ -455,16 +291,13 @@
         'loadingProgress' => __('app.tracking.report_loading_progress'),
         'loadingReport' => __('app.tracking.report_loading'),
         'exportFailed' => __('app.tracking.report_export_failed'),
-        'filterHelpLocation' => __('app.tracking.report_filter_help_location'),
-        'filterHelpNoLocationType' => __('app.tracking.report_filter_help_no_location_type'),
-        'filterHelpGeocodeMissing' => __('app.tracking.report_filter_help_geocode_missing'),
-        'colLocation' => __('app.tracking.report_col_address'),
     ]);
 @endphp
 <script>
 window.TRACKING_REPORTS_CONFIG = {
     generateUrl: @json($generateUrl),
     exportUrl: @json($exportUrl),
+    lockedType: @json($lockedType ?? 'odometer'),
     googleMapsKey: @json(config('services.google.maps_key')),
     googleMapsMapId: @json(config('services.google.maps_map_id')),
     hasGoogleMapsKey: @json(trim((string) config('services.google.maps_key', '')) !== ''),
@@ -472,9 +305,5 @@ window.TRACKING_REPORTS_CONFIG = {
     i18n: @json($reportI18n),
 };
 </script>
-@include('partials.google-maps-platform')
-<script src="{{ protected_js('builtin-map-icons.js') }}"></script>
-<script src="{{ protected_js('vehicle-marker.js') }}"></script>
-<script src="{{ protected_js('fleet-map-renderer.js') }}"></script>
 <script src="{{ protected_js('tracking-reports.js') }}"></script>
 @endpush

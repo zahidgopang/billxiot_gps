@@ -13,6 +13,8 @@
             $activeKey = 'history';
         } elseif (request()->routeIs('*tracking.reports.*')) {
             $activeKey = 'reports';
+        } elseif (request()->routeIs('*tracking.odometer*')) {
+            $activeKey = 'odometer';
         } elseif (request()->routeIs('*tracking.events.*')) {
             $activeKey = 'events';
         } elseif (request()->routeIs('*tracking.geofences.*')) {
@@ -35,6 +37,7 @@
     $iconLinks = [
         ['key' => 'live', 'icon' => 'fa-location-arrow', 'route' => $hub['live'] ?? null, 'label' => __('app.tracking.live_link'), 'hub' => true],
         ['key' => 'reports', 'icon' => 'fa-chart-bar', 'route' => $hub['reports'] ?? null, 'label' => __('app.tracking.reports_nav')],
+        ['key' => 'odometer', 'icon' => 'fa-tachometer-alt', 'route' => $hub['odometer'] ?? null, 'label' => __('app.tracking.odometer_nav')],
         ['key' => 'geofences', 'icon' => 'fa-draw-polygon', 'route' => $hub['geofences'] ?? null, 'label' => __('app.tracking.geofences_nav')],
         ['key' => 'maintenance', 'icon' => 'fa-wrench', 'route' => $hub['maintenance'] ?? null, 'label' => __('app.tracking.maintenance_nav')],
         ['key' => 'drivers', 'icon' => 'fa-id-card', 'route' => $hub['drivers'] ?? null, 'label' => __('app.tracking.drivers_nav')],
