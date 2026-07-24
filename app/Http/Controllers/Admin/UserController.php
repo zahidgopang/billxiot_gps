@@ -303,9 +303,9 @@ class UserController extends Controller
         $this->rbac()->syncMapsViewPermission($user, $request->boolean('can_track_maps'));
     }
 
-    private function syncClientCompanyForClientRoleUser(Request $request, User $user, string $role, int $clientId): void
+    private function syncClientCompanyForClientRoleUser(Request $request, User $user, string $role, ?int $clientId): void
     {
-        if ($role !== AppRole::Client->value || $this->isClientPanel()) {
+        if ($role !== AppRole::Client->value || $this->isClientPanel() || $clientId === null) {
             return;
         }
 
