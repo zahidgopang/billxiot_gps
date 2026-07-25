@@ -33,10 +33,17 @@
         if (!stats) {
             return;
         }
-        setStat('totalDevices', stats.totalDevices ?? 0);
-        setStat('onlineDevices', stats.onlineNow ?? 0);
-        setStat('runningDevices', stats.running ?? 0);
-        setStat('parkedDevices', stats.parked ?? 0);
+        // Never overwrite Total Devices from a live poll subset (that caused 65 → 50).
+        // Online / moving / parked may refresh when the server sends full-fleet stats.
+        if (stats.onlineNow != null) {
+            setStat('onlineDevices', stats.onlineNow);
+        }
+        if (stats.running != null) {
+            setStat('runningDevices', stats.running);
+        }
+        if (stats.parked != null) {
+            setStat('parkedDevices', stats.parked);
+        }
     }
 
     function formatSpeed(speed) {

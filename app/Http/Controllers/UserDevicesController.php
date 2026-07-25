@@ -149,7 +149,7 @@ class UserDevicesController extends Controller
             ->filter(fn ($id) => $id > 0)
             ->unique()
             ->values()
-            ->take(50);
+            ->take(500);
 
         if ($ids->isEmpty()) {
             return response()->json([
@@ -186,9 +186,10 @@ class UserDevicesController extends Controller
             ];
         })->values();
 
+        // Row updates only — poll-scoped stats must not overwrite fleet KPIs (e.g. 65 → 50).
         return response()->json([
             'devices' => $devicesPayload,
-            'stats' => $dashboard->getDevicePageStats($devices),
+            'stats' => null,
         ])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
     }
 
