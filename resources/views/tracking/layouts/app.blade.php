@@ -18,6 +18,7 @@
 
     @include('partials.head-core')
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.31.0/dist/tabler-icons.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css">
@@ -30,157 +31,12 @@
     @stack('styles')
 
     @include('tracking.partials.design-tokens')
+    <link rel="stylesheet" href="{{ asset('css/tracking-chrome.css') }}?v={{ @filemtime(public_path('css/tracking-chrome.css')) }}">
     <style>
         body.tracking-shell {
             margin: 0;
             min-height: 100vh;
             overflow-x: hidden;
-        }
-
-        .tracking-topbar {
-            height: var(--tracking-topbar-height);
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 1rem;
-            padding: 0 1rem;
-            background: var(--apple-bg-primary);
-            color: var(--apple-label);
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            z-index: 1050;
-            box-shadow: 0 0.5px 0 rgba(0, 0, 0, 0.04);
-            border-bottom: 0.5px solid var(--apple-separator);
-        }
-
-        .tracking-topbar__brand {
-            display: flex;
-            align-items: center;
-            gap: 0.65rem;
-            color: var(--apple-label);
-            text-decoration: none;
-            font-weight: 600;
-            font-size: 0.9375rem;
-            letter-spacing: -0.022em;
-            min-width: 0;
-        }
-
-        .tracking-topbar__brand img,
-        .tracking-topbar__brand svg {
-            max-height: 28px;
-            width: auto;
-        }
-
-        .tracking-topbar__title {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.45rem;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-
-        .tracking-topbar__title i {
-            color: #007aff;
-            font-size: 0.8125rem;
-        }
-
-        .tracking-topbar__title span {
-            font-weight: 600;
-            font-size: 0.875rem;
-            letter-spacing: -0.018em;
-        }
-
-        .tracking-topbar__actions {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-
-        .tracking-topbar__alert-controls {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.35rem;
-        }
-
-        .tracking-topbar__alert-btn {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            width: 32px;
-            height: 32px;
-            border: none;
-            border-radius: 8px;
-            background: var(--apple-fill);
-            color: #3a3a3c;
-            font-size: 0.8125rem;
-            cursor: pointer;
-            transition: background 0.2s ease, transform 0.15s ease;
-        }
-
-        .tracking-topbar__alert-btn:hover {
-            background: rgba(118, 118, 128, 0.18);
-            color: #1d1d1f;
-        }
-
-        .tracking-topbar__alert-btn.on {
-            background: rgba(0, 122, 255, 0.14);
-            color: #007aff;
-        }
-
-        .tracking-topbar__alert-btn.muted {
-            color: #aeaeb2;
-        }
-
-        .tracking-back-btn {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.35rem;
-            padding: 0.35rem 0.7rem;
-            border-radius: 8px;
-            background: var(--apple-fill);
-            border: none;
-            color: #007aff;
-            text-decoration: none;
-            font-weight: 510;
-            font-size: 0.8125rem;
-            letter-spacing: -0.018em;
-            transition: background 0.2s ease;
-            white-space: nowrap;
-        }
-
-        .tracking-back-btn:hover,
-        .tracking-back-btn:focus-visible {
-            background: rgba(0, 122, 255, 0.1);
-            color: #0062cc;
-        }
-
-        html[dir="rtl"] .tracking-back-btn i { transform: scaleX(-1); }
-
-        .tracking-topbar .lang-toggle {
-            background: var(--apple-bg-secondary);
-            border-radius: 8px;
-            padding: 2px;
-        }
-        .tracking-topbar .lang-toggle__btn {
-            color: #636366;
-            font-size: 0.75rem;
-            font-weight: 500;
-            letter-spacing: -0.01em;
-            border-radius: 6px;
-            padding: 0.25rem 0.5rem;
-        }
-        .tracking-topbar .lang-toggle__btn:hover {
-            color: #1d1d1f;
-            background: rgba(118, 118, 128, 0.08);
-        }
-        .tracking-topbar .lang-toggle__btn--active {
-            background: var(--apple-bg-primary);
-            color: #1d1d1f;
-            font-weight: 600;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 0 0 0.5px rgba(0, 0, 0, 0.04);
         }
 
         .content-wrap {
@@ -198,12 +54,7 @@
         }
 
         body.tracking-shell.tc-module-nav-collapsed:has(.tc-workspace-nav__reveal) {
-            --tracking-nav-height: 28px;
-        }
-
-        @media (max-width: 576px) {
-            .tracking-topbar__title span { display: none; }
-            .tracking-back-btn span { display: none; }
+            --tracking-nav-height: 30px;
         }
 
         /* Embedded (inside a popup iframe): hide chrome so only the module content shows. */
@@ -220,7 +71,7 @@
         <a href="{{ Route::has($dashboardRoute) ? route($dashboardRoute) : url('/') }}" class="tracking-topbar__brand" aria-label="{{ __('app.common.dashboard') }}">
             @include('partials.brand-logo', ['onDark' => false])
             <span class="tracking-topbar__title">
-                <i class="fas fa-satellite-dish"></i><span>{{ __('app.tracking.hub_nav') }}</span>
+                <i class="fas fa-satellite-dish" aria-hidden="true"></i><span>{{ __('app.tracking.hub_nav') }}</span>
             </span>
         </a>
 
@@ -228,7 +79,7 @@
             @stack('tracking-topbar-actions')
             @include('partials.language-toggle')
             <a href="{{ Route::has($dashboardRoute) ? route($dashboardRoute) : url('/') }}" class="tracking-back-btn">
-                <i class="fas fa-arrow-left"></i><span>{{ __('app.tracking.back_to_management') }}</span>
+                <i class="fas fa-arrow-left" aria-hidden="true"></i><span>{{ __('app.tracking.back_to_management') }}</span>
             </a>
         </div>
     </header>

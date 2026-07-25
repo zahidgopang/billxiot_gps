@@ -67,8 +67,9 @@
         @media (max-height: 520px), ((max-width: 900px) and (orientation: landscape)) {
             .tc-app { min-height: 0; }
         }
-            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', 'Helvetica Neue', sans-serif;
-            letter-spacing: -0.018em;
+        .tc-app {
+            font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            letter-spacing: -0.015em;
         }
         .tc-app:has(.tc-panel--open) {
             --tc-chrome-panel: 0px;
@@ -107,190 +108,7 @@
             }
         }
 
-        /* ===== Apple-style module navigation ===== */
-        .tc-workspace-nav {
-            flex-shrink: 0;
-            display: flex;
-            align-items: center;
-            gap: 0.35rem;
-            min-height: 34px;
-            padding: 0.25rem 0.5rem;
-            background: var(--apple-bg-primary);
-            border-bottom: 0.5px solid var(--tc-border);
-            z-index: 30;
-        }
-        html.tc-module-nav-collapsed .tc-workspace-nav,
-        body.tc-module-nav-collapsed .tc-workspace-nav {
-            display: none;
-        }
-        html.tc-module-nav-collapsed .tc-workspace-nav__reveal,
-        body.tc-module-nav-collapsed .tc-workspace-nav__reveal {
-            display: flex;
-        }
-
-        .tc-workspace-nav__reveal {
-            display: none;
-            align-items: center;
-            justify-content: center;
-            width: 100%;
-            min-height: 28px;
-            padding: 0.2rem 0.65rem;
-            background: var(--apple-bg-primary);
-            border-bottom: 0.5px solid var(--tc-border-soft);
-        }
-        .tc-workspace-nav__reveal-btn {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.35rem;
-            border: none;
-            border-radius: 6px;
-            background: transparent;
-            color: #007aff;
-            font-size: 0.6875rem;
-            font-weight: 510;
-            letter-spacing: -0.01em;
-            padding: 0.2rem 0.5rem;
-            cursor: pointer;
-        }
-        .tc-workspace-nav__reveal-btn:hover {
-            background: rgba(0, 122, 255, 0.08);
-        }
-        .tc-workspace-nav__reveal-btn i { font-size: 0.65rem; opacity: 0.85; }
-
-        .tc-workspace-nav__panel-btn {
-            position: relative;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            flex-shrink: 0;
-            width: 30px;
-            height: 30px;
-            border: none;
-            border-radius: 8px;
-            background: rgba(118, 118, 128, 0.12);
-            color: #3a3a3c;
-            font-size: 0.8rem;
-            cursor: pointer;
-            transition: background 0.2s ease, color 0.2s ease, transform 0.15s ease;
-        }
-        .tc-workspace-nav__panel-btn:hover {
-            background: rgba(118, 118, 128, 0.18);
-            color: #1d1d1f;
-        }
-        .tc-workspace-nav__panel-btn.active,
-        .tc-app.tc-app--panel-open .tc-workspace-nav__panel-btn {
-            background: #007aff;
-            color: #fff;
-        }
-
-        .tc-workspace-nav__collapse-btn {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            flex-shrink: 0;
-            width: 26px;
-            height: 26px;
-            border: none;
-            border-radius: 6px;
-            background: transparent;
-            color: #86868b;
-            font-size: 0.7rem;
-            cursor: pointer;
-            transition: background 0.2s ease, color 0.2s ease;
-        }
-        .tc-workspace-nav__collapse-btn:hover {
-            background: rgba(118, 118, 128, 0.12);
-            color: #3a3a3c;
-        }
-
-        .tc-workspace-nav__track {
-            display: flex;
-            align-items: center;
-            flex: 1;
-            min-width: 0;
-            padding: 2px;
-            border-radius: 9px;
-            background: var(--apple-bg-secondary);
-            overflow-x: auto;
-            scrollbar-width: none;
-            -webkit-overflow-scrolling: touch;
-        }
-        .tc-workspace-nav__track::-webkit-scrollbar { display: none; }
-
-        .tc-workspace-nav__links {
-            display: inline-flex;
-            align-items: center;
-            gap: 2px;
-            min-width: min-content;
-        }
-
-        .tc-workspace-nav__links a {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.3rem;
-            padding: 0.22rem 0.5rem;
-            border-radius: 6px;
-            color: #636366;
-            text-decoration: none;
-            font-size: 0.6875rem;
-            font-weight: 500;
-            letter-spacing: -0.02em;
-            line-height: 1.25;
-            white-space: nowrap;
-            transition: background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
-        }
-        .tc-workspace-nav__links a i {
-            font-size: 0.6875rem;
-            opacity: 0.75;
-            width: 1em;
-            text-align: center;
-            color: #8e8e93;
-        }
-        .tc-workspace-nav__links a span {
-            text-transform: none;
-        }
-        .tc-workspace-nav__links a:hover {
-            color: #1d1d1f;
-        }
-        .tc-workspace-nav__links a:hover i { opacity: 0.95; color: #636366; }
-        .tc-workspace-nav__links a.active {
-            background: var(--apple-bg-primary);
-            color: #1d1d1f;
-            font-weight: 600;
-            box-shadow: var(--tc-shadow-sm);
-        }
-        .tc-workspace-nav__links a.active i {
-            opacity: 1;
-            color: #007aff;
-        }
-
-        .tc-workspace-nav__actions {
-            display: inline-flex;
-            align-items: center;
-            flex-shrink: 0;
-            margin-inline-start: 0.15rem;
-        }
-
-        .tc-workspace-nav__panel-btn .tc-toggle-badge {
-            position: absolute;
-            top: -4px;
-            inset-inline-end: -4px;
-            min-width: 16px;
-            height: 16px;
-            padding: 0 4px;
-            border-radius: 999px;
-            background: #ff3b30;
-            color: #fff;
-            font-size: 0.5625rem;
-            font-weight: 600;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            line-height: 1;
-            box-shadow: 0 0 0 1.5px #fff;
-            pointer-events: none;
-        }
-        .tc-workspace-nav__panel-btn .tc-toggle-badge[hidden] { display: none !important; }
+        /* Module nav / top pills / sidebar chrome → public/css/tracking-chrome.css */
 
         /* Legacy aliases */
         .tc-iconbar { display: contents; }
@@ -318,23 +136,7 @@
         .tc-alert-btn.on { background: var(--tc-primary-soft); color: var(--tc-primary); border-color: color-mix(in srgb, var(--tc-primary) 40%, transparent); }
         .tc-alert-btn.muted { color: var(--tc-text-faint); }
 
-        /* Unread badge on the Events tab */
-        .tc-tab { position: relative; }
-        .tc-tab-badge {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            min-width: 17px;
-            height: 17px;
-            padding: 0 4px;
-            margin-inline-start: 5px;
-            border-radius: 9px;
-            background: var(--tc-alert);
-            color: #fff;
-            font-size: 0.62rem;
-            font-weight: 700;
-            vertical-align: middle;
-        }
+        /* Events tab badge styles live in tracking-chrome.css */
 
         .tc-main {
             flex: 1;
@@ -358,12 +160,12 @@
 
         /* ===== Left panel (Apple sidebar) ===== */
         .tc-panel {
-            width: min(272px, 94vw);
+            width: min(280px, 94vw);
             flex-shrink: 0;
             display: flex;
             flex-direction: column;
-            background: var(--tc-sidebar);
-            border-inline-end: 0.5px solid var(--tc-border);
+            background: #f8fafc;
+            border-inline-end: 1px solid rgba(15, 23, 42, 0.08);
             z-index: 4;
         }
 
@@ -390,93 +192,7 @@
         }
         }
 
-        .tc-tabs {
-            display: flex;
-            gap: 2px;
-            padding: 0.45rem 0.65rem 0.35rem;
-            background: var(--tc-sidebar);
-            border-bottom: 0.5px solid var(--tc-border-soft);
-        }
-
-        .tc-tab {
-            flex: 1;
-            padding: 0.38rem 0.4rem;
-            text-align: center;
-            font-size: 0.8125rem;
-            font-weight: 500;
-            letter-spacing: -0.02em;
-            color: #636366;
-            background: transparent;
-            border: none;
-            border-bottom: none;
-            border-radius: 8px;
-            cursor: pointer;
-            white-space: nowrap;
-            transition: color 0.14s ease, background 0.14s ease;
-        }
-
-        .tc-tab:hover { color: #1d1d1f; background: rgba(118, 118, 128, 0.08); }
-        .tc-tab.active {
-            color: #007aff;
-            background: rgba(0, 122, 255, 0.1);
-            font-weight: 600;
-        }
-
-        .tc-panel .tc-list {
-            background: var(--tc-sidebar);
-        }
-
-        .tc-tab-body {
-            flex: 1;
-            min-height: 0;
-            display: none;
-            flex-direction: column;
-        }
-
-        .tc-tab-body.active { display: flex; }
-
-        .tc-tab-head {
-            padding: 0.6rem;
-            border-bottom: 0.5px solid var(--tc-border-soft);
-            background: var(--apple-bg-group);
-        }
-
-        .tc-filter-chips {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 0.3rem;
-            margin-top: 0.5rem;
-        }
-
-        .tc-chip {
-            border: none;
-            background: var(--apple-bg-primary);
-            color: #636366;
-            border-radius: 999px;
-            padding: 0.28rem 0.7rem;
-            font-size: 0.75rem;
-            font-weight: 500;
-            letter-spacing: -0.01em;
-            cursor: pointer;
-            display: inline-flex;
-            align-items: center;
-            gap: 0.35rem;
-            transition: all 0.14s ease;
-        }
-        .tc-chip:hover { background: rgba(118, 118, 128, 0.18); color: #1d1d1f; }
-
-        .tc-chip .tc-chip-count {
-            background: var(--apple-bg-secondary);
-            border-radius: 999px;
-            padding: 0 0.35rem;
-            font-size: 0.6875rem;
-            color: #8e8e93;
-            font-weight: 600;
-        }
-
-        .tc-chip.active { background: #007aff; color: #fff; box-shadow: 0 2px 8px rgba(0, 122, 255, 0.28); }
-        .tc-chip.active:hover { color: #fff; background: #0062cc; }
-        .tc-chip.active .tc-chip-count { background: rgba(255, 255, 255, 0.25); color: #fff; }
+        /* Sidebar tabs / search / chips → public/css/tracking-chrome.css */
 
         .tc-list-head {
             display: flex;
@@ -2298,11 +2014,11 @@
     <div class="tracking-topbar__alert-controls">
         <button type="button" class="tracking-topbar__alert-btn on" id="tcSoundToggle"
                 title="{{ __('app.tracking.alert_sound') }}" aria-label="{{ __('app.tracking.alert_sound') }}" aria-pressed="true">
-            <i class="fas fa-volume-high"></i>
+            <i class="fas fa-volume-high" aria-hidden="true"></i>
         </button>
         <button type="button" class="tracking-topbar__alert-btn" id="tcDesktopToggle"
                 title="{{ __('app.tracking.alert_desktop') }}" aria-label="{{ __('app.tracking.alert_desktop') }}" aria-pressed="false">
-            <i class="fas fa-bell"></i>
+            <i class="fas fa-bell" aria-hidden="true"></i>
         </button>
     </div>
     @endpush
@@ -2326,7 +2042,7 @@
             <button type="button" class="tc-workspace-nav__panel-btn active" id="tcPanelToggle"
                     aria-label="{{ __('app.tracking.tab_objects') }}" title="{{ __('app.tracking.tab_objects') }}"
                     aria-expanded="true" aria-controls="tcPanel">
-                <i class="fas fa-list-ul"></i>
+                <i class="fas fa-bars" aria-hidden="true"></i>
                 @if(! empty($ui['panel_toggle']))
                 <span class="tc-toggle-badge" id="tcToggleBadge" hidden>0</span>
                 @endif
@@ -2345,14 +2061,14 @@
             <div class="tc-workspace-nav__actions">
                 <button type="button" class="tc-workspace-nav__collapse-btn" id="tcNavClose"
                         aria-label="{{ __('app.tracking.nav_collapse') }}" title="{{ __('app.tracking.nav_collapse') }}">
-                    <i class="fas fa-chevron-up"></i>
+                    <i class="fas fa-chevron-up" aria-hidden="true"></i>
                 </button>
             </div>
             @endif
         </div>
         <div class="tc-workspace-nav__reveal" id="tcNavReveal">
             <button type="button" class="tc-workspace-nav__reveal-btn" id="tcNavRevealBtn">
-                <i class="fas fa-chevron-down"></i><span>{{ __('app.tracking.nav_show') }}</span>
+                <i class="fas fa-chevron-down" aria-hidden="true"></i><span>{{ __('app.tracking.nav_show') }}</span>
             </button>
         </div>
         {{-- Legacy hooks for scripts --}}
@@ -2369,16 +2085,16 @@
             <aside class="tc-panel tc-panel--open" id="tcPanel">
                 <div class="tc-tabs" role="tablist">
                     @if(! empty($tabPerms['objects']))
-                    <button type="button" class="tc-tab{{ $firstSidebarTab === 'objects' ? ' active' : '' }}" data-tab="objects">{{ __('app.tracking.tab_objects') }}</button>
+                    <button type="button" class="tc-tab{{ $firstSidebarTab === 'objects' ? ' active' : '' }}" data-tab="objects"><i class="fas fa-car" aria-hidden="true"></i><span>{{ __('app.tracking.tab_objects') }}</span></button>
                     @endif
                     @if(! empty($tabPerms['events']))
-                    <button type="button" class="tc-tab{{ $firstSidebarTab === 'events' ? ' active' : '' }}" data-tab="events">{{ __('app.tracking.events_nav') }}<span class="tc-tab-badge" id="tcEventsBadge" hidden>0</span></button>
+                    <button type="button" class="tc-tab{{ $firstSidebarTab === 'events' ? ' active' : '' }}" data-tab="events"><i class="fas fa-bolt" aria-hidden="true"></i><span>{{ __('app.tracking.events_nav') }}</span><span class="tc-tab-badge" id="tcEventsBadge" hidden>0</span></button>
                     @endif
                     @if(! empty($tabPerms['places']))
-                    <button type="button" class="tc-tab{{ $firstSidebarTab === 'places' ? ' active' : '' }}" data-tab="places">{{ __('app.tracking.tab_places') }}</button>
+                    <button type="button" class="tc-tab{{ $firstSidebarTab === 'places' ? ' active' : '' }}" data-tab="places"><i class="fas fa-map-pin" aria-hidden="true"></i><span>{{ __('app.tracking.tab_places') }}</span></button>
                     @endif
                     @if(! empty($tabPerms['history']))
-                    <button type="button" class="tc-tab{{ $firstSidebarTab === 'history' ? ' active' : '' }}" data-tab="history">{{ __('app.tracking.history_link') }}</button>
+                    <button type="button" class="tc-tab{{ $firstSidebarTab === 'history' ? ' active' : '' }}" data-tab="history"><i class="fas fa-history" aria-hidden="true"></i><span>{{ __('app.tracking.history_link') }}</span></button>
                     @endif
                 </div>
 
@@ -2386,8 +2102,11 @@
                 <div class="tc-tab-body{{ $firstSidebarTab === 'objects' ? ' active' : '' }}" data-tab-body="objects">
                     <div class="tc-tab-head">
                         @if(! empty($ui['vehicle_search']))
-                        <input type="search" id="tcSearch" class="form-control form-control-sm"
-                               placeholder="{{ __('app.tracking.search_vehicles') }}" autocomplete="off">
+                        <div class="tc-search-wrap">
+                            <i class="fas fa-search" aria-hidden="true"></i>
+                            <input type="search" id="tcSearch" class="form-control form-control-sm"
+                                   placeholder="{{ __('app.tracking.search_vehicles') }}" autocomplete="off">
+                        </div>
                         @endif
                         <div class="tc-filter-chips" id="tcChips">
                             <button type="button" class="tc-chip active" data-filter="all">{{ __('app.tracking.filter_all') }} <span class="tc-chip-count" data-count="all">0</span></button>
@@ -2397,7 +2116,7 @@
                         </div>
                     </div>
                     <div class="tc-list-head">
-                        <span class="tc-col" title="{{ __('app.tracking.col_show') }}"><i class="fas fa-eye"></i></span>
+                        <span class="tc-col" title="{{ __('app.tracking.col_show') }}"><i class="fas fa-eye" aria-hidden="true"></i></span>
                         <span class="tc-head-label">{{ __('app.tracking.object') }}</span>
                     </div>
                     <div class="tc-row tc-allrow">
@@ -2412,7 +2131,7 @@
                 <div class="tc-tab-body{{ $firstSidebarTab === 'events' ? ' active' : '' }}" data-tab-body="events">
                     <div class="tc-tab-head">
                         <button type="button" class="btn btn-sm btn-outline-primary w-100" id="tcEventsReload">
-                            <i class="fas fa-sync-alt me-1"></i>{{ __('app.tracking.refresh') }}
+                            <i class="fas fa-sync-alt me-1" aria-hidden="true"></i>{{ __('app.tracking.refresh') }}
                         </button>
                     </div>
                     <div class="tc-list" id="tcEventsList">
@@ -2425,7 +2144,7 @@
                 <div class="tc-tab-body{{ $firstSidebarTab === 'places' ? ' active' : '' }}" data-tab-body="places">
                     <div class="tc-tab-head">
                         <button type="button" class="btn btn-sm btn-outline-primary w-100" id="tcPlacesReload">
-                            <i class="fas fa-sync-alt me-1"></i>{{ __('app.tracking.refresh') }}
+                            <i class="fas fa-sync-alt me-1" aria-hidden="true"></i>{{ __('app.tracking.refresh') }}
                         </button>
                     </div>
                     <div class="tc-list" id="tcPlacesList">

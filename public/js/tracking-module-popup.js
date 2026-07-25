@@ -14,6 +14,17 @@
             .replace(/'/g, '&#39;');
     }
 
+    function iconMarkup(icon) {
+        const raw = String(icon || 'fas fa-satellite-dish').trim();
+        if (raw.includes('ti-') || raw.startsWith('ti ')) {
+            return `<i class="${escHtml(raw)}" aria-hidden="true"></i>`;
+        }
+        if (raw.startsWith('fa-') && !raw.includes(' ')) {
+            return `<i class="fas ${escHtml(raw)}" aria-hidden="true"></i>`;
+        }
+        return `<i class="${escHtml(raw)}" aria-hidden="true"></i>`;
+    }
+
     function openModule(url, title, icon) {
         const modalEl = document.getElementById('tcModuleModal');
         const frame = document.getElementById('tcModuleFrame');
@@ -27,7 +38,7 @@
         const loader = document.getElementById('tcModuleLoader');
         const titleEl = document.getElementById('tcModuleTitle');
         if (titleEl) {
-            titleEl.innerHTML = `<i class="fas ${escHtml(icon || 'fa-satellite-dish')} me-2"></i>${escHtml(title || '')}`;
+            titleEl.innerHTML = `${iconMarkup(icon)} <span class="ms-1">${escHtml(title || '')}</span>`;
         }
         frame.title = title || '';
         if (loader) loader.hidden = false;
@@ -49,7 +60,7 @@
             openModule(
                 url,
                 link.getAttribute('data-tc-module-title') || link.dataset.tcModuleTitle || '',
-                link.getAttribute('data-tc-module-icon') || link.dataset.tcModuleIcon || 'fa-satellite-dish'
+                link.getAttribute('data-tc-module-icon') || link.dataset.tcModuleIcon || 'fas fa-satellite-dish'
             );
         });
 

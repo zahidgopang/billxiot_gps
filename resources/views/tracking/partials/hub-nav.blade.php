@@ -10,7 +10,7 @@
            class="tc-workspace-nav__panel-btn"
            title="{{ __('app.tracking.tab_objects') }}"
            aria-label="{{ __('app.tracking.tab_objects') }}">
-            <i class="fas fa-list-ul"></i>
+            <i class="fas fa-bars" aria-hidden="true"></i>
         </a>
     @endif
     <div class="tc-workspace-nav__track">
@@ -27,7 +27,7 @@
         <div class="tc-workspace-nav__actions">
             <button type="button" class="tc-workspace-nav__collapse-btn" id="tcNavClose"
                     aria-label="{{ __('app.tracking.nav_collapse') }}" title="{{ __('app.tracking.nav_collapse') }}">
-                <i class="fas fa-chevron-up"></i>
+                <i class="fas fa-chevron-up" aria-hidden="true"></i>
             </button>
         </div>
     @endif

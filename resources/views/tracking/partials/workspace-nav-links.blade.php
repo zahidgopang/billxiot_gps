@@ -35,16 +35,16 @@
     }
 
     $iconLinks = [
-        ['key' => 'live', 'icon' => 'fa-location-arrow', 'route' => $hub['live'] ?? null, 'label' => __('app.tracking.live_link'), 'hub' => true],
-        ['key' => 'reports', 'icon' => 'fa-chart-bar', 'route' => $hub['reports'] ?? null, 'label' => __('app.tracking.reports_nav')],
-        ['key' => 'odometer', 'icon' => 'fa-tachometer-alt', 'route' => $hub['odometer'] ?? null, 'label' => __('app.tracking.odometer_nav')],
-        ['key' => 'geofences', 'icon' => 'fa-draw-polygon', 'route' => $hub['geofences'] ?? null, 'label' => __('app.tracking.geofences_nav')],
-        ['key' => 'maintenance', 'icon' => 'fa-wrench', 'route' => $hub['maintenance'] ?? null, 'label' => __('app.tracking.maintenance_nav')],
-        ['key' => 'drivers', 'icon' => 'fa-id-card', 'route' => $hub['drivers'] ?? null, 'label' => __('app.tracking.drivers_nav')],
-        ['key' => 'commands', 'icon' => 'fa-terminal', 'route' => $hub['commands'] ?? null, 'label' => __('app.tracking.commands_nav')],
-        ['key' => 'tasks', 'icon' => 'fa-tasks', 'route' => $hub['tasks'] ?? null, 'label' => __('app.tracking.tasks_nav')],
-        ['key' => 'notifications', 'icon' => 'fa-bell', 'route' => $hub['notifications'] ?? null, 'label' => __('app.tracking.notifications_nav')],
-        ['key' => 'settings', 'icon' => 'fa-sliders-h', 'route' => $hub['settings'] ?? null, 'label' => __('app.tracking.settings_nav')],
+        ['key' => 'live', 'icon' => 'fas fa-location-arrow', 'route' => $hub['live'] ?? null, 'label' => __('app.tracking.live_link'), 'hub' => true],
+        ['key' => 'reports', 'icon' => 'fas fa-chart-bar', 'route' => $hub['reports'] ?? null, 'label' => __('app.tracking.reports_nav')],
+        ['key' => 'odometer', 'icon' => 'fas fa-tachometer-alt', 'route' => $hub['odometer'] ?? null, 'label' => __('app.tracking.odometer_nav')],
+        ['key' => 'geofences', 'icon' => 'fas fa-draw-polygon', 'route' => $hub['geofences'] ?? null, 'label' => __('app.tracking.geofences_nav')],
+        ['key' => 'maintenance', 'icon' => 'fas fa-wrench', 'route' => $hub['maintenance'] ?? null, 'label' => __('app.tracking.maintenance_nav')],
+        ['key' => 'drivers', 'icon' => 'fas fa-id-card', 'route' => $hub['drivers'] ?? null, 'label' => __('app.tracking.drivers_nav')],
+        ['key' => 'commands', 'icon' => 'fas fa-terminal', 'route' => $hub['commands'] ?? null, 'label' => __('app.tracking.commands_nav')],
+        ['key' => 'tasks', 'icon' => 'fas fa-tasks', 'route' => $hub['tasks'] ?? null, 'label' => __('app.tracking.tasks_nav')],
+        ['key' => 'notifications', 'icon' => 'fas fa-bell', 'route' => $hub['notifications'] ?? null, 'label' => __('app.tracking.notifications_nav')],
+        ['key' => 'settings', 'icon' => 'fas fa-sliders-h', 'route' => $hub['settings'] ?? null, 'label' => __('app.tracking.settings_nav')],
     ];
 
     $moduleEmbed = ! empty($moduleEmbed);
@@ -63,21 +63,22 @@
         @endphp
         @if($usePlainLink)
             <a href="{{ route($link['route']) }}"
-               class="{{ $isActive ? 'active' : '' }}"
+               class="tc-nav-pill{{ $isActive ? ' active' : '' }}"
                title="{{ $link['label'] }}"
                aria-label="{{ $link['label'] }}"
                @if($isActive) aria-current="page" @endif>
-                <i class="fas {{ $link['icon'] }}"></i>
+                <i class="{{ $link['icon'] }}" aria-hidden="true"></i>
                 <span>{{ $link['label'] }}</span>
             </a>
         @else
             <a href="{{ route($link['route']) }}"
+               class="tc-nav-pill"
                data-tc-module="{{ route($link['route']) }}"
                data-tc-module-title="{{ $link['label'] }}"
                data-tc-module-icon="{{ $link['icon'] }}"
                title="{{ $link['label'] }}"
                aria-label="{{ $link['label'] }}">
-                <i class="fas {{ $link['icon'] }}"></i>
+                <i class="{{ $link['icon'] }}" aria-hidden="true"></i>
                 <span>{{ $link['label'] }}</span>
             </a>
         @endif
