@@ -37,6 +37,106 @@ class TrackingMetricsService
     }
 
     /**
+     * Distance (km) for multiple day windows in one pass (shared latest odometer).
+     *
+     * @param  list<int>  $daysList  rolling windows via now()->subDays($n)
+     * @return array<int, float>  keyed by day window
+     */
+    public function calculateTotalDistanceKmByWindows(Collection $deviceIds, array $daysList): array
+    {
+        $periods = [];
+        foreach (array_values(array_unique(array_map('intval', $daysList))) as $days) {
+            $periods[$days] = now()->subDays($days);
+        }
+
+        return $this->calculateTotalDistanceKmForPeriods($deviceIds, $periods);
+    }
+
+    /**
+     * Distance (km) since each absolute start time (app timezone → UTC for Traccar).
+     *
+     * @param  array<string|int, Carbon>  $periods  e.g. ['today' => now()->startOfDay(), 30 => now()->subDays(30)]
+     * @return array<string|int, float>
+     */
+    public function calculateTotalDistanceKmForPeriods(Collection $deviceIds, array $periods): array
+    {
+        $out = [];
+        foreach ($periods as $key => $from) {
+            $out[$key] = 0.0;
+        }
+
+        if ($deviceIds->isEmpty() || $periods === []) {
+            return $out;
+        }
+
+        if (! (TraccarMode::readsTraccar() && TraccarSchema::isReady())) {
+            foreach ($periods as $key => $from) {
+                $out[$key] = $this->distanceFromLegacySince($deviceIds, $from instanceof Carbon ? $from : now()->subDays((int) $from));
+            }
+
+            return $out;
+        }
+
+        $traccarIds = $deviceIds
+            ->map(fn ($id) => $this->idMap->get(TraccarEntityMap::TYPE_DEVICE, (int) $id))
+            ->filter()
+            ->map(fn ($id) => (int) $id)
+            ->values()
+            ->all();
+
+        if ($traccarIds === []) {
+            return $out;
+        }
+
+        $fromUtcByKey = [];
+        foreach ($periods as $key => $from) {
+            $fromUtcByKey[$key] = $this->utc($from instanceof Carbon ? $from : now()->subDays((int) $from));
+        }
+
+        $widestFrom = collect($fromUtcByKey)->sort()->first();
+        $table = config('traccar.tables.positions', 'tc_positions');
+        $totals = array_fill_keys(array_keys($periods), 0.0);
+
+        foreach ($traccarIds as $traccarDeviceId) {
+            $lastAttrs = DB::table($table)
+                ->where('deviceid', $traccarDeviceId)
+                ->where('fixtime', '>=', $widestFrom)
+                ->orderByDesc('fixtime')
+                ->orderByDesc('id')
+                ->value('attributes');
+            $last = $this->odometerMetersFromAttributes($lastAttrs);
+            if ($last === null) {
+                continue;
+            }
+
+            foreach ($fromUtcByKey as $key => $fromUtc) {
+                $firstAttrs = DB::table($table)
+                    ->where('deviceid', $traccarDeviceId)
+                    ->where('fixtime', '>=', $fromUtc)
+                    ->orderBy('fixtime')
+                    ->orderBy('id')
+                    ->value('attributes');
+                $first = $this->odometerMetersFromAttributes($firstAttrs);
+                if ($first === null) {
+                    continue;
+                }
+
+                $delta = $last - $first;
+                if ($delta < 0 || $delta > 20_000_000) {
+                    continue;
+                }
+                $totals[$key] += $delta;
+            }
+        }
+
+        foreach ($totals as $key => $meters) {
+            $out[$key] = $meters / 1000;
+        }
+
+        return $out;
+    }
+
+    /**
      * tc_positions.fixtime is stored in UTC; convert app-tz instants before
      * comparing so dashboard metrics are not off by the timezone offset.
      */
@@ -277,13 +377,18 @@ class TrackingMetricsService
 
     private function distanceFromLegacy(Collection $deviceIds, int $days): float
     {
+        return $this->distanceFromLegacySince($deviceIds, now()->subDays($days));
+    }
+
+    private function distanceFromLegacySince(Collection $deviceIds, Carbon $from): float
+    {
         if (! Schema::hasTable('device_locations')) {
             return 0.0;
         }
 
         $locations = DB::table('device_locations')
             ->whereIn('device_id', $deviceIds)
-            ->where('recorded_at', '>=', now()->subDays($days))
+            ->where('recorded_at', '>=', $from)
             ->orderBy('device_id')
             ->orderBy('recorded_at')
             ->get(['device_id', 'lat', 'lng']);
@@ -296,42 +401,86 @@ class TrackingMetricsService
         $traccarIds = $deviceIds
             ->map(fn ($id) => $this->idMap->get(TraccarEntityMap::TYPE_DEVICE, (int) $id))
             ->filter()
-            ->values();
+            ->map(fn ($id) => (int) $id)
+            ->values()
+            ->all();
 
-        if ($traccarIds->isEmpty()) {
+        if ($traccarIds === []) {
             return 0;
         }
 
         $fromUtc = $this->utc(now()->subDays($days));
         $table = config('traccar.tables.positions', 'tc_positions');
-        $total = 0.0;
+        $totalMeters = 0.0;
 
+        // Per-device indexed LIMIT 1 lookups (odometer first→last). Full haversine over
+        // millions of rows never finished and left dashboard Total Distance as "—".
         foreach ($traccarIds as $traccarDeviceId) {
-            $prevLat = null;
-            $prevLng = null;
-
-            // Stream lat/lng only — loading full DeviceLocation collections for 30 days
-            // per device exhausts memory on live fleets and caused HTTP 500 on /user/dashboard.
-            foreach (DB::table($table)
-                ->where('deviceid', $traccarDeviceId)
-                ->where('fixtime', '>=', $fromUtc)
-                ->orderBy('fixtime')
-                ->orderBy('id')
-                ->select(['latitude', 'longitude'])
-                ->lazy(1000) as $row) {
-                $lat = (float) ($row->latitude ?? 0);
-                $lng = (float) ($row->longitude ?? 0);
-
-                if ($prevLat !== null) {
-                    $total += $this->haversineKm($prevLat, $prevLng, $lat, $lng);
-                }
-
-                $prevLat = $lat;
-                $prevLng = $lng;
+            $delta = $this->odometerDeltaMeters($table, $traccarDeviceId, $fromUtc);
+            if ($delta !== null) {
+                $totalMeters += $delta;
             }
         }
 
-        return $total;
+        return $totalMeters / 1000;
+    }
+
+    /**
+     * Device-reported odometer delta in meters for [fromUtc, now], or null when unavailable.
+     */
+    private function odometerDeltaMeters(string $table, int $traccarDeviceId, Carbon $fromUtc): ?float
+    {
+        $firstAttrs = DB::table($table)
+            ->where('deviceid', $traccarDeviceId)
+            ->where('fixtime', '>=', $fromUtc)
+            ->orderBy('fixtime')
+            ->orderBy('id')
+            ->value('attributes');
+
+        $lastAttrs = DB::table($table)
+            ->where('deviceid', $traccarDeviceId)
+            ->where('fixtime', '>=', $fromUtc)
+            ->orderByDesc('fixtime')
+            ->orderByDesc('id')
+            ->value('attributes');
+
+        $first = $this->odometerMetersFromAttributes($firstAttrs);
+        $last = $this->odometerMetersFromAttributes($lastAttrs);
+
+        if ($first === null || $last === null) {
+            return null;
+        }
+
+        $delta = $last - $first;
+
+        // Ignore resets / wrap / garbage jumps (cap ~20,000 km per device per window).
+        if ($delta < 0 || $delta > 20_000_000) {
+            return null;
+        }
+
+        return $delta;
+    }
+
+    private function odometerMetersFromAttributes(mixed $attributes): ?float
+    {
+        if ($attributes === null || $attributes === '') {
+            return null;
+        }
+
+        $attrs = is_array($attributes)
+            ? $attributes
+            : json_decode((string) $attributes, true);
+
+        if (! is_array($attrs)) {
+            return null;
+        }
+
+        $raw = $attrs['odometer'] ?? $attrs['totalDistance'] ?? null;
+        if ($raw === null || $raw === '') {
+            return null;
+        }
+
+        return (float) $raw;
     }
 
     private function sumHaversineChain(Collection $locations): float

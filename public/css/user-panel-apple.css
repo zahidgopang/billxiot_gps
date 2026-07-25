@@ -532,6 +532,65 @@ body.user-panel.apple-hig .sidebar-overlay {
 
 .ud-chart { min-height: 260px; }
 
+.ud-status-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1.4fr) minmax(160px, 0.8fr);
+    gap: 16px;
+    align-items: center;
+}
+
+.ud-status-legend {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.ud-status-legend li {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+    color: var(--apple-text);
+}
+
+.ud-status-legend li span:nth-child(2) {
+    flex: 1;
+    color: var(--apple-muted);
+}
+
+.ud-status-legend strong {
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+    min-width: 1.5em;
+    text-align: right;
+}
+
+.ud-status-swatch {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+@media (max-width: 720px) {
+    .ud-status-layout {
+        grid-template-columns: 1fr;
+    }
+
+    .ud-status-legend {
+        flex-direction: row;
+        flex-wrap: wrap;
+        justify-content: space-between;
+    }
+
+    .ud-status-legend li {
+        min-width: calc(50% - 8px);
+    }
+}
+
 .ud-map-wrap {
     height: 280px;
     border-radius: var(--apple-radius-sm);

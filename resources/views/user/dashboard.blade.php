@@ -5,8 +5,10 @@
 @section('content')
 
 @php
-    // Prefer server-built buckets so KPIs and donut always share one snapshot.
+    // Single snapshot for KPI cards + Vehicle Status donut (never rebuild separately).
     $statusDonut = $statusDonut ?? \App\Services\UserDashboardService::statusDonutFromFleetCounts($fleetCounts ?? []);
+    $statusOnline = (int) ($statusDonut['running'] ?? 0) + (int) ($statusDonut['parked'] ?? 0) + (int) ($statusDonut['idle'] ?? 0);
+    $statusParkedIdle = (int) ($statusDonut['parked'] ?? 0) + (int) ($statusDonut['idle'] ?? 0);
 @endphp
 
 <div class="ud-dashboard ud-fade-in">
@@ -71,24 +73,24 @@
             <div class="ud-kpi-head">
                 <p class="ud-kpi-title">{{ __('app.user.devices.online_now') }}</p>
             </div>
-            <div class="ud-kpi-value" data-count="{{ ($statusDonut['running'] ?? 0) + ($statusDonut['parked'] ?? 0) + ($statusDonut['idle'] ?? 0) }}">0</div>
+            <div class="ud-kpi-value" data-count="{{ $statusOnline }}">0</div>
             <p class="ud-kpi-meta"><span class="up">{{ $onlinePercent }}%</span> {{ __('app.user.dashboard.of_fleet') }}</p>
         </div>
         <div class="ud-card">
             <div class="ud-kpi-head">
                 <p class="ud-kpi-title">{{ __('app.user.devices.moving') }}</p>
             </div>
-            <div class="ud-kpi-value" data-count="{{ $statusDonut['running'] ?? $running }}">0</div>
-            <p class="ud-kpi-meta">{{ __('app.user.dashboard.offline') }}: {{ $statusDonut['offline'] ?? $offlineNow }}</p>
+            <div class="ud-kpi-value" data-count="{{ (int) ($statusDonut['running'] ?? 0) }}">0</div>
+            <p class="ud-kpi-meta">{{ __('app.user.dashboard.offline') }}: {{ (int) ($statusDonut['offline'] ?? 0) }}</p>
         </div>
         <div class="ud-card">
             <div class="ud-kpi-head">
                 <p class="ud-kpi-title">{{ __('app.user.devices.parked_idle') }}</p>
             </div>
-            <div class="ud-kpi-value" data-count="{{ $parkedIdle ?? $parked }}">0</div>
+            <div class="ud-kpi-value" data-count="{{ $statusParkedIdle }}">0</div>
             <p class="ud-kpi-meta">{{ __('app.user.dashboard.idle_stopped', [
-                'idle' => (int) (($fleetCounts['idle'] ?? 0) + ($fleetCounts['delayed'] ?? 0) + ($fleetCounts['stale'] ?? 0) + ($fleetCounts['alert'] ?? 0)),
-                'stopped' => (int) (($fleetCounts['parked'] ?? 0) + ($fleetCounts['stopped'] ?? 0)),
+                'idle' => (int) ($statusDonut['idle'] ?? 0),
+                'stopped' => (int) ($statusDonut['parked'] ?? 0),
             ]) }}</p>
         </div>
     </div>
@@ -119,15 +121,23 @@
             <div class="ud-kpi-head">
                 <p class="ud-kpi-title">{{ __('app.user.dashboard.offline') }}</p>
             </div>
-            <div class="ud-kpi-value" data-count="{{ $statusDonut['offline'] ?? $offlineNow }}">0</div>
+            <div class="ud-kpi-value" data-count="{{ (int) ($statusDonut['offline'] ?? 0) }}">0</div>
             <p class="ud-kpi-meta">{{ __('app.user.dashboard.not_reporting') }}</p>
         </div>
     </div>
 
-    {{-- Vehicle status (live counts — rendered immediately) --}}
+    {{-- Vehicle status (same $statusDonut snapshot as KPI cards) --}}
     <div class="ud-card" style="margin-bottom: 24px;">
         <h2 class="ud-card-title">{{ __('app.user.dashboard.vehicle_status') }}</h2>
-        <div id="udChartStatus" class="ud-chart ud-chart--loading" aria-busy="true"></div>
+        <div class="ud-status-layout">
+            <div id="udChartStatus" class="ud-chart ud-chart--loading" aria-busy="true"></div>
+            <ul class="ud-status-legend" aria-label="{{ __('app.user.dashboard.vehicle_status') }}">
+                <li><span class="ud-status-swatch" style="background:#34C759"></span><span>Running</span><strong data-status-count="running">{{ (int) ($statusDonut['running'] ?? 0) }}</strong></li>
+                <li><span class="ud-status-swatch" style="background:#007AFF"></span><span>Parked</span><strong data-status-count="parked">{{ (int) ($statusDonut['parked'] ?? 0) }}</strong></li>
+                <li><span class="ud-status-swatch" style="background:#FF9F0A"></span><span>Idle</span><strong data-status-count="idle">{{ (int) ($statusDonut['idle'] ?? 0) }}</strong></li>
+                <li><span class="ud-status-swatch" style="background:#8E8E93"></span><span>Offline</span><strong data-status-count="offline">{{ (int) ($statusDonut['offline'] ?? 0) }}</strong></li>
+            </ul>
+        </div>
     </div>
 
     {{-- Fleet table — ~5 rows visible, then scroll --}}

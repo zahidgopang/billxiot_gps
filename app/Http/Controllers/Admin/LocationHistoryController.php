@@ -36,6 +36,11 @@ class LocationHistoryController extends Controller
             $q->whereAppStatus($request->status);
         }
 
+        // KPIs must cover the full filtered fleet (paginator total), not only the current page.
+        $fleetForStats = (clone $q)->get();
+        app(DevicePositionLoader::class)->attachLatestToMany($fleetForStats);
+        $stats = $dashboard->getDevicePageStats($fleetForStats);
+
         $devices = $q->paginate(20)->withQueryString();
         app(DevicePositionLoader::class)->attachLatestToMany($devices->getCollection());
         $alertDeviceIds = $dashboard->alertDeviceIds($devices->getCollection());
@@ -45,7 +50,7 @@ class LocationHistoryController extends Controller
             'dashboardService' => $dashboard,
             'subscriptionService' => $subscriptions,
             'alertDeviceIds' => $alertDeviceIds,
-            'stats' => $dashboard->getDevicePageStats($devices->getCollection()),
+            'stats' => $stats,
             'panel' => $request->routeIs('client.*') ? 'client' : 'admin',
         ]);
     }
@@ -99,9 +104,10 @@ class LocationHistoryController extends Controller
             ];
         })->values();
 
+        // Row payloads only — page-scoped stats would overwrite fleet KPIs (e.g. 20 vs 87).
         return response()->json([
             'devices' => $devicesPayload,
-            'stats' => $dashboard->getDevicePageStats($devices),
+            'stats' => null,
         ]);
     }
 }

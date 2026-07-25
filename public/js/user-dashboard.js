@@ -3,6 +3,13 @@
 
     const APEX_URL = 'https://cdn.jsdelivr.net/npm/apexcharts@3.49.1/dist/apexcharts.min.js';
 
+    const STATUS_BUCKETS = [
+        { key: 'running', label: 'Running', color: '#34C759' },
+        { key: 'parked', label: 'Parked', color: '#007AFF' },
+        { key: 'idle', label: 'Idle', color: '#FF9F0A' },
+        { key: 'offline', label: 'Offline', color: '#8E8E93' },
+    ];
+
     function animateCounter(el, target, suffix) {
         if (!el) return;
         const end = Number(target) || 0;
@@ -43,16 +50,19 @@
             const val = map[key];
             document.querySelectorAll(`[data-deferred="${key}"]`).forEach((el) => {
                 const target = Math.round(Number(val) || 0);
-                if (el.hasAttribute('data-count')) {
-                    el.dataset.count = String(target);
-                    el.textContent = '0';
-                    animateCounter(el, target, el.dataset.suffix || '');
-                } else {
-                    el.dataset.count = String(target);
-                    el.textContent = '0';
-                    animateCounter(el, target, '');
-                }
+                el.dataset.count = String(target);
+                el.textContent = '0';
+                animateCounter(el, target, el.dataset.suffix || '');
             });
+        });
+    }
+
+    function markDeferredFailed() {
+        document.querySelectorAll('[data-deferred]').forEach((el) => {
+            if (el.textContent.trim() === '—') {
+                el.dataset.count = '0';
+                el.textContent = '0';
+            }
         });
     }
 
@@ -75,6 +85,14 @@
         });
     }
 
+    function statusSeries(donut) {
+        const s = donut || {};
+        return STATUS_BUCKETS.map((bucket) => ({
+            ...bucket,
+            value: Number(s[bucket.key]) || 0,
+        }));
+    }
+
     function renderCharts(data) {
         if (!global.ApexCharts || !data) {
             clearChartLoading();
@@ -83,21 +101,13 @@
 
         const donutEl = document.getElementById('udChartStatus');
         if (donutEl && data.statusDonut && !donutEl.dataset.chartReady) {
-            const s = data.statusDonut;
-            const series = [
-                Number(s.running) || 0,
-                Number(s.parked) || 0,
-                Number(s.idle) || 0,
-                Number(s.offline) || 0,
-            ];
-            // ApexCharts rejects all-zero donut series — show a neutral placeholder slice.
-            const chartSeries = series.every((n) => n === 0) ? [1] : series;
-            const chartLabels = series.every((n) => n === 0)
-                ? ['No vehicles']
-                : ['Running', 'Parked', 'Idle', 'Offline'];
-            const chartColors = series.every((n) => n === 0)
-                ? ['#C7C7CC']
-                : ['#34C759', '#007AFF', '#FF9F0A', '#8E8E93'];
+            const buckets = statusSeries(data.statusDonut);
+            // Drop zero slices so ApexCharts cannot remap colors/labels onto the wrong status.
+            const active = buckets.filter((b) => b.value > 0);
+            const chartSeries = active.length ? active.map((b) => b.value) : [1];
+            const chartLabels = active.length ? active.map((b) => b.label) : ['No vehicles'];
+            const chartColors = active.length ? active.map((b) => b.color) : ['#C7C7CC'];
+            const total = buckets.reduce((sum, b) => sum + b.value, 0);
 
             new ApexCharts(donutEl, {
                 ...chartBase(),
@@ -105,12 +115,40 @@
                 labels: chartLabels,
                 series: chartSeries,
                 colors: chartColors,
-                legend: { position: 'bottom', fontSize: '12px' },
-                plotOptions: { pie: { donut: { size: '68%' } } },
+                legend: { show: false },
+                plotOptions: {
+                    pie: {
+                        donut: {
+                            size: '68%',
+                            labels: {
+                                show: true,
+                                name: { show: true, fontSize: '13px', color: '#8E8E93' },
+                                value: {
+                                    show: true,
+                                    fontSize: '22px',
+                                    fontWeight: 700,
+                                    color: '#1C1C1E',
+                                    formatter(val) {
+                                        return active.length ? String(val) : '0';
+                                    },
+                                },
+                                total: {
+                                    show: true,
+                                    label: 'Fleet',
+                                    fontSize: '13px',
+                                    color: '#8E8E93',
+                                    formatter() {
+                                        return String(total);
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
                 tooltip: {
                     y: {
-                        formatter(val, opts) {
-                            if (series.every((n) => n === 0)) return '0';
+                        formatter(val) {
+                            if (!active.length) return '0';
                             return String(val);
                         },
                     },
@@ -145,14 +183,23 @@
     }
 
     async function loadMetrics(url) {
-        const res = await fetch(url, {
-            credentials: 'same-origin',
-            headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-        });
-        if (!res.ok) {
-            throw new Error('metrics failed');
+        const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+        const timer = controller
+            ? setTimeout(() => controller.abort(), 25000)
+            : null;
+        try {
+            const res = await fetch(url, {
+                credentials: 'same-origin',
+                headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                signal: controller ? controller.signal : undefined,
+            });
+            if (!res.ok) {
+                throw new Error('metrics failed');
+            }
+            return await res.json();
+        } finally {
+            if (timer) clearTimeout(timer);
         }
-        return res.json();
     }
 
     function initTableFilter() {
@@ -181,7 +228,7 @@
         initCounters(document);
         initTableFilter();
 
-        // Render Vehicle Status immediately from shell fleet counts (no wait on heavy metrics).
+        // Render Vehicle Status immediately from the same shell snapshot as the KPI cards.
         try {
             await loadApexCharts();
             if (cfg.charts) {
@@ -201,6 +248,7 @@
             applyDeferredMetrics(metrics);
         } catch (err) {
             console.warn('[user-dashboard] metrics load failed', err);
+            markDeferredFailed();
         }
     }
 

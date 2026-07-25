@@ -85,38 +85,35 @@ class UserDashboardService
             return $this->emptyTrackerStats();
         }
 
-        // Live KPIs / distance / map use subscribed vehicles only.
-        // Total device count still includes linked vehicles without a subscription.
+        // Status KPIs + Vehicle Status donut + Fleet Overview use the same linked fleet.
+        // Distance / live map markers still require an active subscription.
         $metricDevices = $this->subscribedDashboardDevices($user, $linkedDevices);
 
         $this->positionLoader->attachLatestToMany($linkedDevices);
-        if ($metricDevices->count() !== $linkedDevices->count()) {
-            $this->positionLoader->attachLatestToMany($metricDevices);
-        }
 
         $metricIds = $metricDevices->pluck('id');
         $totalDevices = $linkedDevices->count();
-        $trackedDevices = $metricDevices->count();
         $activeDevices = $linkedDevices->where('status', 'active')->count();
-        $alertDeviceIds = $this->alertDeviceIds($metricDevices);
-        $vehicleStates = $this->getVehicleStateCounts($metricDevices, $alertDeviceIds);
-        $fleetCounts = $this->mapStatus->fleetCounts($metricDevices);
+        $alertDeviceIds = $this->alertDeviceIds($linkedDevices);
+        $vehicleStates = $this->getVehicleStateCounts($linkedDevices, $alertDeviceIds);
+        // One snapshot: KPIs, donut, and table statuses all derive from this.
+        $fleetCounts = $this->mapStatus->fleetCounts($linkedDevices);
         $statusDonut = self::statusDonutFromFleetCounts($fleetCounts);
-        // Online = every non-offline bucket (matches donut; not a separate heuristic).
         $onlineNow = $statusDonut['running'] + $statusDonut['parked'] + $statusDonut['idle'];
+        $parkedIdle = $statusDonut['parked'] + $statusDonut['idle'];
         $fleetDevices = $linkedDevices->sortByDesc(fn (Device $d) => $d->latestLocation?->recorded_at)->values();
-        $pageStats = $this->getDevicePageStats($metricDevices);
+        $pageStats = $this->getDevicePageStats($linkedDevices);
         $pageStats['totalDevices'] = $totalDevices;
         $pageStats['activeDevices'] = $activeDevices;
         $pageStats['inactiveDevices'] = $linkedDevices->where('status', 'inactive')->count();
         $pageStats['blockedDevices'] = $linkedDevices->where('status', 'blocked')->count();
-        // Keep status KPIs aligned with the donut (tracked/subscribed set).
         $pageStats['onlineNow'] = $onlineNow;
         $pageStats['offlineNow'] = $statusDonut['offline'];
         $pageStats['running'] = $statusDonut['running'];
-        $pageStats['parked'] = $statusDonut['parked'] + $statusDonut['idle'];
-        $pageStats['parkedIdle'] = $pageStats['parked'];
+        $pageStats['parked'] = $parkedIdle;
+        $pageStats['parkedIdle'] = $parkedIdle;
         $pageStats['idle'] = $statusDonut['idle'];
+        $pageStats['statusDonut'] = $statusDonut;
 
         $needsSubscriptionCount = 0;
         if (! $this->rbac->bypassesSubscriptionRestrictions($user)) {
@@ -155,8 +152,8 @@ class UserDashboardService
             'alertDeviceIds' => $alertDeviceIds,
             'needsSubscriptionCount' => $needsSubscriptionCount,
             'activePercent' => $totalDevices > 0 ? round(($activeDevices / $totalDevices) * 100) : 0,
-            // Percent of tracked fleet (same set as status KPIs + donut).
-            'onlinePercent' => $trackedDevices > 0 ? round(($onlineNow / $trackedDevices) * 100) : 0,
+            // Same denominator as status KPIs + donut + fleet table.
+            'onlinePercent' => $totalDevices > 0 ? round(($onlineNow / $totalDevices) * 100) : 0,
             'alertsPercent' => 0,
             'distancePercent' => 0,
             'chartData' => null,
@@ -188,10 +185,9 @@ class UserDashboardService
             ];
         }
 
-        $this->positionLoader->attachLatestToMany($devices);
+        // Distance/alerts only — no latest-position attach (that alone was multi-second for large fleets).
         $deviceIds = $devices->pluck('id');
-        $fleetCounts = $this->mapStatus->fleetCounts($devices);
-        $heavy = $this->cachedHeavyMetrics($user, $devices, $deviceIds, $fleetCounts);
+        $heavy = $this->cachedHeavyMetrics($user, $deviceIds);
 
         return [
             'totalDistanceKm' => $heavy['totalDistanceKm'],
@@ -206,22 +202,22 @@ class UserDashboardService
     /**
      * @return array{totalDistanceKm: float|int, distanceTodayKm: float|int, activeAlerts: int, chartData: array<string, mixed>}
      */
-    private function cachedHeavyMetrics(User $user, Collection $devices, Collection $deviceIds, array $fleetCounts): array
+    private function cachedHeavyMetrics(User $user, Collection $deviceIds): array
     {
-        $cacheKey = 'user_dashboard_heavy_'.$user->id.'_'.md5($deviceIds->sort()->values()->implode(','));
+        // v4: Distance Today = calendar day (startOfDay), not rolling last 24h.
+        $cacheKey = 'user_dashboard_heavy_v4_'.$user->id.'_'.now()->toDateString().'_'.md5($deviceIds->sort()->values()->implode(','));
 
-        return Cache::remember($cacheKey, 90, function () use ($devices, $deviceIds, $fleetCounts) {
+        return Cache::remember($cacheKey, 90, function () use ($deviceIds) {
             try {
-                $totalDistanceKm = round($this->metrics->calculateTotalDistanceKm($deviceIds));
+                $byPeriod = $this->metrics->calculateTotalDistanceKmForPeriods($deviceIds, [
+                    '30' => now()->subDays(30),
+                    'today' => now()->startOfDay(),
+                ]);
+                $totalDistanceKm = round($byPeriod['30'] ?? 0);
+                $distanceTodayKm = round($byPeriod['today'] ?? 0, 1);
             } catch (\Throwable $e) {
                 report($e);
                 $totalDistanceKm = 0;
-            }
-
-            try {
-                $distanceTodayKm = round($this->metrics->calculateTotalDistanceKm($deviceIds, 1), 1);
-            } catch (\Throwable $e) {
-                report($e);
                 $distanceTodayKm = 0;
             }
 
@@ -238,12 +234,14 @@ class UserDashboardService
                 $activeAlerts = 0;
             }
 
-            try {
-                $chartData = $this->buildChartPayload($devices, $deviceIds, $fleetCounts);
-            } catch (\Throwable $e) {
-                report($e);
-                $chartData = $this->emptyTrackerStats()['chartData'];
-            }
+            // Dashboard UI only needs distance + alerts; charts load from the shell snapshot.
+            $chartData = [
+                'statusDonut' => ['running' => 0, 'parked' => 0, 'idle' => 0, 'offline' => 0],
+                'activityArea' => ['labels' => [], 'values' => []],
+                'alertsBar' => ['labels' => [], 'values' => []],
+                'performanceLine' => ['labels' => [], 'gpsPings' => [], 'activeDevices' => []],
+                'weeklyKm' => ['labels' => [], 'values' => []],
+            ];
 
             return [
                 'totalDistanceKm' => $totalDistanceKm,
@@ -677,7 +675,7 @@ class UserDashboardService
             }
 
             try {
-                $heavy = $this->cachedHeavyMetrics($user, $devices, $deviceIds, $fleetCounts);
+                $heavy = $this->cachedHeavyMetrics($user, $deviceIds);
             } catch (\Throwable $e) {
                 report($e);
                 $heavy = [

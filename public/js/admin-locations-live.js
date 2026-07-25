@@ -26,8 +26,6 @@
     /** @type {Map<number, object>} */
     const stateById = new Map();
 
-    const RUNNING_KEYS = new Set(['running', 'moving']);
-
     function deviceIdsOnPage() {
         return Array.from(document.querySelectorAll('[data-device-id]'))
             .map((row) => parseInt(row.getAttribute('data-device-id'), 10))
@@ -85,52 +83,6 @@
                 live_status: presentMapStatus(key, label),
                 recorded_at: recordedAt,
             });
-        });
-        recalculateStats();
-    }
-
-    function setStat(key, value) {
-        const el = document.querySelector(`[data-stat="${key}"]`);
-        if (el && el.textContent !== String(value)) {
-            el.textContent = String(value);
-            el.classList.add('stat-pulse');
-            setTimeout(() => el.classList.remove('stat-pulse'), 600);
-        }
-    }
-
-    function updateStats(stats) {
-        if (!stats) return;
-        setStat('totalDevices', stats.totalDevices ?? 0);
-        setStat('onlineNow', stats.onlineNow ?? 0);
-        setStat('running', stats.running ?? 0);
-        setStat('offlineNow', stats.offlineNow ?? 0);
-    }
-
-    function recalculateStats() {
-        const ids = deviceIdsOnPage();
-        let onlineNow = 0;
-        let running = 0;
-        let offlineNow = 0;
-
-        ids.forEach((id) => {
-            const key = stateById.get(id)?.status_key
-                || document.querySelector(`[data-device-id="${id}"]`)?.getAttribute('data-status-key')
-                || 'offline';
-            if (key === 'offline') {
-                offlineNow += 1;
-            } else {
-                onlineNow += 1;
-            }
-            if (RUNNING_KEYS.has(key)) {
-                running += 1;
-            }
-        });
-
-        updateStats({
-            totalDevices: ids.length,
-            onlineNow,
-            running,
-            offlineNow,
         });
     }
 
@@ -209,7 +161,6 @@
 
         stateById.set(deviceId, device);
         updateRow(device);
-        recalculateStats();
         stopLivePolling();
     }
 
@@ -276,11 +227,7 @@
                 }
                 updateRow(device);
             });
-            if (data.stats) {
-                updateStats(data.stats);
-            } else {
-                recalculateStats();
-            }
+            // Keep server fleet KPIs; never replace with page-only poll stats.
         } catch (err) {
             console.warn('[admin-locations] live poll failed', err);
         } finally {
