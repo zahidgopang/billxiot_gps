@@ -401,7 +401,8 @@
                                                 data-vehicle-name="{{ $d->vehicle_name ?? '' }}"
                                                 data-vehicle-number="{{ $d->vehicle_number ?? '' }}"
                                                 data-odometer-base-km="{{ $d->odometerBaselineKm() ?? '' }}"
-                                                data-odometer-display-km="{{ $d->odometerDisplayKm() ?? '' }}"
+                                                {{-- Do not call odometerDisplayKm() here: it can rebuild GPS history per row and 500 the page. --}}
+                                                data-odometer-display-km="{{ \App\Support\Tracking\TelemetryFormatter::odometerKm($latest?->odometer) ?? '' }}"
                                                 data-fuel-rate="{{ $d->fuelConsumptionLPer100km() ?? '' }}"
                                                 data-fuel-unit="{{ $d->fuelEfficiencyUnit() }}"
                                                 data-fuel-tank="{{ $d->fuelTankCapacityL() ?? '' }}"

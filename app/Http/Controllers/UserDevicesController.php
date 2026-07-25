@@ -70,25 +70,25 @@ class UserDevicesController extends Controller
                     'needsSubscriptionCount' => $needsSubscriptionCount,
                 ]
             ));
-        } catch (\Exception $e) {
-            Log::error('Error loading devices: ' . $e->getMessage());
-
-            return view('user.devices', [
-                'devices' => collect(),
-                'totalDevices' => 0,
-                'activeDevices' => 0,
-                'inactiveDevices' => 0,
-                'blockedDevices' => 0,
-                'onlineNow' => 0,
-                'running' => 0,
-                'parked' => 0,
-                'alerts' => 0,
-                'alertDeviceIds' => collect(),
-                'dashboardService' => $dashboard,
-                'fleetMapEligibleCount' => 0,
-                'deviceAccessMap' => [],
-                'needsSubscriptionCount' => 0,
+        } catch (\Throwable $e) {
+            Log::error('Error loading devices: '.$e->getMessage(), [
+                'exception' => $e::class,
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
             ]);
+
+            return view('user.devices', array_merge(
+                $dashboard->getDevicePageStats(collect()),
+                [
+                    'devices' => collect(),
+                    'alertDeviceIds' => collect(),
+                    'dashboardService' => $dashboard,
+                    'subscriptionService' => app(DeviceSubscriptionService::class),
+                    'fleetMapEligibleCount' => 0,
+                    'deviceAccessMap' => [],
+                    'needsSubscriptionCount' => 0,
+                ]
+            ));
         }
     }
 

@@ -35,11 +35,26 @@ class TraccarPositionReader implements PositionReaderInterface
             return null;
         }
 
-        $row = DB::table(config('traccar.tables.positions', 'tc_positions'))
-            ->where('deviceid', $traccarDeviceId)
-            ->orderByDesc('fixtime')
-            ->orderByDesc('id')
-            ->first();
+        $devicesTable = config('traccar.tables.devices', 'tc_devices');
+        $positionsTable = config('traccar.tables.positions', 'tc_positions');
+
+        // Prefer tc_devices.positionid (O(1)) — MAX(id) over tc_positions is too slow on large fleets.
+        $positionId = DB::table($devicesTable)
+            ->where('id', $traccarDeviceId)
+            ->value('positionid');
+
+        $row = null;
+        if ($positionId) {
+            $row = DB::table($positionsTable)->where('id', (int) $positionId)->first();
+        }
+
+        if (! $row) {
+            $row = DB::table($positionsTable)
+                ->where('deviceid', $traccarDeviceId)
+                ->orderByDesc('fixtime')
+                ->orderByDesc('id')
+                ->first();
+        }
 
         return $row ? $this->mapper->toDeviceLocation($row, $device->id) : null;
     }
@@ -67,26 +82,51 @@ class TraccarPositionReader implements PositionReaderInterface
             return [];
         }
 
-        $table = config('traccar.tables.positions', 'tc_positions');
+        $devicesTable = config('traccar.tables.devices', 'tc_devices');
+        $positionsTable = config('traccar.tables.positions', 'tc_positions');
         $traccarIds = array_keys($traccarToLaravel);
 
-        $rows = DB::table("{$table} as p")
-            ->joinSub(
-                DB::table($table)
-                    ->select('deviceid', DB::raw('MAX(id) as max_id'))
-                    ->whereIn('deviceid', $traccarIds)
-                    ->groupBy('deviceid'),
-                'latest',
-                fn ($join) => $join
-                    ->on('p.deviceid', '=', 'latest.deviceid')
-                    ->on('p.id', '=', 'latest.max_id')
-            )
-            ->get();
+        $deviceRows = DB::table($devicesTable)
+            ->whereIn('id', $traccarIds)
+            ->get(['id', 'positionid']);
+
+        $positionIds = [];
+        $missingTraccarIds = [];
+        foreach ($deviceRows as $deviceRow) {
+            $tcId = (int) $deviceRow->id;
+            $posId = (int) ($deviceRow->positionid ?? 0);
+            if ($posId > 0) {
+                $positionIds[$posId] = $tcId;
+            } else {
+                $missingTraccarIds[] = $tcId;
+            }
+        }
 
         $out = [];
-        foreach ($rows as $row) {
-            $laravelId = $traccarToLaravel[(int) $row->deviceid] ?? null;
-            if ($laravelId) {
+
+        if ($positionIds !== []) {
+            $rows = DB::table($positionsTable)->whereIn('id', array_keys($positionIds))->get();
+            foreach ($rows as $row) {
+                $tcId = $positionIds[(int) $row->id] ?? (int) $row->deviceid;
+                $laravelId = $traccarToLaravel[$tcId] ?? null;
+                if ($laravelId) {
+                    $out[$laravelId] = $this->mapper->toDeviceLocation($row, $laravelId);
+                }
+            }
+        }
+
+        // Fallback only for devices without positionid (rare) — avoid scanning all positions for the fleet.
+        foreach ($missingTraccarIds as $tcId) {
+            $laravelId = $traccarToLaravel[$tcId] ?? null;
+            if (! $laravelId || isset($out[$laravelId])) {
+                continue;
+            }
+            $row = DB::table($positionsTable)
+                ->where('deviceid', $tcId)
+                ->orderByDesc('fixtime')
+                ->orderByDesc('id')
+                ->first();
+            if ($row) {
                 $out[$laravelId] = $this->mapper->toDeviceLocation($row, $laravelId);
             }
         }
