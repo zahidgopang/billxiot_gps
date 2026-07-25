@@ -671,7 +671,7 @@ return [
             'battery' => 'البطارية',
             'last_update' => 'آخر تحديث',
             'refresh' => 'تحديث',
-            'idle_stopped' => ':idle خامل · :stopped متوقف',
+            'idle_stopped' => ':idle خامل · :stopped متوقف/مركون',
         ],
         'devices' => [
             'title' => 'أجهزة التتبع الخاصة بي',

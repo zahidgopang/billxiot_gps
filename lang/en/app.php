@@ -694,7 +694,7 @@ return [
             'battery' => 'Battery',
             'last_update' => 'Last Update',
             'refresh' => 'Refresh',
-            'idle_stopped' => ':idle idle · :stopped stopped',
+            'idle_stopped' => ':idle idle · :stopped parked',
         ],
         'devices' => [
             'title' => 'My Tracking Devices',

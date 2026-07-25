@@ -57,7 +57,8 @@ class RbacService
         return match ($this->roleOf($user)) {
             AppRole::SuperAdmin, AppRole::Admin => 'admin.dashboard',
             AppRole::Client => 'client.dashboard',
-            AppRole::EndUser => 'user.dashboard',
+            // End users land on the live map first; dashboard remains available in nav.
+            AppRole::EndUser => 'tracking.index',
         };
     }
 

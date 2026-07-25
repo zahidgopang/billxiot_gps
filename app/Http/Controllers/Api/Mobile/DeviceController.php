@@ -180,12 +180,19 @@ class DeviceController extends Controller
         $explicitRange = trim((string) ($request->query('from', $request->input('from', '')))) !== '';
         $lite = filter_var($request->query('lite', $request->input('lite', false)), FILTER_VALIDATE_BOOLEAN)
             || (string) $request->query('mode', '') === 'map';
+        // Mobile chunked ranges pass allow_fallback=0 so empty windows stay empty
+        // instead of injecting last-known activity and a false "no data" banner.
+        $allowFallbackParam = $request->query('allow_fallback', $request->input('allow_fallback'));
+        $allowFallback = $allowFallbackParam === null
+            ? true
+            : filter_var($allowFallbackParam, FILTER_VALIDATE_BOOLEAN);
 
         $result = $this->historyFetcher->fetch(
             $device,
             $range['from'],
             $range['to'],
-            $explicitRange
+            $explicitRange,
+            $allowFallback
         );
 
         $locations = $result['locations'];

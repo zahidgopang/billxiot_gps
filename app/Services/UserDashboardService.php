@@ -42,6 +42,28 @@ class UserDashboardService
     /** Canonical online window — matches map/mobile connectivity tiers (≤30 min; VehicleStatusSpec::OFFLINE_SECONDS). */
     public const ONLINE_MINUTES = 30;
 
+    /**
+     * Canonical 4-bucket status breakdown shared by KPI cards and the donut chart.
+     * Sum of buckets === number of devices counted in fleetCounts.
+     *
+     * @param  array<string, int>  $fleetCounts
+     * @return array{running: int, parked: int, idle: int, offline: int}
+     */
+    public static function statusDonutFromFleetCounts(array $fleetCounts): array
+    {
+        return [
+            'running' => (int) ($fleetCounts['running'] ?? 0),
+            'parked' => (int) (($fleetCounts['parked'] ?? 0) + ($fleetCounts['stopped'] ?? 0)),
+            'idle' => (int) (
+                ($fleetCounts['idle'] ?? 0)
+                + ($fleetCounts['delayed'] ?? 0)
+                + ($fleetCounts['stale'] ?? 0)
+                + ($fleetCounts['alert'] ?? 0)
+            ),
+            'offline' => (int) ($fleetCounts['offline'] ?? 0),
+        ];
+    }
+
     public function getStats(User $user): array
     {
         return array_merge(
@@ -74,17 +96,27 @@ class UserDashboardService
 
         $metricIds = $metricDevices->pluck('id');
         $totalDevices = $linkedDevices->count();
+        $trackedDevices = $metricDevices->count();
         $activeDevices = $linkedDevices->where('status', 'active')->count();
-        $onlineNow = $this->countOnlineDevices($metricDevices);
         $alertDeviceIds = $this->alertDeviceIds($metricDevices);
         $vehicleStates = $this->getVehicleStateCounts($metricDevices, $alertDeviceIds);
         $fleetCounts = $this->mapStatus->fleetCounts($metricDevices);
+        $statusDonut = self::statusDonutFromFleetCounts($fleetCounts);
+        // Online = every non-offline bucket (matches donut; not a separate heuristic).
+        $onlineNow = $statusDonut['running'] + $statusDonut['parked'] + $statusDonut['idle'];
         $fleetDevices = $linkedDevices->sortByDesc(fn (Device $d) => $d->latestLocation?->recorded_at)->values();
         $pageStats = $this->getDevicePageStats($metricDevices);
         $pageStats['totalDevices'] = $totalDevices;
         $pageStats['activeDevices'] = $activeDevices;
         $pageStats['inactiveDevices'] = $linkedDevices->where('status', 'inactive')->count();
         $pageStats['blockedDevices'] = $linkedDevices->where('status', 'blocked')->count();
+        // Keep status KPIs aligned with the donut (tracked/subscribed set).
+        $pageStats['onlineNow'] = $onlineNow;
+        $pageStats['offlineNow'] = $statusDonut['offline'];
+        $pageStats['running'] = $statusDonut['running'];
+        $pageStats['parked'] = $statusDonut['parked'] + $statusDonut['idle'];
+        $pageStats['parkedIdle'] = $pageStats['parked'];
+        $pageStats['idle'] = $statusDonut['idle'];
 
         $needsSubscriptionCount = 0;
         if (! $this->rbac->bypassesSubscriptionRestrictions($user)) {
@@ -117,12 +149,14 @@ class UserDashboardService
             'activeAlerts' => 0,
             'vehicleStates' => $vehicleStates,
             'fleetCounts' => $fleetCounts,
+            'statusDonut' => $statusDonut,
             'recentDevices' => $fleetDevices,
             'activities' => $activities,
             'alertDeviceIds' => $alertDeviceIds,
             'needsSubscriptionCount' => $needsSubscriptionCount,
             'activePercent' => $totalDevices > 0 ? round(($activeDevices / $totalDevices) * 100) : 0,
-            'onlinePercent' => $totalDevices > 0 ? round(($onlineNow / $totalDevices) * 100) : 0,
+            // Percent of tracked fleet (same set as status KPIs + donut).
+            'onlinePercent' => $trackedDevices > 0 ? round(($onlineNow / $trackedDevices) * 100) : 0,
             'alertsPercent' => 0,
             'distancePercent' => 0,
             'chartData' => null,
@@ -256,18 +290,8 @@ class UserDashboardService
             $performance = ['labels' => [], 'gpsPings' => [], 'activeDevices' => []];
         }
 
-        $donutParked = (int) (($fleetCounts['parked'] ?? 0) + ($fleetCounts['stopped'] ?? 0));
-        $donutIdle = (int) (($fleetCounts['idle'] ?? 0) + ($fleetCounts['delayed'] ?? 0) + ($fleetCounts['stale'] ?? 0) + ($fleetCounts['alert'] ?? 0));
-        $donutOffline = (int) ($fleetCounts['offline'] ?? 0);
-        $donutRunning = (int) ($fleetCounts['running'] ?? 0);
-
         return [
-            'statusDonut' => [
-                'running' => $donutRunning,
-                'parked' => $donutParked,
-                'idle' => $donutIdle,
-                'offline' => $donutOffline,
-            ],
+            'statusDonut' => self::statusDonutFromFleetCounts($fleetCounts),
             'activityArea' => [
                 'labels' => $activityLabels,
                 'values' => $activityValues,
@@ -601,7 +625,18 @@ class UserDashboardService
             'totalDistanceKm' => 0,
             'activeAlerts' => 0,
             'vehicleStates' => ['running' => 0, 'parked' => 0, 'maintenance' => 0, 'alerts' => 0],
-            'fleetCounts' => ['running' => 0, 'parked' => 0, 'idle' => 0, 'stopped' => 0, 'offline' => 0, 'with_gps' => 0, 'alert' => 0],
+            'fleetCounts' => [
+                'running' => 0,
+                'parked' => 0,
+                'idle' => 0,
+                'stopped' => 0,
+                'delayed' => 0,
+                'stale' => 0,
+                'offline' => 0,
+                'with_gps' => 0,
+                'alert' => 0,
+            ],
+            'statusDonut' => ['running' => 0, 'parked' => 0, 'idle' => 0, 'offline' => 0],
             'recentDevices' => collect(),
             'activities' => collect(),
             'alertDeviceIds' => collect(),
@@ -706,8 +741,10 @@ class UserDashboardService
 
     public function getDevicePageStats(Collection $devices): array
     {
-        $onlineNow = $this->countOnlineDevices($devices);
         $fleetCounts = $this->mapStatus->fleetCounts($devices);
+        $statusDonut = self::statusDonutFromFleetCounts($fleetCounts);
+        $onlineNow = $statusDonut['running'] + $statusDonut['parked'] + $statusDonut['idle'];
+        $parkedIdle = $statusDonut['parked'] + $statusDonut['idle'];
 
         return [
             'totalDevices' => $devices->count(),
@@ -715,11 +752,13 @@ class UserDashboardService
             'inactiveDevices' => $devices->where('status', 'inactive')->count(),
             'blockedDevices' => $devices->where('status', 'blocked')->count(),
             'onlineNow' => $onlineNow,
-            'offlineNow' => $fleetCounts['offline'],
-            'running' => $fleetCounts['running'],
-            'parked' => $fleetCounts['parked'],
-            'parkedIdle' => $fleetCounts['parked'] + $fleetCounts['idle'] + $fleetCounts['stopped'],
-            'idle' => $fleetCounts['idle'],
+            'offlineNow' => $statusDonut['offline'],
+            'running' => $statusDonut['running'],
+            // "Parked / Idle" KPI = donut Parked + Idle (same live snapshot).
+            'parked' => $parkedIdle,
+            'parkedIdle' => $parkedIdle,
+            'idle' => $statusDonut['idle'],
+            'statusDonut' => $statusDonut,
             'maintenance' => $devices->whereIn('status', ['inactive', 'blocked'])->count(),
             'alerts' => $fleetCounts['alert'],
         ];

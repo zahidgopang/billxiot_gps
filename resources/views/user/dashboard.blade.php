@@ -5,12 +5,8 @@
 @section('content')
 
 @php
-    $statusDonut = [
-        'running' => (int) ($fleetCounts['running'] ?? $running ?? 0),
-        'parked' => (int) (($fleetCounts['parked'] ?? $parked ?? 0) + ($fleetCounts['stopped'] ?? 0)),
-        'idle' => (int) (($fleetCounts['idle'] ?? $idle ?? 0) + ($fleetCounts['delayed'] ?? 0) + ($fleetCounts['stale'] ?? 0) + ($fleetCounts['alert'] ?? 0)),
-        'offline' => (int) ($fleetCounts['offline'] ?? $offlineNow ?? 0),
-    ];
+    // Prefer server-built buckets so KPIs and donut always share one snapshot.
+    $statusDonut = $statusDonut ?? \App\Services\UserDashboardService::statusDonutFromFleetCounts($fleetCounts ?? []);
 @endphp
 
 <div class="ud-dashboard ud-fade-in">
@@ -75,22 +71,25 @@
             <div class="ud-kpi-head">
                 <p class="ud-kpi-title">{{ __('app.user.devices.online_now') }}</p>
             </div>
-            <div class="ud-kpi-value" data-count="{{ $onlineNow }}">0</div>
+            <div class="ud-kpi-value" data-count="{{ ($statusDonut['running'] ?? 0) + ($statusDonut['parked'] ?? 0) + ($statusDonut['idle'] ?? 0) }}">0</div>
             <p class="ud-kpi-meta"><span class="up">{{ $onlinePercent }}%</span> {{ __('app.user.dashboard.of_fleet') }}</p>
         </div>
         <div class="ud-card">
             <div class="ud-kpi-head">
                 <p class="ud-kpi-title">{{ __('app.user.devices.moving') }}</p>
             </div>
-            <div class="ud-kpi-value" data-count="{{ $running }}">0</div>
-            <p class="ud-kpi-meta">{{ __('app.user.dashboard.offline') }}: {{ $offlineNow }}</p>
+            <div class="ud-kpi-value" data-count="{{ $statusDonut['running'] ?? $running }}">0</div>
+            <p class="ud-kpi-meta">{{ __('app.user.dashboard.offline') }}: {{ $statusDonut['offline'] ?? $offlineNow }}</p>
         </div>
         <div class="ud-card">
             <div class="ud-kpi-head">
                 <p class="ud-kpi-title">{{ __('app.user.devices.parked_idle') }}</p>
             </div>
-            <div class="ud-kpi-value" data-count="{{ $parked }}">0</div>
-            <p class="ud-kpi-meta">{{ __('app.user.dashboard.idle_stopped', ['idle' => $idle ?? 0, 'stopped' => $fleetCounts['stopped'] ?? 0]) }}</p>
+            <div class="ud-kpi-value" data-count="{{ $parkedIdle ?? $parked }}">0</div>
+            <p class="ud-kpi-meta">{{ __('app.user.dashboard.idle_stopped', [
+                'idle' => (int) (($fleetCounts['idle'] ?? 0) + ($fleetCounts['delayed'] ?? 0) + ($fleetCounts['stale'] ?? 0) + ($fleetCounts['alert'] ?? 0)),
+                'stopped' => (int) (($fleetCounts['parked'] ?? 0) + ($fleetCounts['stopped'] ?? 0)),
+            ]) }}</p>
         </div>
     </div>
 
@@ -120,7 +119,7 @@
             <div class="ud-kpi-head">
                 <p class="ud-kpi-title">{{ __('app.user.dashboard.offline') }}</p>
             </div>
-            <div class="ud-kpi-value" data-count="{{ $offlineNow }}">0</div>
+            <div class="ud-kpi-value" data-count="{{ $statusDonut['offline'] ?? $offlineNow }}">0</div>
             <p class="ud-kpi-meta">{{ __('app.user.dashboard.not_reporting') }}</p>
         </div>
     </div>
