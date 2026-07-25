@@ -17,7 +17,7 @@ class AndroidAppController extends Controller
             'apkSizeMb' => file_exists($apkPath)
                 ? round(filesize($apkPath) / 1024 / 1024, 1)
                 : null,
-            'officialSite' => rtrim((string) config('app.url', 'https://billxiotgps.com'), '/'),
+            'officialSite' => rtrim((string) config('app.url', 'https://gpsbillx.com'), '/'),
         ]);
     }
 }

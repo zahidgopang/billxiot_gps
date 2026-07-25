@@ -357,8 +357,8 @@ class HistoryPdfExportService
 
             $rows[] = [
                 'kind' => (string) ($seg['kind_label'] ?? $seg['kind'] ?? ''),
-                'start' => (string) ($seg['start_time'] ?? $seg['start_display'] ?? $seg['start'] ?? ''),
-                'end' => (string) ($seg['end_time'] ?? $seg['end_display'] ?? $seg['end'] ?? ''),
+                'start' => (string) ($seg['start_time_display'] ?? $seg['start_display'] ?? $seg['start_time'] ?? ''),
+                'end' => (string) ($seg['end_time_display'] ?? $seg['end_display'] ?? $seg['end_time'] ?? ''),
                 'duration' => ReportLabels::formatDuration((int) ($seg['duration_seconds'] ?? 0)),
                 'distance' => $isTrip ? number_format((float) ($seg['distance_km'] ?? 0), 2) : '',
                 'location' => $location,

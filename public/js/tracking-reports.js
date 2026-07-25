@@ -441,20 +441,62 @@
 
     function formatReportTime(value) {
         if (value == null || value === '') return '';
-        const raw = String(value);
+        const raw = String(value).trim();
+        if (!raw) return '';
+        // Already a server display string (12-hour AM/PM) — keep as-is.
+        if (/\b(?:AM|PM)\b/i.test(raw) && !/^\d{4}-\d{2}-\d{2}T/.test(raw)) {
+            return raw.replace(/\b(am|pm)\b/gi, (m) => m.toUpperCase());
+        }
+        if (global.AppDateTime && typeof global.AppDateTime.formatDateTime === 'function') {
+            const formatted = global.AppDateTime.formatDateTime(raw);
+            return formatted === '—' ? raw : formatted;
+        }
         const ms = Date.parse(raw);
         if (!Number.isFinite(ms)) return raw;
         try {
-            return new Date(ms).toLocaleString(undefined, {
-                year: 'numeric',
+            const tz = (cfg && cfg.timezone) || 'Asia/Riyadh';
+            const parts = new Intl.DateTimeFormat('en-GB', {
+                timeZone: tz,
+                day: 'numeric',
                 month: 'short',
-                day: '2-digit',
+                year: 'numeric',
                 hour: 'numeric',
                 minute: '2-digit',
-            });
+                hour12: true,
+            }).formatToParts(new Date(ms));
+            const get = (type) => parts.find((p) => p.type === type)?.value ?? '';
+            const dayPeriod = String(get('dayPeriod') || '').toUpperCase();
+            return `${get('day')} ${get('month')} ${get('year')}, ${get('hour')}:${get('minute')} ${dayPeriod}`.trim();
         } catch (_) {
             return raw;
         }
+    }
+
+    /** Prefer server display labels; fall back to formatting ISO timestamps. */
+    function displayStartTime(row) {
+        if (!row) return '';
+        return row.start_time_display || row.start_display
+            || formatReportTime(row.start_time || row.start)
+            || row.start_time || row.start || '';
+    }
+
+    function displayEndTime(row) {
+        if (!row) return '';
+        return row.end_time_display || row.end_display
+            || formatReportTime(row.end_time || row.end)
+            || row.end_time || row.end || '';
+    }
+
+    function reportRowStartMs(row) {
+        if (!row) return 0;
+        const raw = row.start || row.start_time || row.start_display || row.start_time_display || '';
+        const ms = Date.parse(String(raw));
+        return Number.isFinite(ms) ? ms : 0;
+    }
+
+    function sortRowsByStart(rows) {
+        if (!Array.isArray(rows) || rows.length < 2) return rows || [];
+        return [...rows].sort((a, b) => reportRowStartMs(a) - reportRowStartMs(b));
     }
 
     function numCell(value) {
@@ -672,7 +714,10 @@
         }
 
         ['trips', 'stops', 'segments', 'days', 'events', 'positions', 'points', 'overspeeds', 'fillings', 'series', 'changes', 'services', 'tasks', 'zone_events'].forEach((key) => {
-            const rows = cat(key);
+            let rows = cat(key);
+            if (key === 'trips' || key === 'stops' || key === 'segments') {
+                rows = sortRowsByStart(rows);
+            }
             if (rows.length) {
                 base[key] = rows;
                 if (key === 'trips') base.trip_count = rows.length;
@@ -880,8 +925,8 @@
                 d.stop_count,
                 d.trip_count,
                 d.overspeed_events,
-                d.start_time || '',
-                d.end_time || '',
+                d.start_time_display || formatReportTime(d.start_time) || d.start_time || '',
+                d.end_time_display || formatReportTime(d.end_time) || d.end_time || '',
                 formatDuration(d.total_duration_seconds),
             ]));
         } else if (type === 'trips') {
@@ -890,8 +935,8 @@
                     d.device_name,
                     d.plate || '',
                     d.driver || '',
-                    t.start_time || '',
-                    t.end_time || '',
+                    displayStartTime(t),
+                    displayEndTime(t),
                 ];
                 pushCoords(tripRow, formatCoord(t.start_lat), formatCoord(t.start_lng), formatCoord(t.end_lat), formatCoord(t.end_lng));
                 pushAddress(tripRow, t.start_address || locationText(t) || '', t.end_address || '');
@@ -912,8 +957,8 @@
                         d.device_name,
                         d.plate || '',
                         '',
-                        s.start_display || s.start || '',
-                        s.end_display || s.end || '',
+                        displayStartTime(s),
+                        displayEndTime(s),
                     ];
                     pushCoords(stopRow, formatCoord(s.lat), formatCoord(s.lng), '', '');
                     pushAddress(stopRow, locationText(s), '');
@@ -937,8 +982,8 @@
                     d.device_name,
                     d.plate || '',
                     s.status_label || '',
-                    s.start_display || s.start || '',
-                    s.end_display || s.end || '',
+                    displayStartTime(s),
+                    displayEndTime(s),
                     formatDuration(s.duration_seconds),
                 ];
                 pushCoords(row, formatCoord(s.lat), formatCoord(s.lng));
@@ -953,8 +998,8 @@
                     d.device_name,
                     d.plate || '',
                     seg.kind_label || seg.kind || '',
-                    seg.start_time || seg.start_display || seg.start || '',
-                    seg.end_time || seg.end_display || seg.end || '',
+                    displayStartTime(seg),
+                    displayEndTime(seg),
                     formatDuration(seg.duration_seconds),
                     isTrip ? (seg.distance_km ?? 0) : '',
                 ];
@@ -1014,8 +1059,8 @@
                     d.device_name,
                     d.plate || '',
                     periodLabel,
-                    d.start_time || '',
-                    d.end_time || '',
+                    d.start_time_display || formatReportTime(d.start_time) || d.start_time || '',
+                    d.end_time_display || formatReportTime(d.end_time) || d.end_time || '',
                     d.total_distance_km ?? 0,
                     d.fuel_liters ?? '',
                     eff,
@@ -1027,8 +1072,8 @@
                     d.device_name,
                     d.plate || '',
                     tripLabel,
-                    t.start_time || '',
-                    t.end_time || '',
+                    displayStartTime(t),
+                    displayEndTime(t),
                     t.distance_km ?? 0,
                     t.fuel_liters ?? '',
                     t.efficiency ?? '',
@@ -1089,8 +1134,8 @@
                 const row = [
                     d.device_name,
                     d.plate || '',
-                    o.start_time || '',
-                    o.end_time || '',
+                    displayStartTime(o),
+                    displayEndTime(o),
                     formatDuration(o.duration_seconds),
                     o.max_speed_kmh ?? '',
                     o.limit_kmh ?? d.overspeed_limit_kmh ?? '',
@@ -1219,8 +1264,8 @@
                 d.max_speed_kmh ?? 0,
                 d.average_speed_kmh ?? 0,
                 d.trip_count ?? 0,
-                d.start_time || '',
-                d.end_time || '',
+                d.start_time_display || formatReportTime(d.start_time) || d.start_time || '',
+                d.end_time_display || formatReportTime(d.end_time) || d.end_time || '',
                 formatDuration(d.total_duration_seconds),
             ]));
         }

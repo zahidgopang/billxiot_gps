@@ -478,11 +478,9 @@ class ReportService
             $segments[] = array_merge(['kind' => 'stop', 'kind_label' => (string) __('app.tracking.report_seg_stop')], $stop);
         }
 
+        // Sort by real timestamps — never by 12-hour display strings (12:04 AM vs 12:20 PM).
         usort($segments, function (array $a, array $b): int {
-            $aTime = (string) ($a['start_time'] ?? $a['start_display'] ?? $a['start'] ?? '');
-            $bTime = (string) ($b['start_time'] ?? $b['start_display'] ?? $b['start'] ?? '');
-
-            return strcmp($aTime, $bTime);
+            return $this->reportSortTimestamp($a) <=> $this->reportSortTimestamp($b);
         });
 
         return array_merge($this->deviceMeta($device), [
@@ -1867,9 +1865,21 @@ class ReportService
             ? round($distance / ($movingSec / 3600), 1)
             : ($duration > 0 ? round($distance / ($duration / 3600), 1) : 0);
 
+        $startIso = (string) ($first['start'] ?? '');
+        $endIso = (string) ($last['end'] ?? '');
+        $startDisplay = (string) ($first['start_display'] ?? '');
+        $endDisplay = (string) ($last['end_display'] ?? '');
+
         return [
-            'start_time' => (string) ($first['start_display'] ?? $first['start'] ?? ''),
-            'end_time' => (string) ($last['end_display'] ?? $last['end'] ?? ''),
+            // ISO for sorting / parsing; *_display / legacy start_time for UI.
+            'start' => $startIso,
+            'end' => $endIso,
+            'start_time' => $startDisplay !== '' ? $startDisplay : $startIso,
+            'end_time' => $endDisplay !== '' ? $endDisplay : $endIso,
+            'start_display' => $startDisplay !== '' ? $startDisplay : $startIso,
+            'end_display' => $endDisplay !== '' ? $endDisplay : $endIso,
+            'start_time_display' => $startDisplay !== '' ? $startDisplay : $startIso,
+            'end_time_display' => $endDisplay !== '' ? $endDisplay : $endIso,
             'start_lat' => $first['start_lat'] ?? null,
             'start_lng' => $first['start_lng'] ?? null,
             'end_lat' => $last['end_lat'] ?? null,
@@ -1913,13 +1923,13 @@ class ReportService
         $trip['end_maps_url'] = $trip['end_maps_url'] ?? $this->googleMapsUrl($endLat, $endLng);
         $trip['maps_url'] = $trip['maps_url'] ?? $trip['start_maps_url'];
 
-        $tripStart = $this->parseReportTime((string) ($trip['start_time'] ?? ''));
-        $tripEnd = $this->parseReportTime((string) ($trip['end_time'] ?? ''));
+        $tripStart = $this->parseReportTime((string) ($trip['start'] ?? $trip['start_time'] ?? ''));
+        $tripEnd = $this->parseReportTime((string) ($trip['end'] ?? $trip['end_time'] ?? ''));
 
         $tripStops = [];
         if ($tripStart && $tripEnd) {
             foreach ($stops as $stop) {
-                $stopStart = $this->parseReportTime((string) ($stop['start_display'] ?? $stop['start'] ?? ''));
+                $stopStart = $this->parseReportTime((string) ($stop['start'] ?? $stop['start_display'] ?? ''));
                 if (! $stopStart) {
                     continue;
                 }
@@ -2141,6 +2151,28 @@ class ReportService
         } catch (\Throwable) {
             return null;
         }
+    }
+
+    /**
+     * Epoch seconds for chronological report ordering.
+     * Prefers ISO/API `start` so 12-hour AM/PM display strings never drive sort order.
+     *
+     * @param  array<string, mixed>  $row
+     */
+    private function reportSortTimestamp(array $row): int
+    {
+        foreach (['start', 'start_time', 'start_display', 'start_time_display'] as $key) {
+            $raw = trim((string) ($row[$key] ?? ''));
+            if ($raw === '') {
+                continue;
+            }
+            $dt = $this->parseReportTime($raw);
+            if ($dt !== null) {
+                return $dt->getTimestamp();
+            }
+        }
+
+        return 0;
     }
 
     /**

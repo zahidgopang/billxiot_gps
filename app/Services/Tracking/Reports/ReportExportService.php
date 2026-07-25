@@ -82,8 +82,8 @@ class ReportExportService
                         $name,
                         $plate,
                         $driver,
-                        (string) ($trip['start_time'] ?? ''),
-                        (string) ($trip['end_time'] ?? ''),
+                        (string) ($trip['start_time_display'] ?? $trip['start_display'] ?? $trip['start_time'] ?? ''),
+                        (string) ($trip['end_time_display'] ?? $trip['end_display'] ?? $trip['end_time'] ?? ''),
                     ];
                     if ($showCoords) {
                         $row[] = $this->coord($trip['start_lat'] ?? null);
@@ -137,8 +137,8 @@ class ReportExportService
                         $name,
                         $plate,
                         (string) ($segment['kind_label'] ?? $kind),
-                        (string) ($segment['start_time'] ?? $segment['start_display'] ?? $segment['start'] ?? ''),
-                        (string) ($segment['end_time'] ?? $segment['end_display'] ?? $segment['end'] ?? ''),
+                        (string) ($segment['start_time_display'] ?? $segment['start_display'] ?? $segment['start_time'] ?? ''),
+                        (string) ($segment['end_time_display'] ?? $segment['end_display'] ?? $segment['end_time'] ?? ''),
                         ReportLabels::formatDuration((int) ($segment['duration_seconds'] ?? 0)),
                         $isTrip ? $this->num($segment['distance_km'] ?? 0) : '',
                     ];

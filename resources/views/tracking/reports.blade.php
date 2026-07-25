@@ -460,6 +460,7 @@
     ]);
 @endphp
 <script>
+window.APP_TIMEZONE = @json(config('app.timezone', 'Asia/Riyadh'));
 window.TRACKING_REPORTS_CONFIG = {
     generateUrl: @json($generateUrl),
     exportUrl: @json($exportUrl),
@@ -467,10 +468,12 @@ window.TRACKING_REPORTS_CONFIG = {
     googleMapsMapId: @json(config('services.google.maps_map_id')),
     hasGoogleMapsKey: @json(trim((string) config('services.google.maps_key', '')) !== ''),
     currentLang: @json(app()->getLocale()),
+    timezone: @json(config('app.timezone', 'Asia/Riyadh')),
     i18n: @json($reportI18n),
 };
 </script>
 @include('partials.google-maps-platform')
+<script src="{{ protected_js('app-datetime.js') }}"></script>
 <script src="{{ protected_js('builtin-map-icons.js') }}"></script>
 <script src="{{ protected_js('vehicle-marker.js') }}"></script>
 <script src="{{ protected_js('fleet-map-renderer.js') }}"></script>
