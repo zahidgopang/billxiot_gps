@@ -205,9 +205,7 @@
         color: #b54708 !important;
     }
     .gt-report-actions {
-        position: sticky;
-        bottom: 0;
-        z-index: 3;
+        position: static;
         display: flex;
         flex-wrap: wrap;
         gap: 0.4rem;
@@ -216,7 +214,6 @@
         border: 0.5px solid var(--tc-border-soft);
         border-radius: 12px;
         background: var(--apple-bg-card);
-        box-shadow: 0 -4px 14px rgba(0, 0, 0, 0.06);
     }
     .gt-report-actions .btn {
         flex: 1 1 calc(50% - 0.4rem);
@@ -408,6 +405,7 @@
             <div class="gt-report-main">
                 <div id="gtReportKpis" class="gt-report-kpis" hidden></div>
                 <div id="gtReportMap" class="mb-3" hidden></div>
+                <div id="gtReportKpisAfter" class="gt-report-kpis" hidden></div>
                 <div class="gt-report-toolbar">
                     <span id="gtReportCount" class="text-muted small"></span>
                     <div class="gt-report-pager" id="gtReportPager"></div>

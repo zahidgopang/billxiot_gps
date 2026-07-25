@@ -1294,16 +1294,30 @@
             ];
         }
 
+        const after = $('gtReportKpisAfter');
+        const mapEl = $('gtReportMap');
+        const html = items.length
+            ? items.map(([label, value]) => (
+                `<div class="gt-report-kpi"><span class="gt-report-kpi-label">${escapeHtml(label)}</span><span class="gt-report-kpi-value">${escapeHtml(value)}</span></div>`
+            )).join('')
+            : '';
+
         if (!items.length) {
             wrap.hidden = true;
             wrap.innerHTML = '';
+            if (after) { after.hidden = true; after.innerHTML = ''; }
             return;
         }
 
         wrap.hidden = false;
-        wrap.innerHTML = items.map(([label, value]) => (
-            `<div class="gt-report-kpi"><span class="gt-report-kpi-label">${escapeHtml(label)}</span><span class="gt-report-kpi-value">${escapeHtml(value)}</span></div>`
-        )).join('');
+        wrap.innerHTML = html;
+
+        // Repeat stats under the map when a route map is shown (esp. mobile scroll).
+        if (after) {
+            const mapVisible = mapEl && !mapEl.hidden;
+            after.hidden = !mapVisible;
+            after.innerHTML = mapVisible ? html : '';
+        }
     }
 
     function renderHead() {
@@ -1413,6 +1427,9 @@
 
         const kpis = $('gtReportKpis');
         if (kpis) { kpis.hidden = true; kpis.innerHTML = ''; }
+
+        const kpisAfter = $('gtReportKpisAfter');
+        if (kpisAfter) { kpisAfter.hidden = true; kpisAfter.innerHTML = ''; }
 
         const map = $('gtReportMap');
         if (map) map.hidden = true;
@@ -1543,6 +1560,7 @@
                 if (mapDevice?.points?.length && cfg.googleMapsKey) {
                     $('gtReportMap').hidden = false;
                     loadMap(mapDevice.points);
+                    renderKpis(flat); // refresh after-map stats once map is visible
                 }
             }
 
