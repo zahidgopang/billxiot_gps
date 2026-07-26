@@ -17,6 +17,16 @@
         }));
     }
 
+    function haversineKm(lat1, lng1, lat2, lng2) {
+        const R = 6371;
+        const toRad = Math.PI / 180;
+        const dLat = (lat2 - lat1) * toRad;
+        const dLng = (lng2 - lng1) * toRad;
+        const a = Math.sin(dLat / 2) ** 2
+            + Math.cos(lat1 * toRad) * Math.cos(lat2 * toRad) * Math.sin(dLng / 2) ** 2;
+        return 2 * R * Math.asin(Math.sqrt(a));
+    }
+
     function syncFallback(points, opts) {
         const simplify = global.PolylineSimplify?.simplifyForMap;
         const medium = opts.mediumSpeedKmh ?? 60;
@@ -40,10 +50,12 @@
             const b = simplified[i];
             const color = speedToColor(b.speed);
             const last = chunks[chunks.length - 1];
+            const stepKm = haversineKm(a.lat, a.lng, b.lat, b.lng);
             if (last && last.color === color) {
                 last.path.push({ lat: b.lat, lng: b.lng });
                 last.segmentData.end = b;
                 last.segmentData.speed = b.speed;
+                last.segmentData.distance = (Number(last.segmentData.distance) || 0) + stepKm;
                 last.segmentData.endTime = b.recorded_at;
             } else {
                 chunks.push({
@@ -53,7 +65,7 @@
                         start: a,
                         end: b,
                         speed: b.speed,
-                        distance: 0,
+                        distance: stepKm,
                         startTime: a.recorded_at,
                         endTime: b.recorded_at,
                     },

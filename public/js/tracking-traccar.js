@@ -1251,6 +1251,7 @@
                 this.map.addListener('click', () => {
                     if (global.GoogleMapsPlatform?.shouldSuppressMapClick?.()) return;
                     this.vehiclePopup?.close();
+                    this.routeSegmentInfo?.close();
                 });
             }
 
@@ -4735,6 +4736,7 @@
             this._virtualEventScrollEl = null;
             this.historyPulse?.hide();
             this.stopInfo?.close();
+            this.routeSegmentInfo?.close();
             this.stopPlayback();
             this._playbackPoints = [];
             this._playbackIndex = 0;
@@ -4781,6 +4783,7 @@
             this._statusMarkers = [];
             renderer?.clearRoute({ keepVehicle: false });
             this.historyPulse?.hide();
+            this.routeSegmentInfo?.close();
             this.stopPlayback();
         }
 
@@ -4842,10 +4845,13 @@
                 ].filter(Boolean);
             };
 
+            const onSegmentClick = (line, latLng) => this.showPolylineInfo(line, latLng);
+
             if (!chunks.length) {
                 if (simplified.length >= 2) {
                     renderer.drawRoute(simplified, {
-                        clickable: false,
+                        clickable: true,
+                        onSegmentClick,
                         startTitle: i18n.routeStart || 'Route start',
                         endTitle: i18n.routeEnd || 'Route end',
                     });
@@ -4861,7 +4867,8 @@
                 this.setHistoryLoadBanner('route', 'done');
             } else {
                 renderer.drawRouteChunksProgressive(chunks, endpoints, {
-                    clickable: false,
+                    clickable: true,
+                    onSegmentClick,
                     mapPointCount: processed?.mapPointCount ?? simplified.length,
                     startTitle: i18n.routeStart || 'Route start',
                     endTitle: i18n.routeEnd || 'Route end',
@@ -5474,6 +5481,7 @@
 
         openStatusSegmentInfo(segment, name, marker) {
             if (!this.stopInfo) this.stopInfo = new google.maps.InfoWindow();
+            this.routeSegmentInfo?.close();
             const i18n = this.cfg.i18n || {};
             const render = (addressText) => {
                 this.stopInfo.setContent(this.buildStatusSegmentInfoHtml(segment, name, addressText));
@@ -5483,6 +5491,129 @@
             this.resolveSegmentAddress(segment.lat, segment.lng).then((address) => {
                 render(address || i18n.addressUnavailable || 'Address unavailable');
             });
+        }
+
+        ensureRouteSegmentInfo() {
+            if (!this.routeSegmentInfo && global.google?.maps) {
+                const opts = { maxWidth: 320, pixelOffset: new google.maps.Size(0, -8) };
+                try {
+                    opts.headerDisabled = true;
+                } catch (_) { /* older Maps builds */ }
+                this.routeSegmentInfo = new google.maps.InfoWindow(opts);
+            }
+            return this.routeSegmentInfo;
+        }
+
+        segmentSpeedStatus(spd) {
+            const i18n = this.cfg.i18n || {};
+            const speed = Number(spd || 0);
+            if (speed <= 0) {
+                return {
+                    label: i18n.statusStopped || 'Stopped',
+                    range: '0',
+                    tone: 'stopped',
+                };
+            }
+            if (speed <= MEDIUM_SPEED) {
+                return {
+                    label: i18n.speedNormal || 'Normal',
+                    range: `0–${MEDIUM_SPEED}`,
+                    tone: 'normal',
+                };
+            }
+            if (speed <= OVER_SPEED) {
+                return {
+                    label: i18n.statusMoving || 'Moving',
+                    range: `${MEDIUM_SPEED + 1}–${OVER_SPEED}`,
+                    tone: 'medium',
+                };
+            }
+            return {
+                label: i18n.statusOverspeed || 'Overspeed',
+                range: `${OVER_SPEED}+`,
+                tone: 'overspeed',
+            };
+        }
+
+        formatSegmentClock(value) {
+            if (!value) return '—';
+            if (global.AppDateTime?.formatTime) {
+                const formatted = global.AppDateTime.formatTime(value);
+                return formatted === '—' ? String(value) : formatted;
+            }
+            const ms = Date.parse(value);
+            if (!Number.isFinite(ms)) return String(value);
+            try {
+                return new Date(ms).toLocaleTimeString(undefined, {
+                    hour: 'numeric',
+                    minute: '2-digit',
+                    hour12: true,
+                });
+            } catch (_) {
+                return String(value);
+            }
+        }
+
+        /** History polyline click — same route-segment details popup as /device map. */
+        showPolylineInfo(polyline, latLng) {
+            const d = polyline?._segmentData;
+            if (!d || !this.map || !latLng) return;
+
+            const content = document.getElementById('polylineInfoTemplate')?.cloneNode(true);
+            if (!content) return;
+            content.style.display = 'block';
+            content.removeAttribute('id');
+
+            const q = (sel) => content.querySelector(sel);
+            const speed = Number(d.speed || 0);
+            let distanceKm = Number(d.distance || 0);
+            if (!(distanceKm > 0) && d.start && d.end
+                && Number.isFinite(Number(d.start.lat)) && Number.isFinite(Number(d.start.lng))
+                && Number.isFinite(Number(d.end.lat)) && Number.isFinite(Number(d.end.lng))) {
+                distanceKm = haversineKm(
+                    Number(d.start.lat),
+                    Number(d.start.lng),
+                    Number(d.end.lat),
+                    Number(d.end.lng),
+                );
+            }
+
+            if (q('#statSpeed')) q('#statSpeed').textContent = speed.toFixed(1);
+            if (q('#statDistance')) q('#statDistance').textContent = `${(distanceKm * 1000).toFixed(0)} m`;
+            if (q('#detailStartTime')) q('#detailStartTime').textContent = this.formatSegmentClock(d.startTime);
+            if (q('#detailEndTime')) q('#detailEndTime').textContent = this.formatSegmentClock(d.endTime);
+
+            const point = d.end || d.start;
+            if (point && q('#detailCoords')) {
+                q('#detailCoords').textContent = `${Number(point.lat).toFixed(5)}, ${Number(point.lng).toFixed(5)}`;
+            }
+
+            const status = this.segmentSpeedStatus(speed);
+            const statusEl = q('#detailSpeedStatus');
+            const indicatorEl = q('#speedIndicator');
+            if (statusEl) {
+                statusEl.textContent = status.label;
+                statusEl.className = `route-segment-popup__status route-segment-popup__status--${status.tone}`;
+            }
+            if (indicatorEl) {
+                indicatorEl.textContent = status.range;
+                indicatorEl.className = `route-segment-popup__speed-pill route-segment-popup__speed-pill--${status.tone}`;
+            }
+
+            content.querySelector('.js-polyline-info-close')?.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                this.routeSegmentInfo?.close();
+            });
+
+            this.vehiclePopup?.close();
+            this.stopInfo?.close();
+
+            const info = this.ensureRouteSegmentInfo();
+            if (!info) return;
+            info.setContent(content);
+            info.setPosition(latLng);
+            info.open(this.map);
         }
 
         openStopInfo(stop, name, marker) {

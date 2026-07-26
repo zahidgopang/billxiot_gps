@@ -1997,6 +1997,189 @@
         .speed-btn.active { background: #2563eb; color: #fff; border-color: #2563eb; }
         .tc-map-area.tc-playback-open > .route-trip-bar--footer:not(.is-user-positioned) { bottom: 130px; }
         .tc-map-area.tc-playback-open .tc-map-route-footer { margin-bottom: 120px; }
+
+        /* Route segment info window (history polyline click) — matches /device map */
+        .gm-polyline-info,
+        .route-segment-popup {
+            background: #fff;
+            border-radius: 14px;
+            border: 1px solid #e5e5ea;
+            box-shadow: 0 14px 44px rgba(0, 0, 0, 0.14);
+            min-width: min(300px, calc(100vw - 32px));
+            max-width: 320px;
+            overflow: hidden;
+            font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            color: #1d1d1f;
+        }
+        .route-segment-popup__head {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 10px;
+            padding: 12px 12px 10px;
+            background: linear-gradient(180deg, #fafafa 0%, #fff 100%);
+            border-bottom: 1px solid #ececec;
+        }
+        .route-segment-popup__head-main {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            min-width: 0;
+        }
+        .route-segment-popup__icon {
+            width: 30px;
+            height: 30px;
+            border-radius: 9px;
+            background: rgba(0, 122, 255, 0.1);
+            color: #007aff;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            font-size: 0.8rem;
+        }
+        .route-segment-popup__title {
+            margin: 0;
+            font-size: 0.82rem;
+            font-weight: 700;
+            line-height: 1.25;
+            color: #1d1d1f;
+        }
+        .route-segment-popup__close {
+            width: 28px;
+            height: 28px;
+            border: none;
+            border-radius: 8px;
+            background: #f2f2f7;
+            color: #6e6e73;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            flex-shrink: 0;
+            font-size: 0.78rem;
+            transition: background 0.15s ease, color 0.15s ease;
+        }
+        .route-segment-popup__close:hover {
+            background: #e5e5ea;
+            color: #1d1d1f;
+        }
+        .route-segment-popup__body { padding: 10px 12px 12px; }
+        .route-segment-popup__stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+        .route-segment-popup__stat {
+            background: #f5f5f7;
+            border: 1px solid #ececec;
+            border-radius: 10px;
+            padding: 8px 10px;
+            text-align: center;
+        }
+        .route-segment-popup__stat-value {
+            display: block;
+            font-size: 1.05rem;
+            font-weight: 800;
+            color: #007aff;
+            line-height: 1.1;
+            font-variant-numeric: tabular-nums;
+        }
+        .route-segment-popup__stat-label {
+            display: block;
+            margin-top: 3px;
+            font-size: 0.62rem;
+            font-weight: 600;
+            letter-spacing: 0.03em;
+            text-transform: uppercase;
+            color: #6e6e73;
+        }
+        .route-segment-popup__details {
+            display: grid;
+            gap: 0;
+            border: 1px solid #ececec;
+            border-radius: 10px;
+            overflow: hidden;
+            background: #fff;
+        }
+        .route-segment-popup__row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            padding: 8px 10px;
+            font-size: 0.74rem;
+            border-bottom: 1px solid #f0f0f5;
+        }
+        .route-segment-popup__row:last-child { border-bottom: none; }
+        .route-segment-popup__label {
+            color: #6e6e73;
+            font-weight: 600;
+            flex-shrink: 0;
+        }
+        .route-segment-popup__value {
+            color: #1d1d1f;
+            font-weight: 700;
+            text-align: end;
+            font-variant-numeric: tabular-nums;
+            word-break: break-word;
+        }
+        .route-segment-popup__value-group {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+        }
+        .route-segment-popup__status { font-weight: 700; }
+        .route-segment-popup__status--stopped { color: #64748b; }
+        .route-segment-popup__status--normal { color: #16a34a; }
+        .route-segment-popup__status--medium { color: #ca8a04; }
+        .route-segment-popup__status--overspeed { color: #dc2626; }
+        .route-segment-popup__speed-pill {
+            display: inline-flex;
+            align-items: center;
+            padding: 2px 7px;
+            border-radius: 999px;
+            font-size: 0.62rem;
+            font-weight: 700;
+            line-height: 1.2;
+            border: 1px solid transparent;
+        }
+        .route-segment-popup__speed-pill--stopped {
+            background: #f1f5f9;
+            color: #64748b;
+            border-color: #e2e8f0;
+        }
+        .route-segment-popup__speed-pill--normal {
+            background: rgba(22, 163, 74, 0.1);
+            color: #15803d;
+            border-color: rgba(22, 163, 74, 0.2);
+        }
+        .route-segment-popup__speed-pill--medium {
+            background: rgba(234, 179, 8, 0.12);
+            color: #a16207;
+            border-color: rgba(234, 179, 8, 0.25);
+        }
+        .route-segment-popup__speed-pill--overspeed {
+            background: rgba(220, 38, 38, 0.1);
+            color: #b91c1c;
+            border-color: rgba(220, 38, 38, 0.2);
+        }
+        .tc-app .gm-style-iw-c:has(.route-segment-popup) {
+            padding: 0 !important;
+            border-radius: 14px !important;
+            box-shadow: 0 12px 40px rgba(15, 23, 42, 0.18) !important;
+        }
+        .tc-app .gm-style-iw-d:has(.route-segment-popup) {
+            overflow: hidden !important;
+            padding: 0 !important;
+        }
+        .tc-app .gm-style-iw-chr:has(+ .gm-style-iw-d .route-segment-popup),
+        .tc-app .gm-style-iw:has(.route-segment-popup) .gm-style-iw-chr {
+            display: none !important;
+        }
     </style>
 @endpush
 
@@ -2571,6 +2754,53 @@
                 </div>
             </div>
         </div>
+
+        <div id="polylineInfoTemplate" style="display:none;">
+            <div class="gm-polyline-info route-segment-popup">
+                <div class="route-segment-popup__head">
+                    <div class="route-segment-popup__head-main">
+                        <span class="route-segment-popup__icon" aria-hidden="true"><i class="fas fa-route"></i></span>
+                        <h3 class="route-segment-popup__title">{{ __('app.map.route_segment_details') }}</h3>
+                    </div>
+                    <button type="button" class="route-segment-popup__close js-polyline-info-close" aria-label="{{ __('app.common.close') }}">
+                        <i class="fas fa-times" aria-hidden="true"></i>
+                    </button>
+                </div>
+                <div class="route-segment-popup__body">
+                    <div class="route-segment-popup__stats">
+                        <div class="route-segment-popup__stat">
+                            <span class="route-segment-popup__stat-value" id="statSpeed">0</span>
+                            <span class="route-segment-popup__stat-label">{{ __('app.map.speed_kmh') }}</span>
+                        </div>
+                        <div class="route-segment-popup__stat">
+                            <span class="route-segment-popup__stat-value" id="statDistance">0</span>
+                            <span class="route-segment-popup__stat-label">{{ __('app.map.distance_label') }}</span>
+                        </div>
+                    </div>
+                    <div class="route-segment-popup__details">
+                        <div class="route-segment-popup__row">
+                            <span class="route-segment-popup__label">{{ __('app.map.start_time') }}</span>
+                            <span class="route-segment-popup__value" id="detailStartTime">--:--</span>
+                        </div>
+                        <div class="route-segment-popup__row">
+                            <span class="route-segment-popup__label">{{ __('app.map.end_time') }}</span>
+                            <span class="route-segment-popup__value" id="detailEndTime">--:--</span>
+                        </div>
+                        <div class="route-segment-popup__row">
+                            <span class="route-segment-popup__label">{{ __('app.map.speed_status') }}</span>
+                            <span class="route-segment-popup__value-group">
+                                <span class="route-segment-popup__status route-segment-popup__status--normal" id="detailSpeedStatus">{{ __('app.map.normal') }}</span>
+                                <span class="route-segment-popup__speed-pill route-segment-popup__speed-pill--normal" id="speedIndicator">0-40</span>
+                            </span>
+                        </div>
+                        <div class="route-segment-popup__row">
+                            <span class="route-segment-popup__label">{{ __('app.map.coordinates') }}</span>
+                            <span class="route-segment-popup__value" id="detailCoords">0,0</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 @endsection
 
@@ -2675,6 +2905,8 @@
                 statusDelayed: @json(__('app.map.status_delayed')),
                 statusStale: @json(__('app.map.status_stale')),
                 statusOffline: @json(__('app.map.status_offline')),
+                statusOverspeed: @json(__('app.map.status_overspeed')),
+                speedNormal: @json(__('app.map.normal')),
                 historyMarkers: @json(__('app.tracking.history_status_markers')),
                 colShow: @json(__('app.tracking.col_show')),
                 colFollow: @json(__('app.tracking.col_follow')),
