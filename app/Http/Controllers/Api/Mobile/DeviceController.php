@@ -458,6 +458,8 @@ class DeviceController extends Controller
                 $request->only([
                     'map_marker_size',
                     'map_icon_rotation_enabled',
+                    'map_icon_rotation_offset',
+                    'rotation_offset',
                 ])
             );
         } catch (\Illuminate\Validation\ValidationException $e) {
@@ -485,19 +487,26 @@ class DeviceController extends Controller
                 ]);
             }
 
+            // Same payload shape as web: icon + nose offset (+ optional size).
+            $rotationOffset = $request->input(
+                'rotation_offset',
+                $request->input('map_icon_rotation_offset', 0)
+            );
+
             $appearanceService = app(DeviceMapAppearanceService::class);
             $appearance = $appearanceService->uploadCustomIcon(
                 $request->user(),
                 $device,
-                $file
+                $file,
+                $rotationOffset
             );
             $uploadMeta = $appearance['upload_meta'] ?? null;
 
-            if ($request->filled('map_marker_size')) {
+            if ($request->filled('map_marker_size') || $request->filled('map_icon_rotation_enabled')) {
                 $appearance = $appearanceService->update(
                     $request->user(),
                     $device->fresh(),
-                    $request->only(['map_marker_size'])
+                    $request->only(['map_marker_size', 'map_icon_rotation_enabled'])
                 );
             }
         } catch (\Illuminate\Validation\ValidationException $e) {

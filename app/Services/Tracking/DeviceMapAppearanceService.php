@@ -84,7 +84,13 @@ class DeviceMapAppearanceService
             'upload_custom_icon' => (bool) ($options['permissions']['can_upload_custom'] ?? false),
             'resize_custom_icon' => (bool) ($options['permissions']['can_edit'] ?? false),
             'choose_default_icon' => false,
-            'remove_custom_icon' => false,
+            'remove_custom_icon' => (bool) ($options['permissions']['can_upload_custom'] ?? false),
+        ];
+        $options['rotation_offsets'] = [
+            ['value' => -90, 'label' => (string) __('app.map.icon_orient_east')],
+            ['value' => 0, 'label' => (string) __('app.map.icon_orient_north')],
+            ['value' => 180, 'label' => (string) __('app.map.icon_orient_south')],
+            ['value' => 90, 'label' => (string) __('app.map.icon_orient_west')],
         ];
         $options['navigation'] = [
             'back_enabled' => true,
@@ -109,6 +115,13 @@ class DeviceMapAppearanceService
                 'appearance' => [__('app.map.icon_permission_denied')],
             ]);
         }
+
+        // Web + mobile both send either key for nose direction.
+        if (! array_key_exists('map_icon_rotation_offset', $data)
+            && array_key_exists('rotation_offset', $data)) {
+            $data['map_icon_rotation_offset'] = $data['rotation_offset'];
+        }
+        unset($data['rotation_offset']);
 
         $this->assertAllowedAppearanceFields($user, $device, $data);
 
@@ -399,13 +412,22 @@ class DeviceMapAppearanceService
      */
     private function assertAllowedAppearanceFields(User $user, Device $device, array $data): void
     {
-        $iconFields = ['vehicle_type', 'map_builtin_icon_path', 'map_marker_style', 'map_icon_source', 'map_icon_rotation_offset'];
+        $iconFields = ['vehicle_type', 'map_builtin_icon_path', 'map_marker_style', 'map_icon_source'];
         foreach ($iconFields as $field) {
             if (array_key_exists($field, $data) && ! $this->auth->canChangeVehicleIcon($user, $device)) {
                 throw ValidationException::withMessages([
                     $field => [__('app.map.icon_permission_denied')],
                 ]);
             }
+        }
+
+        // Nose offset may be set by custom-icon uploaders (mobile) as well as icon editors.
+        if (array_key_exists('map_icon_rotation_offset', $data)
+            && ! $this->auth->canChangeVehicleIcon($user, $device)
+            && ! $this->auth->canUploadCustomIcon($user, $device)) {
+            throw ValidationException::withMessages([
+                'map_icon_rotation_offset' => [__('app.map.icon_permission_denied')],
+            ]);
         }
 
         $sizeFields = ['map_marker_size', 'map_icon_rotation_enabled'];
