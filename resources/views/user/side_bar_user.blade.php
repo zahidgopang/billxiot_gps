@@ -128,6 +128,11 @@
                 <p class="small text-muted mb-0">Manage account settings</p>
             </div>
         </div>
+        @if(app(\App\Services\Account\EndUserAccountDeletionService::class)->canDeleteAccount(auth()->user()))
+            <a href="{{ route('user.account.delete') }}" class="btn btn-outline-danger btn-sm w-100 mb-2">
+                <i class="fas fa-user-slash me-2"></i> {{ __('app.user.nav.delete_account') }}
+            </a>
+        @endif
         <form method="POST" action="{{ route('logout') }}" class="mb-0">
             @csrf
             <button class="btn btn-danger w-100" style="background: linear-gradient(135deg, #EF4444, #DC2626); border: none;">

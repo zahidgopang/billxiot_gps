@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Device;
+use App\Services\Account\EndUserAccountDeletionService;
 use App\Services\Auth\UserPasswordVerifier;
 use App\Services\Authorization\RbacService;
 use App\Services\DeviceSubscriptionService;
@@ -54,10 +55,13 @@ class UserController extends Controller
         return view('user.devices', compact('devices'));
     }
 
-    public function profile()
+    public function profile(EndUserAccountDeletionService $accountDeletion)
     {
+        $user = auth()->user();
+
         return view('user.profile', [
-            'user' => auth()->user(),
+            'user' => $user,
+            'canDeleteAccount' => $accountDeletion->canDeleteAccount($user),
         ]);
     }
 

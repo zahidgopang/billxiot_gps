@@ -361,6 +361,18 @@
             </div>
         </div>
 
+        @if(!empty($canDeleteAccount))
+            <div class="profile-card mb-4" style="border-color: rgba(239, 68, 68, 0.25);">
+                <div class="form-section mb-0">
+                    <h5 class="text-danger"><i class="fas fa-exclamation-triangle me-2"></i>{{ __('app.user.account_delete.danger_zone') }}</h5>
+                    <p class="text-muted mb-3">{{ __('app.user.account_delete.danger_zone_hint') }}</p>
+                    <a href="{{ route('user.account.delete') }}" class="btn btn-outline-danger">
+                        <i class="fas fa-user-slash me-2"></i>{{ __('app.user.account_delete.open_delete') }}
+                    </a>
+                </div>
+            </div>
+        @endif
+
     </div>
 
 @endsection

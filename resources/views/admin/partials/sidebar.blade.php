@@ -246,6 +246,19 @@
                     @endif
                 </a>
             @endif
+            @can('super-admin')
+                @if($navPanel === 'admin' && Route::has('admin.account-deletion-requests.index'))
+                    @php $pendingDeletionCount = \App\Models\AccountDeletionRequest::pending()->count(); @endphp
+                    <a href="{{ route('admin.account-deletion-requests.index') }}"
+                       class="nav-link-premium {{ request()->routeIs('admin.account-deletion-requests.*') ? 'active' : '' }}">
+                        <i class="fas fa-user-slash"></i>
+                        <span>{{ __('app.admin.nav.account_deletion_requests') }}</span>
+                        @if($pendingDeletionCount > 0)
+                            <span class="nav-badge">{{ $pendingDeletionCount }}</span>
+                        @endif
+                    </a>
+                @endif
+            @endcan
         </div>
     </nav>
 

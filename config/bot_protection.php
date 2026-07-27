@@ -37,4 +37,9 @@ return [
         'ip_decay_seconds' => (int) env('BOT_REGISTER_IP_DECAY', 3600),
     ],
 
+    'account_deletion_request' => [
+        'ip_max_attempts' => (int) env('BOT_ACCOUNT_DELETION_IP_MAX', 5),
+        'ip_decay_seconds' => (int) env('BOT_ACCOUNT_DELETION_IP_DECAY', 3600),
+    ],
+
 ];

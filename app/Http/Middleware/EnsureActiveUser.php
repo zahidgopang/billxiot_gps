@@ -29,8 +29,14 @@ class EnsureActiveUser
 
         // /user/devices is the inactive landing page (shows access_denied flash).
         // Never redirect away from it — that caused ERR_TOO_MANY_REDIRECTS.
-        if ($request->routeIs('user.devices.index')) {
-            if (! $request->session()->has('access_denied_message')) {
+        // Account self-deletion must stay reachable even when tracking is inactive.
+        if ($request->routeIs('user.devices.index')
+            || $request->routeIs('user.account.delete*')
+            || $request->routeIs('user.profile')
+            || $request->routeIs('user.profile.update')
+            || $request->routeIs('user.change.password')
+            || $request->routeIs('user.password.update')) {
+            if ($request->routeIs('user.devices.index') && ! $request->session()->has('access_denied_message')) {
                 $request->session()->now('access_denied_title', 'Account inactive');
                 $request->session()->now('access_denied_message', $message);
             }

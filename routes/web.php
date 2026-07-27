@@ -23,6 +23,9 @@ use App\Http\Controllers\MapAccessController;
 use App\Http\Controllers\DeviceMapIconController;
 use App\Http\Controllers\VehicleAlertController;
 use App\Http\Controllers\SubAccountController;
+use App\Http\Controllers\UserAccountDeletionController;
+use App\Http\Controllers\PublicAccountDeletionRequestController;
+use App\Http\Controllers\Admin\AccountDeletionRequestController;
 /*
 |--------------------------------------------------------------------------
 | Public Route
@@ -153,6 +156,16 @@ Route::middleware(['auth', 'user.active', 'tracker.access'])->group(function () 
     Route::get('/user/change-password', [UserController::class, 'changePassword'])->name('user.change.password');
     Route::post('/user/change-password/update', [UserController::class, 'updatePassword'])->name('user.password.update');
 
+    // End-user web-only account deletion (email+password, then type "delete")
+    Route::get('/user/account/delete', [UserAccountDeletionController::class, 'show'])
+        ->name('user.account.delete');
+    Route::post('/user/account/delete/verify', [UserAccountDeletionController::class, 'verify'])
+        ->name('user.account.delete.verify');
+    Route::get('/user/account/delete/confirm', [UserAccountDeletionController::class, 'confirm'])
+        ->name('user.account.delete.confirm');
+    Route::delete('/user/account/delete', [UserAccountDeletionController::class, 'destroy'])
+        ->name('user.account.delete.destroy');
+
     Route::delete('/user/geofence/{id}', [GeofenceController::class, 'destroy'])
         ->whereNumber('id')
         ->name('user.geofence.destroy');
@@ -271,6 +284,15 @@ Route::middleware(['auth', 'panel:admin', 'can:admin'])
             ->name('activity-log.index');
 
         Route::middleware('can:super-admin')->group(function () {
+            Route::get('account-deletion-requests', [AccountDeletionRequestController::class, 'index'])
+                ->name('account-deletion-requests.index');
+            Route::get('account-deletion-requests/{accountDeletionRequest}', [AccountDeletionRequestController::class, 'show'])
+                ->name('account-deletion-requests.show');
+            Route::post('account-deletion-requests/{accountDeletionRequest}/approve', [AccountDeletionRequestController::class, 'approve'])
+                ->name('account-deletion-requests.approve');
+            Route::post('account-deletion-requests/{accountDeletionRequest}/reject', [AccountDeletionRequestController::class, 'reject'])
+                ->name('account-deletion-requests.reject');
+
             Route::get('company-map-settings', [\App\Http\Controllers\Admin\CompanyMapSettingsController::class, 'index'])
                 ->name('company-map-settings.index');
             Route::post('company-map-settings', [\App\Http\Controllers\Admin\CompanyMapSettingsController::class, 'update'])
@@ -561,6 +583,13 @@ Route::post('/contact/submit', [ContactController::class, 'submit'])
 Route::get('/contact/rate-limit', [ContactController::class, 'checkRateLimit'])
     ->name('contact.rate-limit');
 Route::get('/android-app', [AndroidAppController::class, 'show'])->name('android-app');
+
+// Public account deletion request (not linked in web/app nav — share URL directly)
+Route::get('/account/request-deletion', [PublicAccountDeletionRequestController::class, 'show'])
+    ->name('account.deletion-request');
+Route::post('/account/request-deletion', [PublicAccountDeletionRequestController::class, 'store'])
+    ->middleware('throttle:6,1')
+    ->name('account.deletion-request.submit');
 
 // Company pages
 Route::get('/company', [PageController::class, 'company'])->name('company');
