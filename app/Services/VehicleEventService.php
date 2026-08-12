@@ -144,8 +144,20 @@ class VehicleEventService
     private function processGeofence(Device $device, float $lat, float $lng, Carbon $at): void
     {
         $cacheKey = "device.{$device->id}.inside_geofence";
-        $previousId = cache()->get($cacheKey);
+        // Store 0 = outside, >0 = geofence id (avoids null/string cache ambiguity).
         $currentId = $this->insideGeofence($lat, $lng, $device->id);
+        $currentStored = $currentId ?? 0;
+
+        // First GPS after deploy/restart: seed baseline only (already-in or already-out).
+        // Next real crossing then fires enter/exit push as required.
+        if (! cache()->has($cacheKey)) {
+            cache()->put($cacheKey, $currentStored, now()->addDays(7));
+
+            return;
+        }
+
+        $previousStored = (int) cache()->get($cacheKey, 0);
+        $previousId = $previousStored > 0 ? $previousStored : null;
 
         if ($previousId !== null && $previousId !== $currentId) {
             $this->handleGeofenceTransition(
@@ -171,7 +183,7 @@ class VehicleEventService
             );
         }
 
-        cache()->put($cacheKey, $currentId, now()->addDays(7));
+        cache()->put($cacheKey, $currentStored, now()->addDays(7));
     }
 
     private function handleGeofenceTransition(

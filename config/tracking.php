@@ -46,8 +46,12 @@ return [
     /** Account owner: also notify linked sub-accounts when maintenance is due (default off). */
     'maintenance_notify_sub_accounts' => filter_var(env('TRACKING_MAINT_NOTIFY_SUBS', false), FILTER_VALIDATE_BOOL),
 
-    /** Only push running / idle / parked / stopped — blocks GSM weak, online, delayed, etc. */
+    /** Only push running / idle / parked / stopped — blocks GSM weak, online, delayed, etc.
+     *  Geofence enter/exit and panic/power_cut still bypass this gate in PushNotificationType. */
     'push_major_status_only' => filter_var(env('TRACKING_PUSH_MAJOR_STATUS_ONLY', true), FILTER_VALIDATE_BOOL),
+
+    /** When true, Laravel also writes geofence/security events to the events store (in addition to push). */
+    'persist_notification_events' => filter_var(env('TRACKING_PERSIST_NOTIFICATION_EVENTS', false), FILTER_VALIDATE_BOOL),
 
     /** Minimum seconds between map-status push notifications per device. */
     'push_motion_cooldown_seconds' => (int) env('TRACKING_PUSH_MOTION_COOLDOWN', 300),

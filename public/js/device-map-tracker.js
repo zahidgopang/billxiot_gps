@@ -4948,28 +4948,44 @@ ${pts}
         }
         const name = prompt('Geofence name:', 'New Geofence');
         if (!name) return;
-        const payload = { name, device_id: deviceId, ...extracted };
+        const payload = { name: String(name).trim().slice(0, 128), device_id: deviceId, ...extracted };
+        if (payload.radius != null) {
+            payload.radius = Math.max(1, Math.round(Number(payload.radius) || 0));
+        }
         try {
             const res = await fetch(geofencesSaveUrl, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken },
+                credentials: 'same-origin',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': csrfToken,
+                    Accept: 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
                 body: JSON.stringify(payload),
             });
             const json = await res.json().catch(() => ({}));
             if (!res.ok || json.success === false) {
-                showNotification(json.message || 'Save failed', 'error');
+                const validation = json.errors
+                    ? Object.values(json.errors).flat().filter(Boolean)[0]
+                    : null;
+                showNotification(validation || json.message || `Save failed (${res.status})`, 'error');
                 return;
             }
             if (json.success || json.id) {
-                currentDrawing.setMap(null);
+                currentDrawing?.setMap?.(null);
                 currentDrawing = null;
-                document.getElementById('btnSaveGeofence').disabled = true;
+                geofenceDrawer?.clearOverlay?.();
+                const saveBtn = document.getElementById('btnSaveGeofence');
+                if (saveBtn) saveBtn.disabled = true;
                 document.getElementById('geofencePanel')?.classList.remove('active');
                 await loadGeofences();
                 showNotification('Geofence saved', 'success');
+                return;
             }
+            showNotification(json.message || 'Save failed: unexpected response', 'error');
         } catch (e) {
-            showNotification('Save failed', 'error');
+            showNotification(e?.message || 'Save failed', 'error');
         }
     }
 

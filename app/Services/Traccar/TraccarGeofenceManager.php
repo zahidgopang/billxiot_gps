@@ -25,11 +25,12 @@ class TraccarGeofenceManager
     {
         $type = (string) ($payload['type'] ?? 'polygon');
         $center = $payload['center'] ?? null;
-        $coords = $payload['coords'] ?? null;
-        $radius = isset($payload['radius']) ? (int) $payload['radius'] : null;
+        $coords = isset($payload['coords']) ? $this->limitPolygonPoints($payload['coords']) : null;
+        $radius = isset($payload['radius']) ? (int) round((float) $payload['radius']) : null;
+        $name = mb_substr(trim((string) ($payload['name'] ?? 'Geofence')), 0, 128);
 
         $geofence = new Geofence([
-            'name' => $payload['name'],
+            'name' => $name !== '' ? $name : 'Geofence',
             'area' => GeofenceWkt::fromLaravel($type, $coords, $center, $radius),
         ]);
 
@@ -58,7 +59,7 @@ class TraccarGeofenceManager
     public function update(Geofence $geofence, array $payload): Geofence
     {
         if (isset($payload['name']) && $payload['name'] !== '') {
-            $geofence->name = $payload['name'];
+            $geofence->name = mb_substr(trim((string) $payload['name']), 0, 128);
         }
 
         $type = $geofence->type;
@@ -73,23 +74,32 @@ class TraccarGeofenceManager
         }
 
         if ($type === 'polygon' && array_key_exists('coords', $payload)) {
-            $geofence->coords = $payload['coords'];
+            $geofence->coords = $this->limitPolygonPoints($payload['coords']);
         }
 
         $coords = $payload['coords'] ?? TraccarAppFields::get(
             $geofence->getTraccarAttributesJson(),
             TraccarAppFields::KEY_GEOFENCE_COORDS
         );
+        if (is_array($coords)) {
+            $coords = $this->limitPolygonPoints($coords);
+        }
         $center = $payload['center'] ?? TraccarAppFields::get(
             $geofence->getTraccarAttributesJson(),
             TraccarAppFields::KEY_GEOFENCE_CENTER
         );
 
+        $radius = $geofence->radius;
+        if (array_key_exists('radius', $payload) && $payload['radius'] !== null) {
+            $radius = (int) round((float) $payload['radius']);
+            $geofence->radius = $radius;
+        }
+
         $geofence->area = GeofenceWkt::fromLaravel(
             $type,
             $coords,
             $center,
-            $geofence->radius
+            $radius
         );
 
         $geofence->save();
@@ -118,5 +128,33 @@ class TraccarGeofenceManager
         }
 
         $geofence->delete();
+    }
+
+    /**
+     * Keep polygons under DB-friendly point counts (also shrinks attributes JSON).
+     *
+     * @param  array<int, mixed>|null  $coords
+     * @return array<int, mixed>|null
+     */
+    private function limitPolygonPoints(?array $coords, int $maxPoints = 80): ?array
+    {
+        if ($coords === null) {
+            return null;
+        }
+
+        $count = count($coords);
+        if ($count <= $maxPoints) {
+            return array_values($coords);
+        }
+
+        $limited = [];
+        $lastIndex = $count - 1;
+        for ($i = 0; $i < $maxPoints - 1; $i++) {
+            $idx = (int) round(($i / ($maxPoints - 2)) * ($lastIndex - 1));
+            $limited[] = $coords[$idx];
+        }
+        $limited[] = $coords[$lastIndex];
+
+        return array_values($limited);
     }
 }

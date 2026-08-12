@@ -128,12 +128,14 @@ class GeofenceController extends Controller
         $this->assertFleetGeofenceAccess($device);
 
         $validated = $req->validate([
-            'name' => 'required|string|max:255',
+            // tc_geofences.name is varchar(128)
+            'name' => 'required|string|max:128',
             'type' => 'required|in:polygon,circle',
             'coords' => 'required_if:type,polygon|array|min:3',
             'coords.*' => 'array|size:2',
             'center' => 'required_if:type,circle|array|size:2',
-            'radius' => 'required_if:type,circle|integer|min:1',
+            // Drawing tools often send float meters; cast to int on create.
+            'radius' => 'required_if:type,circle|numeric|min:1',
         ]);
 
         try {
@@ -143,7 +145,7 @@ class GeofenceController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Could not save geofence: '.$e->getMessage(),
+                'message' => $this->friendlySaveError($e),
             ], 422);
         }
 
@@ -170,13 +172,38 @@ class GeofenceController extends Controller
     {
         $g = $this->authorizeGeofence($id);
 
-        $this->geofences->update($g, [
-            'name' => $req->name ?? '',
-            'center' => $req->center ?? null,
-            'radius' => $req->radius ?? null,
-            'coords' => $req->coords ?? null,
-        ]);
+        try {
+            $this->geofences->update($g, [
+                'name' => $req->name ?? '',
+                'center' => $req->center ?? null,
+                'radius' => $req->radius ?? null,
+                'coords' => $req->coords ?? null,
+            ]);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'success' => false,
+                'message' => $this->friendlySaveError($e),
+            ], 422);
+        }
 
         return response()->json(['success' => true]);
+    }
+
+    private function friendlySaveError(\Throwable $e): string
+    {
+        $msg = $e->getMessage();
+        if (str_contains($msg, 'Data too long') && str_contains($msg, 'area')) {
+            return 'Geofence shape is too detailed. Draw a simpler polygon (fewer points) and try again.';
+        }
+        if (str_contains($msg, 'Data too long') && str_contains($msg, 'attributes')) {
+            return 'Geofence data is too large. Draw a simpler shape and try again.';
+        }
+        if (str_contains($msg, 'Data too long') && str_contains($msg, 'name')) {
+            return 'Geofence name is too long (max 128 characters).';
+        }
+
+        return 'Could not save geofence: '.$msg;
     }
 }

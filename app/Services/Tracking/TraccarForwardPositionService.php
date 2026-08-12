@@ -179,6 +179,17 @@ class TraccarForwardPositionService
             return;
         }
 
+        // Geofence enter/exit must run on every fix (not debounced) so crossings are not missed.
+        $recordedAt = $location->recorded_at ?? now();
+        $this->vehicleEvents->processGeofenceFromLocation(
+            $device,
+            (float) $location->lat,
+            (float) $location->lng,
+            $recordedAt instanceof \Carbon\Carbon
+                ? $recordedAt
+                : \Carbon\Carbon::parse($recordedAt),
+        );
+
         $debounce = max(5, (int) config('traccar.forward.events_debounce_seconds', 30));
         $key = "traccar:forward:events:{$device->id}";
 

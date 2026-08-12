@@ -71,6 +71,15 @@ final class PushNotificationType
         ];
     }
 
+    /** Geofence enter/exit always deliver even when major-status-only is on. */
+    public static function geofencePushTypes(): array
+    {
+        return [
+            self::GEOFENCE_ENTER,
+            self::GEOFENCE_EXIT,
+        ];
+    }
+
     public static function deliverViaPush(string $type): bool
     {
         if (! config('tracking.push_major_status_only', true)) {
@@ -78,6 +87,10 @@ final class PushNotificationType
         }
 
         if (in_array($type, self::criticalBypassTypes(), true)) {
+            return true;
+        }
+
+        if (in_array($type, self::geofencePushTypes(), true)) {
             return true;
         }
 

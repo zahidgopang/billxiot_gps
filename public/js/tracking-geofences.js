@@ -458,7 +458,10 @@
                     popupPermissionDenied(geofencePermissionMessage(json, res.status));
                     return;
                 }
-                throw new Error(json.message || 'save failed');
+                const validation = json.errors
+                    ? Object.values(json.errors).flat().filter(Boolean)[0]
+                    : null;
+                throw new Error(validation || json.message || `save failed (${res.status})`);
             }
 
             currentDrawing?.setMap(null);
@@ -475,7 +478,7 @@
             await loadList();
         } catch (err) {
             if (btn) btn.disabled = false;
-            notify(i18n.saveFailed || 'Failed to save geofence', 'error');
+            notify(err?.message || i18n.saveFailed || 'Failed to save geofence', 'error');
         }
     }
 

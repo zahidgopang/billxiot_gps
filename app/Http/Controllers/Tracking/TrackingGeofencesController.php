@@ -75,7 +75,7 @@ class TrackingGeofencesController extends Controller
     {
         $validated = $request->validate([
             'device_id' => 'required|integer',
-            'name' => 'required|string|max:120',
+            'name' => 'required|string|max:128',
             'type' => 'required|in:polygon,circle',
             'coords' => 'required_if:type,polygon|array|min:3',
             'coords.*' => 'array|size:2',
@@ -89,7 +89,21 @@ class TrackingGeofencesController extends Controller
         }
 
         $device = Device::query()->findOrFail($deviceId);
-        $geofence = $this->geofenceManager->create($device, $validated);
+
+        try {
+            $geofence = $this->geofenceManager->create($device, $validated);
+        } catch (\Throwable $e) {
+            report($e);
+            $msg = $e->getMessage();
+            if (str_contains($msg, 'Data too long')) {
+                $msg = 'Geofence shape is too detailed. Draw a simpler polygon and try again.';
+            }
+
+            return $this->noStoreJson([
+                'success' => false,
+                'message' => 'Could not save geofence: '.$msg,
+            ], 422);
+        }
 
         return $this->noStoreJson(['success' => true, 'id' => $geofence->id]);
     }
