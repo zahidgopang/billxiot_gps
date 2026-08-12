@@ -23,11 +23,36 @@
         page: 1,
         pageSize: 50,
         loading: false,
+        exporting: false,
+        /** True only after the latest Load History run finished successfully. */
+        reportLoaded: false,
         lastPayload: null,
         runId: 0,
         abortController: null,
         mode: 'standard', // standard | custom
     };
+
+    function exportButtons() {
+        return ['gtReportCsv', 'gtReportXlsx', 'gtReportPdf']
+            .map((id) => $(id))
+            .filter(Boolean);
+    }
+
+    /** Keep CSV / Excel / PDF disabled while loading or until a report has finished. */
+    function syncExportButtons() {
+        const disabled = state.loading || state.exporting || !state.reportLoaded;
+        exportButtons().forEach((btn) => {
+            btn.disabled = disabled;
+            btn.setAttribute('aria-disabled', disabled ? 'true' : 'false');
+            if (state.loading) {
+                btn.title = i18n.waitUntilLoaded || i18n.loadingReport || 'Wait until the report finishes loading.';
+            } else if (!state.reportLoaded) {
+                btn.title = i18n.loadBeforeExport || i18n.exportFailed || 'Load the report first, then export.';
+            } else if (!state.exporting) {
+                btn.removeAttribute('title');
+            }
+        });
+    }
 
     const $ = (id) => document.getElementById(id);
 
@@ -608,10 +633,12 @@
     }
 
     function dateWindowsFromInputs() {
-        const fromRaw = (dateTimeParam('gtReportFrom') || '').slice(0, 10);
-        const toRaw = (dateTimeParam('gtReportTo') || '').slice(0, 10);
+        const fromFull = dateTimeParam('gtReportFrom') || '';
+        const toFull = dateTimeParam('gtReportTo') || '';
+        const fromRaw = fromFull.slice(0, 10);
+        const toRaw = toFull.slice(0, 10);
         if (!/^\d{4}-\d{2}-\d{2}$/.test(fromRaw) || !/^\d{4}-\d{2}-\d{2}$/.test(toRaw)) {
-            return [{ from: dateTimeParam('gtReportFrom'), to: dateTimeParam('gtReportTo') }];
+            return [{ from: fromFull, to: toFull }];
         }
         let start = new Date(`${fromRaw}T00:00:00`);
         let end = new Date(`${toRaw}T00:00:00`);
@@ -620,19 +647,45 @@
             start = end;
             end = tmp;
         }
+        const daySpan = Math.round((end.getTime() - start.getTime()) / 86400000) + 1;
+        // Short ranges: keep the exact selected datetimes (more accurate than date-only).
+        if (daySpan <= 2) {
+            return [{ from: fromFull, to: toFull }];
+        }
+
+        const fmtDate = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        const endOfDay = (d) => `${fmtDate(d)} 23:59:59`;
+        const startOfDay = (d) => `${fmtDate(d)} 00:00:00`;
+
         const windows = [];
         const maxDays = 2;
         let cursor = new Date(start);
+        let isFirst = true;
         while (cursor <= end) {
             const windowEnd = new Date(cursor);
             windowEnd.setDate(windowEnd.getDate() + (maxDays - 1));
             const clamped = windowEnd > end ? new Date(end) : windowEnd;
-            const fmt = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-            windows.push({ from: fmt(cursor), to: fmt(clamped) });
+            const isLast = clamped.getTime() >= end.getTime();
+            windows.push({
+                from: isFirst ? fromFull : startOfDay(cursor),
+                to: isLast ? toFull : endOfDay(clamped),
+            });
+            isFirst = false;
             cursor = new Date(clamped);
             cursor.setDate(cursor.getDate() + 1);
         }
-        return windows.length ? windows : [{ from: fromRaw, to: toRaw }];
+        return windows.length ? windows : [{ from: fromFull, to: toFull }];
+    }
+
+    function recomputeEfficiency(distanceKm, fuelLiters, unit) {
+        const dist = Number(distanceKm) || 0;
+        const fuel = Number(fuelLiters) || 0;
+        if (!(dist > 0) || !(fuel > 0)) return 0;
+        if (unit === 'km_per_l') {
+            return round2(dist / fuel);
+        }
+        // Default: L/100km
+        return round2((fuel / dist) * 100);
     }
 
     function mergeDeviceWindowRows(parts) {
@@ -669,9 +722,9 @@
         if (base.moving_time_seconds > 0 && base.total_distance_km > 0) {
             base.average_speed_kmh = round2(base.total_distance_km / (base.moving_time_seconds / 3600));
         }
-        base.efficiency = base.total_distance_km > 0 && base.fuel_liters > 0
-            ? round2((base.fuel_liters / base.total_distance_km) * 100)
-            : 0;
+        // Keep the device efficiency unit (L/100km or km/L) when stitching date windows.
+        base.efficiency_unit = parts.find((p) => p.efficiency_unit)?.efficiency_unit || base.efficiency_unit || 'l_per_100km';
+        base.efficiency = recomputeEfficiency(base.total_distance_km, base.fuel_liters, base.efficiency_unit);
 
         // Odometer report: keep first start / last end across date windows (do not sum deltas).
         let startOdo = null;
@@ -792,9 +845,9 @@
             totals.fuel_liters = round2(devices.reduce((s, d) => s + (Number(d.fuel_liters) || 0), 0));
             totals.trip_count = devices.reduce((s, d) => s + (Number(d.trip_count) || 0), 0);
             totals.day_count = devices.reduce((s, d) => s + (Number(d.day_count) || 0), 0);
-            totals.efficiency = totals.total_distance_km > 0 && totals.fuel_liters > 0
-                ? round2((totals.fuel_liters / totals.total_distance_km) * 100)
-                : 0;
+            const unit = devices.find((d) => d.efficiency_unit)?.efficiency_unit || 'l_per_100km';
+            totals.efficiency_unit = unit;
+            totals.efficiency = recomputeEfficiency(totals.total_distance_km, totals.fuel_liters, unit);
         } else if (first.type === 'stops') {
             totals.device_count = devices.length;
             totals.stop_count = devices.reduce((s, d) => s + (Number(d.stop_count) || 0), 0);
@@ -1450,9 +1503,11 @@
         const progressEl = $('gtReportLoadingText');
         if (progressEl) progressEl.textContent = progressText || '';
         if (on) {
+            state.reportLoaded = false;
             const empty = $('gtReportEmpty');
             if (empty) { empty.hidden = true; empty.textContent = ''; }
         }
+        syncExportButtons();
     }
 
     function resetReportView() {
@@ -1460,6 +1515,8 @@
         state.rows = [];
         state.page = 1;
         state.lastPayload = null;
+        state.reportLoaded = false;
+        syncExportButtons();
 
         const empty = $('gtReportEmpty');
         if (empty) { empty.hidden = true; empty.textContent = ''; }
@@ -1612,7 +1669,10 @@
             updateFilterHelp();
 
             if (!state.rows.length) {
+                // Keep payload so export can still run after an empty-but-successful load.
+                const keptPayload = state.lastPayload;
                 showEmpty(i18n.noData || 'No data for the selected report and period.');
+                state.lastPayload = keptPayload;
             } else {
                 const notice = reportNotice(flat);
                 if (notice) {
@@ -1620,20 +1680,34 @@
                     if (count) count.textContent = notice;
                 }
             }
+            if (isCurrentRun()) {
+                state.reportLoaded = true;
+            }
         } catch (err) {
             if (err.name === 'AbortError') return;
             if (!isCurrentRun()) return;
             console.error('[reports] generate failed', err);
+            state.reportLoaded = false;
             showEmpty(err.message || i18n.loadFailed || 'Failed to load the report. Please try again.');
         } finally {
             if (isCurrentRun()) {
                 state.abortController = null;
                 setLoading(false, '');
+                syncExportButtons();
             }
         }
     }
 
     async function exportFmt(fmt) {
+        if (state.loading || state.exporting) {
+            alert(i18n.waitUntilLoaded || i18n.loadingReport || 'Wait until the report finishes loading.');
+            return;
+        }
+        if (!state.reportLoaded || !state.lastPayload) {
+            alert(i18n.loadBeforeExport || i18n.exportFailed || 'Load the report first, then export.');
+            return;
+        }
+
         const ids = selectedIds();
         if (!ids.length) {
             showEmpty(i18n.selectVehicle || 'Select at least one vehicle.');
@@ -1651,38 +1725,41 @@
             if (ok === false) return;
         }
 
-        const exportButtons = ['gtReportCsv', 'gtReportXlsx', 'gtReportPdf']
-            .map((id) => $(id))
-            .filter(Boolean);
-        exportButtons.forEach((btn) => { btn.disabled = true; });
+        const buttons = exportButtons();
+        state.exporting = true;
+        buttons.forEach((btn) => {
+            btn.disabled = true;
+            btn.dataset.exportLabel = btn.textContent;
+        });
+        syncExportButtons();
 
         try {
             if (ids.length <= EXPORT_BATCH_SIZE) {
-                await exportFmtBatch(fmt, ids, exportButtons);
+                await exportFmtBatch(fmt, ids, buttons);
                 return;
             }
 
             const batches = chunkIds(ids, EXPORT_BATCH_SIZE);
             for (let i = 0; i < batches.length; i++) {
                 const batch = batches[i];
-                exportButtons.forEach((btn) => {
+                buttons.forEach((btn) => {
                     btn.disabled = true;
-                    btn.dataset.exportLabel = btn.textContent;
                     btn.textContent = `${i18n.exportBatch || 'Export'} ${i + 1}/${batches.length}…`;
                 });
-                await exportFmtBatch(fmt, batch, exportButtons, i + 1);
+                await exportFmtBatch(fmt, batch, buttons, i + 1);
             }
         } catch (err) {
             console.error('[reports] export failed', err);
             alert(err.message || i18n.exportFailed || 'Export failed. Please try again.');
         } finally {
-            exportButtons.forEach((btn) => {
-                btn.disabled = state.loading;
+            state.exporting = false;
+            buttons.forEach((btn) => {
                 if (btn.dataset.exportLabel) {
                     btn.textContent = btn.dataset.exportLabel;
                     delete btn.dataset.exportLabel;
                 }
             });
+            syncExportButtons();
         }
     }
 
@@ -1849,6 +1926,7 @@
         state.columns = projectColumns(columnsFor($('gtReportType').value));
         renderHead();
         renderPage();
+        syncExportButtons();
     });
     bindClick('gtReportCsv', () => exportFmt('csv'));
     bindClick('gtReportXlsx', () => exportFmt('xlsx'));
@@ -1917,4 +1995,5 @@
             setReportMode('standard');
         }
     }
+    syncExportButtons();
 })(window);

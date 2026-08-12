@@ -396,9 +396,9 @@
 
                 <div class="gt-report-actions">
                     <button type="button" class="btn btn-primary btn-sm" id="gtReportRun">{{ __('app.tracking.load_history') }}</button>
-                    <button type="button" class="btn btn-outline-secondary btn-sm" id="gtReportCsv">{{ __('app.tracking.export_csv') }}</button>
-                    <button type="button" class="btn btn-outline-secondary btn-sm" id="gtReportXlsx">{{ __('app.tracking.export_xls') }}</button>
-                    <button type="button" class="btn btn-outline-secondary btn-sm" id="gtReportPdf">{{ __('app.tracking.export_pdf') }}</button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm" id="gtReportCsv" disabled title="{{ __('app.tracking.report_load_before_export') }}">{{ __('app.tracking.export_csv') }}</button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm" id="gtReportXlsx" disabled title="{{ __('app.tracking.report_load_before_export') }}">{{ __('app.tracking.export_xls') }}</button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm" id="gtReportPdf" disabled title="{{ __('app.tracking.report_load_before_export') }}">{{ __('app.tracking.export_pdf') }}</button>
                 </div>
             </aside>
 
@@ -452,6 +452,8 @@
         'preset7d' => __('app.tracking.report_preset_7d'),
         'loadingProgress' => __('app.tracking.report_loading_progress'),
         'loadingReport' => __('app.tracking.report_loading'),
+        'waitUntilLoaded' => __('app.tracking.report_wait_until_loaded'),
+        'loadBeforeExport' => __('app.tracking.report_load_before_export'),
         'exportFailed' => __('app.tracking.report_export_failed'),
         'filterHelpLocation' => __('app.tracking.report_filter_help_location'),
         'filterHelpNoLocationType' => __('app.tracking.report_filter_help_no_location_type'),

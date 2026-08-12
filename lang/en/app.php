@@ -1553,6 +1553,8 @@ return [
         'report_preset_7d' => 'Last 7 days',
         'report_loading_progress' => 'Loading :done / :total vehicles…',
         'report_loading' => 'Loading report…',
+        'report_wait_until_loaded' => 'Please wait until Load history finishes before exporting.',
+        'report_load_before_export' => 'Click Load history first. Export is available after the report finishes loading.',
         'report_export_failed' => 'Export failed. Select vehicles, load the report, then try again.',
         'report_devices_capped' => 'Showing the first 200 vehicles. Narrow the selection for faster results.',
         'report_positions_truncated' => 'Large GPS datasets were trimmed per vehicle. Use CSV export for full data.',
