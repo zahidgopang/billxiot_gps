@@ -205,6 +205,7 @@ class PushNotificationDispatcher
             $extra['event_id'] = (string) $eventId;
         }
 
+        // Force geofence gate (not 'event') so PUSH_EVENT_NOTIFICATIONS_ENABLED cannot block it.
         $this->send($device, $pushType, $title, $message, $extra, pushGate: 'geofence');
     }
 
@@ -321,11 +322,21 @@ class PushNotificationDispatcher
             return;
         }
 
-        if ($pushGate === 'geofence' && ! config('services.firebase.geofence_notifications_enabled', true)) {
+        $isGeofence = in_array($pushType, PushNotificationType::geofencePushTypes(), true);
+
+        if ($pushGate === 'geofence' && ! $this->geofencePushEnabled()) {
+            $this->logPushSkip($pushType, 'geofence_gate_disabled', $device->id);
+
             return;
         }
 
-        if (! PushNotificationType::deliverViaPush($pushType)) {
+        // Geofence enter/exit must never be blocked by major-status-only.
+        if (! $isGeofence && ! PushNotificationType::deliverViaPush($pushType)) {
+            return;
+        }
+        if ($isGeofence && ! PushNotificationType::deliverViaPush($pushType)) {
+            $this->logPushSkip($pushType, 'deliver_via_push_blocked', $device->id);
+
             return;
         }
 
@@ -333,12 +344,70 @@ class PushNotificationDispatcher
             $userIds,
             fn (int $uid) => $this->userAllowsPush($uid, $eventType)
         ));
+
+        // Geofence is safety-critical: if prefs filtered everyone out, still notify owners.
+        if ($isGeofence && $pushUserIds === [] && $userIds !== []) {
+            $pushUserIds = $userIds;
+            $this->logPushSkip($pushType, 'prefs_bypassed_force_owners', $device->id);
+        }
+
         if ($pushUserIds === []) {
+            $this->logPushSkip($pushType, 'no_recipients_or_prefs_off', $device->id);
+
+            return;
+        }
+
+        // Geofence crossings are rare + urgent: send FCM immediately (do not rely on
+        // afterResponse, which can be skipped if the forward HTTP worker ends early).
+        if ($isGeofence) {
+            try {
+                $result = $this->fcm->sendToUsers($pushUserIds, $displayTitle, $bodyWithTime, $data);
+                \Illuminate\Support\Facades\Log::channel(config('firebase.log_channel', 'stack'))
+                    ->info('Geofence FCM dispatched', [
+                        'push_type' => $pushType,
+                        'device_id' => $device->id,
+                        'user_ids' => $pushUserIds,
+                        'result' => $result,
+                    ]);
+            } catch (\Throwable $e) {
+                report($e);
+                $this->logPushSkip($pushType, 'fcm_exception:'.$e->getMessage(), $device->id);
+            }
+
             return;
         }
 
         SendPushNotificationJob::dispatch($pushUserIds, $displayTitle, $bodyWithTime, $data)
             ->afterResponse();
+    }
+
+    private function geofencePushEnabled(): bool
+    {
+        $fromServices = config('services.firebase.geofence_notifications_enabled', true);
+        $fromFirebase = config('firebase.geofence_notifications_enabled', true);
+
+        return filter_var($fromServices, FILTER_VALIDATE_BOOL)
+            || filter_var($fromFirebase, FILTER_VALIDATE_BOOL);
+    }
+
+    private function logPushSkip(string $pushType, string $reason, int $deviceId): void
+    {
+        if (! in_array($pushType, PushNotificationType::geofencePushTypes(), true)) {
+            return;
+        }
+
+        try {
+            \Illuminate\Support\Facades\Log::channel(config('firebase.log_channel', 'stack'))
+                ->warning('Geofence FCM skipped', [
+                    'reason' => $reason,
+                    'push_type' => $pushType,
+                    'device_id' => $deviceId,
+                    'major_status_only' => (bool) config('tracking.push_major_status_only', true),
+                    'geofence_enabled' => $this->geofencePushEnabled(),
+                ]);
+        } catch (\Throwable) {
+            // ignore logging failures
+        }
     }
 
     /**

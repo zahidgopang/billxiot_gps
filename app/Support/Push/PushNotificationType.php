@@ -82,15 +82,16 @@ final class PushNotificationType
 
     public static function deliverViaPush(string $type): bool
     {
+        // Hard allowlist — never depend on env for geofence enter/exit delivery.
+        if (in_array($type, self::geofencePushTypes(), true)) {
+            return true;
+        }
+
         if (! config('tracking.push_major_status_only', true)) {
             return true;
         }
 
         if (in_array($type, self::criticalBypassTypes(), true)) {
-            return true;
-        }
-
-        if (in_array($type, self::geofencePushTypes(), true)) {
             return true;
         }
 

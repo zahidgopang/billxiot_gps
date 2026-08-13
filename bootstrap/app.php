@@ -82,6 +82,15 @@ return Application::configure(basePath: dirname(__DIR__))
                 ->withoutOverlapping(5);
         }
 
+        // Backup: Traccar-native geofenceEnter/Exit → FCM (works in forward mode too).
+        // Always schedule when FCM is on; the command itself no-ops if geofence push is disabled.
+        if (filter_var(config('firebase.enabled', false), FILTER_VALIDATE_BOOL)
+            || filter_var(config('services.firebase.enabled', false), FILTER_VALIDATE_BOOL)) {
+            $schedule->command('traccar:dispatch-geofence-pushes')
+                ->everyMinute()
+                ->withoutOverlapping(2);
+        }
+
         $schedule->command('maintenance:check')
             ->hourly()
             ->withoutOverlapping(10);

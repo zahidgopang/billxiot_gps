@@ -175,20 +175,12 @@ class TraccarForwardPositionService
 
     private function maybeProcessEvents(Device $device, \App\Models\DeviceLocation $location): void
     {
+        // Always evaluate geofence on every GPS fix (independent of motion debounce / process_events).
+        $this->processGeofenceNow($device, $location);
+
         if (! filter_var(config('traccar.forward.process_events', true), FILTER_VALIDATE_BOOL)) {
             return;
         }
-
-        // Geofence enter/exit must run on every fix (not debounced) so crossings are not missed.
-        $recordedAt = $location->recorded_at ?? now();
-        $this->vehicleEvents->processGeofenceFromLocation(
-            $device,
-            (float) $location->lat,
-            (float) $location->lng,
-            $recordedAt instanceof \Carbon\Carbon
-                ? $recordedAt
-                : \Carbon\Carbon::parse($recordedAt),
-        );
 
         $debounce = max(5, (int) config('traccar.forward.events_debounce_seconds', 30));
         $key = "traccar:forward:events:{$device->id}";
@@ -208,5 +200,22 @@ class TraccarForwardPositionService
 
             $this->vehicleEvents->processLocation($device, $location, $previous);
         });
+    }
+
+    private function processGeofenceNow(Device $device, \App\Models\DeviceLocation $location): void
+    {
+        try {
+            $recordedAt = $location->recorded_at ?? now();
+            $this->vehicleEvents->processGeofenceFromLocation(
+                $device,
+                (float) $location->lat,
+                (float) $location->lng,
+                $recordedAt instanceof \Carbon\Carbon
+                    ? $recordedAt
+                    : \Carbon\Carbon::parse($recordedAt),
+            );
+        } catch (\Throwable $e) {
+            report($e);
+        }
     }
 }
