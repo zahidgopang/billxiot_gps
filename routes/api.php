@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\Mobile\ExportController as MobileExportController;
 use App\Http\Controllers\Api\Mobile\FleetController as MobileFleetController;
 use App\Http\Controllers\Api\Mobile\GeofenceController as MobileGeofenceController;
 use App\Http\Controllers\Api\Mobile\LiveStreamController as MobileLiveStreamController;
+use App\Http\Controllers\Api\Mobile\MaintenanceController as MobileMaintenanceController;
 use App\Http\Controllers\Api\Mobile\MapController as MobileMapController;
 use App\Http\Controllers\Api\Mobile\NotificationPreferenceController as MobileNotificationPreferenceController;
 use App\Http\Controllers\Api\Mobile\ProfileController as MobileProfileController;
@@ -122,8 +123,20 @@ Route::middleware([
             ->whereNumber('command');
     });
 
-    Route::get('/geofences', [MobileGeofenceController::class, 'index'])
-        ->middleware('permission:mobile.map.open');
+    Route::middleware('permission:mobile.map.open')->group(function () {
+        Route::get('/geofences', [MobileGeofenceController::class, 'index']);
+        Route::post('/geofences', [MobileGeofenceController::class, 'store']);
+        Route::post('/geofences/{id}', [MobileGeofenceController::class, 'update'])->whereNumber('id');
+        Route::delete('/geofences/{id}', [MobileGeofenceController::class, 'destroy'])->whereNumber('id');
+    });
+
+    Route::middleware('permission:mobile.nav.home')->group(function () {
+        Route::get('/maintenance', [MobileMaintenanceController::class, 'index']);
+        Route::post('/maintenance', [MobileMaintenanceController::class, 'store']);
+        Route::post('/maintenance/{id}', [MobileMaintenanceController::class, 'update'])->whereNumber('id');
+        Route::delete('/maintenance/{id}', [MobileMaintenanceController::class, 'destroy'])->whereNumber('id');
+        Route::post('/maintenance/{id}/complete', [MobileMaintenanceController::class, 'complete'])->whereNumber('id');
+    });
 
     Route::middleware('permission:mobile.nav.notifications')->group(function () {
         Route::get('/alerts', [MobileAlertController::class, 'index']);
