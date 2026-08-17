@@ -20,9 +20,11 @@ class ReportExportService
             $report['meta']['fields'] = array_values($fieldKeys);
         }
 
+        $format = strtolower($format);
+
         return match ($format) {
             'pdf' => $this->exportPdf($report),
-            'xlsx' => $this->exportSpreadsheet($report),
+            'xlsx', 'xls' => $this->exportSpreadsheet($report),
             default => $this->exportCsv($report),
         };
     }

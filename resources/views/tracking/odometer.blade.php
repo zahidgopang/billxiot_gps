@@ -293,6 +293,9 @@
         'waitUntilLoaded' => __('app.tracking.report_wait_until_loaded'),
         'loadBeforeExport' => __('app.tracking.report_load_before_export'),
         'exportFailed' => __('app.tracking.report_export_failed'),
+        'exportTimeout' => __('app.tracking.report_export_timeout'),
+        'exportTooLarge' => __('app.tracking.report_export_too_large'),
+        'sessionExpired' => __('app.auth.please_login_again'),
     ]);
 @endphp
 <script>

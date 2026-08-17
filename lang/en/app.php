@@ -1556,6 +1556,8 @@ return [
         'report_wait_until_loaded' => 'Please wait until Load history finishes before exporting.',
         'report_load_before_export' => 'Click Load history first. Export is available after the report finishes loading.',
         'report_export_failed' => 'Export failed. Select vehicles, load the report, then try again.',
+        'report_export_timeout' => 'Export timed out. Try a shorter date range or fewer vehicles, then export again.',
+        'report_export_too_large' => 'Export is too large. Try a shorter date range or fewer vehicles.',
         'report_devices_capped' => 'Showing the first 200 vehicles. Narrow the selection for faster results.',
         'report_positions_truncated' => 'Large GPS datasets were trimmed per vehicle. Use CSV export for full data.',
         'report_analytics_downsampled' => 'Time and stop totals were estimated from a large GPS sample. Distance uses all GPS points.',

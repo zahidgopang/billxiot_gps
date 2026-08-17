@@ -83,7 +83,7 @@ class ReportController extends Controller
             $format = (string) $request->query('format', 'csv');
             $ids = $this->parseTrackingIdList($request);
             ReportService::applyTimeLimit(max(1, count($ids)), $range['from'], $range['to'], forExport: true);
-            @ini_set('memory_limit', '512M');
+            @ini_set('memory_limit', '1024M');
 
             $fieldKeys = \App\Services\Tracking\Reports\ReportLabels::sanitizeFieldKeys(
                 $type,

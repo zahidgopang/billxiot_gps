@@ -7,7 +7,8 @@
     const PARALLEL_DEVICE_LIMIT = 3;
     // One vehicle per request keeps week-long analytics under the PHP time budget.
     const BATCH_DEVICE_SIZE = 1;
-    const EXPORT_BATCH_SIZE = 4;
+    // One vehicle per request — same budget as Load History (week-long ranges).
+    const EXPORT_BATCH_SIZE = 1;
     const i18n = cfg.i18n || {};
     const colSets = i18n.columns || {};
     const fieldSets = i18n.fields || {};
@@ -1725,6 +1726,15 @@
             if (ok === false) return;
         }
 
+        const windows = dateWindowsFromInputs();
+        const deviceBatches = chunkIds(ids, EXPORT_BATCH_SIZE);
+        const jobs = [];
+        windows.forEach((window) => {
+            deviceBatches.forEach((batch) => {
+                jobs.push({ ids: batch, from: window.from, to: window.to });
+            });
+        });
+
         const buttons = exportButtons();
         state.exporting = true;
         buttons.forEach((btn) => {
@@ -1734,19 +1744,22 @@
         syncExportButtons();
 
         try {
-            if (ids.length <= EXPORT_BATCH_SIZE) {
-                await exportFmtBatch(fmt, ids, buttons);
-                return;
-            }
-
-            const batches = chunkIds(ids, EXPORT_BATCH_SIZE);
-            for (let i = 0; i < batches.length; i++) {
-                const batch = batches[i];
-                buttons.forEach((btn) => {
-                    btn.disabled = true;
-                    btn.textContent = `${i18n.exportBatch || 'Export'} ${i + 1}/${batches.length}…`;
-                });
-                await exportFmtBatch(fmt, batch, buttons, i + 1);
+            for (let i = 0; i < jobs.length; i++) {
+                const job = jobs[i];
+                if (jobs.length > 1) {
+                    buttons.forEach((btn) => {
+                        btn.disabled = true;
+                        btn.textContent = `${i18n.exportBatch || 'Export'} ${i + 1}/${jobs.length}…`;
+                    });
+                }
+                await exportFmtBatch(
+                    fmt,
+                    job.ids,
+                    buttons,
+                    jobs.length > 1 ? i + 1 : null,
+                    job.from,
+                    job.to,
+                );
             }
         } catch (err) {
             console.error('[reports] export failed', err);
@@ -1763,8 +1776,8 @@
         }
     }
 
-    async function exportFmtBatch(fmt, ids, exportButtons, batchIndex) {
-        const body = queryParamsForIds(ids, null);
+    async function exportFmtBatch(fmt, ids, exportButtons, batchIndex, fromOverride, toOverride) {
+        const body = queryParamsForIds(ids, null, fromOverride, toOverride);
         body.set('format', fmt);
         body.set('_ts', String(Date.now()));
 
@@ -1783,19 +1796,25 @@
             body: body.toString(),
         });
 
-        const contentType = res.headers.get('Content-Type') || '';
-        if (!res.ok || contentType.includes('json')) {
-            let message = i18n.exportFailed || 'Export failed. Please try again.';
-            try {
-                const data = contentType.includes('json') ? await res.json() : null;
-                if (data?.message) message = data.message;
-            } catch (_) { /* ignore parse errors */ }
-            throw new Error(message);
+        const contentType = (res.headers.get('Content-Type') || '').toLowerCase();
+        const looksJson = contentType.includes('application/json') || contentType.includes('+json');
+        if (!res.ok || looksJson) {
+            throw new Error(await readExportErrorMessage(res, contentType));
         }
 
         const blob = await res.blob();
         if (!blob.size) {
             throw new Error(i18n.exportFailed || 'Export failed. Please try again.');
+        }
+        // Guard against HTML/JSON error bodies served with a non-JSON content type.
+        if (blob.type && (blob.type.includes('json') || blob.type.includes('text/html'))) {
+            const text = await blob.text();
+            let message = i18n.exportFailed || 'Export failed. Please try again.';
+            try {
+                const data = JSON.parse(text);
+                if (data?.message) message = data.message;
+            } catch (_) { /* ignore */ }
+            throw new Error(message);
         }
 
         const ext = fmt === 'xlsx' ? 'xls' : fmt;
@@ -1805,6 +1824,27 @@
             || `report-${reportType}${suffix}-${Date.now()}.${ext}`;
 
         triggerFileDownload(blob, filename);
+    }
+
+    async function readExportErrorMessage(res, contentType) {
+        let message = i18n.exportFailed || 'Export failed. Please try again.';
+        try {
+            const text = await res.text();
+            if ((contentType || '').includes('json') || text.trim().startsWith('{')) {
+                const data = JSON.parse(text);
+                if (data?.message) message = data.message;
+                if (data?.code === 'session_expired') {
+                    message = data.message || i18n.sessionExpired || message;
+                }
+            } else if (res.status === 419) {
+                message = i18n.sessionExpired || message;
+            } else if (res.status === 413) {
+                message = i18n.exportTooLarge || message;
+            } else if (res.status === 504 || res.status === 408) {
+                message = i18n.exportTimeout || message;
+            }
+        } catch (_) { /* ignore parse errors */ }
+        return message;
     }
 
     function parseExportFilename(header) {

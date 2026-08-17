@@ -185,8 +185,11 @@ return Application::configure(basePath: dirname(__DIR__))
                 // Logging must not prevent a JSON error response.
             }
 
-            $message = config('app.debug')
-                ? $e->getMessage()
+            // Prefer an explicit abort()/HttpException message over the generic fallback.
+            $explicit = trim((string) $e->getMessage());
+            $genericHttp = in_array($explicit, ['', 'Server Error', 'Internal Server Error'], true);
+            $message = config('app.debug') || ($e instanceof HttpExceptionInterface && ! $genericHttp)
+                ? ($explicit !== '' ? $explicit : 'Something went wrong. Please try again.')
                 : 'Something went wrong. Please try again.';
 
             return response()->json([

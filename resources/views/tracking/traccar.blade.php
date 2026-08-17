@@ -2855,6 +2855,7 @@
                 noVehicles: @json(__('app.tracking.no_vehicles')),
                 selectVehicle: @json(__('app.tracking.select_vehicle')),
                 loadFailed: @json(__('app.tracking.load_failed')),
+                exportFailed: @json(__('app.tracking.report_export_failed')),
                 historyFallback: @json(__('app.map.history_fallback_selected_period', ['count' => '…'])),
                 historyPermissionDenied: @json(__('app.tracking.history_permission_denied')),
                 eventsPermissionDenied: @json(__('app.tracking.events_permission_denied')),

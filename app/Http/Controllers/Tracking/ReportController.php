@@ -102,20 +102,27 @@ class ReportController extends Controller
         }
     }
 
-    public function export(Request $request): StreamedResponse|\Illuminate\Http\Response
+    public function export(Request $request): StreamedResponse|\Illuminate\Http\Response|JsonResponse
     {
         $this->applyReportLocale($request);
 
         $ids = $this->resolveReportDeviceIds($request);
         if ($ids === []) {
-            abort(422, (string) __('app.tracking.report_select_vehicle'));
+            return $this->noStoreJson([
+                'success' => false,
+                'message' => (string) __('app.tracking.report_select_vehicle'),
+            ], 422);
         }
 
         try {
+            @ini_set('memory_limit', '1024M');
             $range = $this->resolveReportRange($request);
             ReportService::applyTimeLimit(count($ids), $range['from'], $range['to'], forExport: true);
             $type = (string) $request->input('type', $request->query('type', 'summary'));
-            $format = (string) $request->input('format', $request->query('format', 'csv'));
+            $format = strtolower((string) $request->input('format', $request->query('format', 'csv')));
+            if ($format === 'xls') {
+                $format = 'xlsx';
+            }
             $fieldKeys = \App\Services\Tracking\Reports\ReportLabels::parseFieldKeys(
                 $request->input('fields', $request->query('fields'))
             );
@@ -140,7 +147,10 @@ class ReportController extends Controller
         } catch (\Throwable $e) {
             report($e);
 
-            abort(500, (string) __('app.tracking.report_export_failed'));
+            return $this->noStoreJson([
+                'success' => false,
+                'message' => (string) __('app.tracking.report_export_failed'),
+            ], 500);
         }
     }
 

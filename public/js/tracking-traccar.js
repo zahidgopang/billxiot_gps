@@ -4476,7 +4476,62 @@
             if (fromDate) params.set('from', `${fromDate} ${tFrom}`);
             if (toDate) params.set('to', `${toDate} ${tTo}`);
             params.set('format', format || 'xlsx');
-            window.open(`${this.cfg.historyExportUrl}?${params.toString()}`, '_blank');
+            this.downloadHistoryExport(params, format || 'xlsx');
+        }
+
+        async downloadHistoryExport(params, format) {
+            const url = `${this.cfg.historyExportUrl}?${params.toString()}`;
+            try {
+                const res = await fetch(url, {
+                    method: 'GET',
+                    credentials: 'same-origin',
+                    cache: 'no-store',
+                    headers: {
+                        Accept: '*/*',
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                });
+                const contentType = (res.headers.get('Content-Type') || '').toLowerCase();
+                const looksJson = contentType.includes('application/json') || contentType.includes('+json');
+                if (!res.ok || looksJson) {
+                    let message = this.mi('exportFailed', 'Export failed. Please try again.');
+                    try {
+                        const data = await res.json();
+                        if (data?.message) message = data.message;
+                    } catch (_) { /* ignore */ }
+                    this.toast(message, 'error');
+                    return;
+                }
+                const blob = await res.blob();
+                if (!blob.size || (blob.type && (blob.type.includes('json') || blob.type.includes('text/html')))) {
+                    this.toast(this.mi('exportFailed', 'Export failed. Please try again.'), 'error');
+                    return;
+                }
+                const ext = format === 'xlsx' || format === 'xls' ? 'xls' : (format || 'xlsx');
+                let filename = `history-export-${Date.now()}.${ext}`;
+                const cd = res.headers.get('Content-Disposition') || '';
+                const utf8 = /filename\*=UTF-8''([^;]+)/i.exec(cd);
+                const plain = /filename="?([^";]+)"?/i.exec(cd);
+                if (utf8) {
+                    try { filename = decodeURIComponent(utf8[1].trim()); } catch (_) { filename = utf8[1].trim(); }
+                } else if (plain) {
+                    filename = plain[1].trim();
+                }
+                const objectUrl = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = objectUrl;
+                a.download = filename;
+                a.style.display = 'none';
+                document.body.appendChild(a);
+                a.click();
+                window.setTimeout(() => {
+                    URL.revokeObjectURL(objectUrl);
+                    a.remove();
+                }, 1500);
+            } catch (err) {
+                console.error('[history] export failed', err);
+                this.toast(err?.message || this.mi('exportFailed', 'Export failed. Please try again.'), 'error');
+            }
         }
 
         onTripTimelineSelect(seg) {

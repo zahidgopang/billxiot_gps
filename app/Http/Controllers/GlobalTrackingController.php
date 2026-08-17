@@ -436,19 +436,25 @@ class GlobalTrackingController extends Controller
     /**
      * Export history day as trips+stops (xlsx/csv/pdf) via ReportService.
      */
-    public function historyExport(Request $request): \Symfony\Component\HttpFoundation\StreamedResponse|\Illuminate\Http\Response
+    public function historyExport(Request $request): \Symfony\Component\HttpFoundation\StreamedResponse|\Illuminate\Http\Response|JsonResponse
     {
         $this->prepareHeavyHistoryRequest();
 
         $user = $request->user();
         $ids = $this->tracking->filterAllowedIds($user, $this->parseTrackingIdList($request));
         if ($ids === []) {
-            abort(422, (string) __('app.tracking.report_select_vehicle'));
+            return $this->noStoreJson([
+                'success' => false,
+                'message' => (string) __('app.tracking.report_select_vehicle'),
+            ], 422);
         }
 
         $range = $this->resolveGlobalHistoryRange($request);
         $format = strtolower((string) $request->input('format', $request->query('format', 'xlsx')));
-        if (! in_array($format, ['csv', 'xlsx', 'xls', 'pdf'], true)) {
+        if ($format === 'xls') {
+            $format = 'xlsx';
+        }
+        if (! in_array($format, ['csv', 'xlsx', 'pdf'], true)) {
             $format = 'xlsx';
         }
 
@@ -486,7 +492,11 @@ class GlobalTrackingController extends Controller
             return $export->export($report, $format);
         } catch (\Throwable $e) {
             report($e);
-            abort(500, (string) __('app.tracking.report_export_failed'));
+
+            return $this->noStoreJson([
+                'success' => false,
+                'message' => (string) __('app.tracking.report_export_failed'),
+            ], 500);
         }
     }
 

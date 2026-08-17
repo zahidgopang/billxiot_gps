@@ -432,6 +432,7 @@
                 exportExcel: 'Excel',
                 exportPdf: 'PDF',
                 exportCsv: 'CSV',
+                exportFailed: @json(__('app.tracking.report_export_failed')),
                 today: 'Today',
                 noTimeline: 'No trips for this day',
             },
