@@ -1834,6 +1834,26 @@
                 flex: 1;
                 min-height: 0;
             }
+            .htt-export-bar {
+                display: flex;
+                flex-wrap: wrap;
+                align-items: center;
+                gap: 0.35rem;
+            }
+            .htt-export-bar.is-exporting {
+                pointer-events: none;
+                opacity: 0.85;
+            }
+            .htt-export-bar .btn:disabled {
+                cursor: not-allowed;
+                opacity: 0.55;
+            }
+            .htt-export-status {
+                display: inline-flex;
+                align-items: center;
+                gap: 0.25rem;
+                font-weight: 600;
+            }
             .playback-panel {
                 max-width: min(520px, 92vw);
                 transform: scale(0.92);
@@ -2856,6 +2876,10 @@
                 selectVehicle: @json(__('app.tracking.select_vehicle')),
                 loadFailed: @json(__('app.tracking.load_failed')),
                 exportFailed: @json(__('app.tracking.report_export_failed')),
+                loadBeforeExport: @json(__('app.tracking.report_load_before_export')),
+                exporting: @json(__('app.tracking.report_exporting')),
+                exportingFmt: @json(__('app.tracking.report_exporting')),
+                exportStarted: @json(__('app.tracking.report_export_started')),
                 historyFallback: @json(__('app.map.history_fallback_selected_period', ['count' => '…'])),
                 historyPermissionDenied: @json(__('app.tracking.history_permission_denied')),
                 eventsPermissionDenied: @json(__('app.tracking.events_permission_denied')),

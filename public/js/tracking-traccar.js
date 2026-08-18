@@ -4448,7 +4448,11 @@
                 exportEl: document.getElementById('tcHistExport'),
                 vehicleEl: document.getElementById('tcHistVehicleLabel'),
                 geocodeUrl: this.cfg.historyGeocodeUrl || null,
-                i18n: this.cfg.i18n || {},
+                i18n: {
+                    ...(this.cfg.i18n || {}),
+                    loadBeforeExport: this.mi('loadBeforeExport', 'Click Show first. Export is available after history finishes loading.'),
+                    exporting: this.mi('exporting', 'Preparing export…'),
+                },
                 onDayChange: (ymd) => {
                     this.applyHistoryDay(ymd);
                     this.loadHistory();
@@ -4456,15 +4460,32 @@
                 onExport: (format) => this.exportHistoryTimeline(format),
                 onSelect: (seg) => this.onTripTimelineSelect(seg),
             });
+            this._historyExportReady = false;
+            this._historyExporting = false;
+            this._tripTimeline.setExportsEnabled?.(false);
 
             const fromDate = this.readHistoryDateInput('tcHistDateFrom');
             if (fromDate) this._tripTimeline.setDay(fromDate);
         }
 
+        setHistoryExportReady(ready) {
+            this._historyExportReady = !!ready;
+            if (this._historyExporting) return;
+            this._tripTimeline?.setExportsEnabled?.(!!ready);
+        }
+
         exportHistoryTimeline(format) {
+            if (this._historyExporting) return;
             const id = parseInt(document.getElementById('tcHistVehicle')?.value, 10);
             if (!id || !this.cfg.historyExportUrl) {
                 this.toast(this.mi('selectVehicle', 'Select a vehicle.'), 'warning');
+                return;
+            }
+            if (!this._historyExportReady) {
+                this.toast(
+                    this.mi('loadBeforeExport', 'Click Show first. Export is available after history finishes loading.'),
+                    'info',
+                );
                 return;
             }
             const fromDate = this.readHistoryDateInput('tcHistDateFrom');
@@ -4480,17 +4501,61 @@
         }
 
         async downloadHistoryExport(params, format) {
-            const url = `${this.cfg.historyExportUrl}?${params.toString()}`;
+            if (this._historyExporting) return;
+            const exportUrl = this.cfg.historyExportUrl;
+            if (!exportUrl) {
+                this.toast(this.mi('exportFailed', 'Export failed. Please try again.'), 'error');
+                return;
+            }
+
+            const fmt = format || 'xlsx';
+            const formatLabel = fmt === 'pdf' ? 'PDF' : (fmt === 'csv' ? 'CSV' : 'Excel');
+            const exportingTpl = this.mi('exportingFmt', 'Preparing :format export…');
+            this._historyExporting = true;
+            this._tripTimeline?.setExporting?.(
+                true,
+                String(exportingTpl).replace(':format', formatLabel),
+            );
+            const showBtn = document.getElementById('tcHistShow');
+            showBtn?.setAttribute('disabled', 'disabled');
+
+            const csrf = this.cfg.csrfToken
+                || document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+                || '';
+
             try {
-                const res = await fetch(url, {
-                    method: 'GET',
-                    credentials: 'same-origin',
-                    cache: 'no-store',
-                    headers: {
-                        Accept: '*/*',
-                        'X-Requested-With': 'XMLHttpRequest',
-                    },
-                });
+                // Prefer POST + blob (same pattern as reports). Avoids some GET/proxy issues.
+                const body = new URLSearchParams(params);
+                body.set('format', fmt);
+                body.set('_ts', String(Date.now()));
+                if (csrf) body.set('_token', csrf);
+
+                let res;
+                try {
+                    res = await fetch(exportUrl, {
+                        method: 'POST',
+                        credentials: 'same-origin',
+                        cache: 'no-store',
+                        headers: {
+                            Accept: '*/*',
+                            'Content-Type': 'application/x-www-form-urlencoded',
+                            'X-CSRF-TOKEN': csrf,
+                            'X-Requested-With': 'XMLHttpRequest',
+                        },
+                        body: body.toString(),
+                    });
+                } catch (networkErr) {
+                    // Browser extensions / AV often break fetch() on file downloads.
+                    // Fall back to a native form POST so the browser handles the file.
+                    console.warn('[history] fetch export blocked, using native download', networkErr);
+                    this.triggerNativeHistoryExport(body, exportUrl);
+                    this.toast(
+                        this.mi('exportStarted', 'Download started. If nothing appears, check your downloads folder.'),
+                        'info',
+                    );
+                    return;
+                }
+
                 const contentType = (res.headers.get('Content-Type') || '').toLowerCase();
                 const looksJson = contentType.includes('application/json') || contentType.includes('+json');
                 if (!res.ok || looksJson) {
@@ -4507,7 +4572,7 @@
                     this.toast(this.mi('exportFailed', 'Export failed. Please try again.'), 'error');
                     return;
                 }
-                const ext = format === 'xlsx' || format === 'xls' ? 'xls' : (format || 'xlsx');
+                const ext = fmt === 'xlsx' || fmt === 'xls' ? 'xls' : fmt;
                 let filename = `history-export-${Date.now()}.${ext}`;
                 const cd = res.headers.get('Content-Disposition') || '';
                 const utf8 = /filename\*=UTF-8''([^;]+)/i.exec(cd);
@@ -4530,8 +4595,77 @@
                 }, 1500);
             } catch (err) {
                 console.error('[history] export failed', err);
-                this.toast(err?.message || this.mi('exportFailed', 'Export failed. Please try again.'), 'error');
+                const isNetwork = err instanceof TypeError
+                    || /failed to fetch|networkerror|load failed/i.test(String(err?.message || ''));
+                if (isNetwork) {
+                    const body = new URLSearchParams(params);
+                    body.set('format', fmt);
+                    if (csrf) body.set('_token', csrf);
+                    this.triggerNativeHistoryExport(body, exportUrl);
+                    this.toast(
+                        this.mi('exportStarted', 'Download started. If nothing appears, check your downloads folder.'),
+                        'info',
+                    );
+                } else {
+                    this.toast(err?.message || this.mi('exportFailed', 'Export failed. Please try again.'), 'error');
+                }
+            } finally {
+                this._historyExporting = false;
+                this._tripTimeline?.setExporting?.(false);
+                this.setHistoryExportReady(this._historyExportReady);
+                if (!this._historyLoading) showBtn?.removeAttribute('disabled');
             }
+        }
+
+        /**
+         * Native form POST download — bypasses fetch interceptors (AV/extensions)
+         * that often throw "Failed to fetch" on binary responses.
+         */
+        triggerNativeHistoryExport(params, exportUrl) {
+            const action = exportUrl || this.cfg.historyExportUrl;
+            if (!action) return;
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = action;
+            form.target = 'gtHistExportFrame';
+            form.style.display = 'none';
+
+            let iframe = document.getElementById('gtHistExportFrame');
+            if (!iframe) {
+                iframe = document.createElement('iframe');
+                iframe.name = 'gtHistExportFrame';
+                iframe.id = 'gtHistExportFrame';
+                iframe.style.display = 'none';
+                document.body.appendChild(iframe);
+            }
+
+            const entries = params instanceof URLSearchParams
+                ? [...params.entries()]
+                : Object.entries(params || {});
+            entries.forEach(([key, value]) => {
+                const input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = key;
+                input.value = value == null ? '' : String(value);
+                form.appendChild(input);
+            });
+
+            if (![...form.querySelectorAll('input[name="_token"]')].length) {
+                const csrf = this.cfg.csrfToken
+                    || document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+                    || '';
+                if (csrf) {
+                    const token = document.createElement('input');
+                    token.type = 'hidden';
+                    token.name = '_token';
+                    token.value = csrf;
+                    form.appendChild(token);
+                }
+            }
+
+            document.body.appendChild(form);
+            form.submit();
+            window.setTimeout(() => form.remove(), 2000);
         }
 
         onTripTimelineSelect(seg) {
@@ -4817,6 +4951,7 @@
                 if (item) item.dataset.state = 'idle';
             });
             document.getElementById('tcHistoryLoadBanner')?.setAttribute('hidden', 'hidden');
+            this.setHistoryExportReady(false);
         }
 
         exitHistory() {
@@ -5244,6 +5379,7 @@
         }
 
         async loadHistory() {
+            if (this._historyExporting) return;
             const id = parseInt(document.getElementById('tcHistVehicle')?.value, 10);
             if (!id) {
                 this.toast(this.cfg.i18n?.selectVehicle || 'Select a vehicle.', 'warning');
@@ -5272,11 +5408,15 @@
             this._historyAbort = new AbortController();
             const signal = this._historyAbort.signal;
             this.historyActive = true;
+            this._historyLoading = true;
+            this.setHistoryExportReady(false);
             this.motionEngine?.clear();
             this.showLiveLayer(false);
             this.beginHistoryLoadBanner();
             if (wrap) wrap.hidden = false;
             btn?.setAttribute('disabled', 'disabled');
+
+            let loadOk = false;
 
             const pointsBase = this.cfg.historyPointsJsonUrl || this.cfg.historyJsonUrl;
             const analyticsBase = this.cfg.historyAnalyticsJsonUrl || this.cfg.historyJsonUrl;
@@ -5394,6 +5534,7 @@
                     if (!skipParallelAnalytics) {
                         await analyticsTask;
                     }
+                    loadOk = Array.isArray(this._historyPoints) && this._historyPoints.length > 0;
                 } else {
                     const result = await this.fetchHistoryJson(
                         this.appendCacheBust(legacyUrl),
@@ -5405,7 +5546,8 @@
                     const vehicle = (result.json.vehicles || [])[0] || null;
                     const pointsApplied = await applyPointsVehicle(vehicle);
                     if (pointsApplied === 'ok') {
-                        this.scheduleIdleWork(() => applyAnalyticsVehicle(vehicle));
+                        applyAnalyticsVehicle(vehicle);
+                        loadOk = Array.isArray(this._historyPoints) && this._historyPoints.length > 0;
                     }
                 }
             } catch (err) {
@@ -5431,7 +5573,11 @@
                     );
                 }
             } finally {
-                if (loadSeq === this._historyLoadSeq) btn?.removeAttribute('disabled');
+                if (loadSeq === this._historyLoadSeq) {
+                    this._historyLoading = false;
+                    if (!this._historyExporting) btn?.removeAttribute('disabled');
+                    this.setHistoryExportReady(loadOk);
+                }
             }
         }
 

@@ -253,6 +253,26 @@
                 gap: 0.3rem;
             }
             .htt-list { max-height: none; }
+            .htt-export-bar {
+                display: flex;
+                flex-wrap: wrap;
+                align-items: center;
+                gap: 0.35rem;
+            }
+            .htt-export-bar.is-exporting {
+                pointer-events: none;
+                opacity: 0.85;
+            }
+            .htt-export-bar .btn:disabled {
+                cursor: not-allowed;
+                opacity: 0.55;
+            }
+            .htt-export-status {
+                display: inline-flex;
+                align-items: center;
+                gap: 0.25rem;
+                font-weight: 600;
+            }
         }
 
         .gt-sidebar-panel {
@@ -433,6 +453,10 @@
                 exportPdf: 'PDF',
                 exportCsv: 'CSV',
                 exportFailed: @json(__('app.tracking.report_export_failed')),
+                loadBeforeExport: @json(__('app.tracking.report_load_before_export')),
+                exporting: @json(__('app.tracking.report_exporting')),
+                exportingFmt: @json(__('app.tracking.report_exporting')),
+                exportStarted: @json(__('app.tracking.report_export_started')),
                 today: 'Today',
                 noTimeline: 'No trips for this day',
             },

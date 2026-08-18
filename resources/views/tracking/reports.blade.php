@@ -27,6 +27,23 @@
         border-radius: 12px;
     }
     .gt-report-overlay[hidden] { display: none !important; }
+    .gt-report-overlay.is-exporting {
+        background: rgba(245, 245, 247, 0.9);
+    }
+    .gt-report-loading-text {
+        margin-top: 0.75rem;
+        font-size: 0.875rem;
+        font-weight: 600;
+        color: var(--apple-label, #1d1d1f);
+    }
+    .gt-report-actions.is-busy {
+        pointer-events: none;
+        opacity: 0.72;
+    }
+    .gt-report-actions .btn:disabled {
+        cursor: not-allowed;
+        opacity: 0.55;
+    }
     .gt-report-empty {
         padding: 2.5rem 1rem;
         text-align: center;
@@ -457,6 +474,11 @@
         'exportFailed' => __('app.tracking.report_export_failed'),
         'exportTimeout' => __('app.tracking.report_export_timeout'),
         'exportTooLarge' => __('app.tracking.report_export_too_large'),
+        'exporting' => __('app.tracking.report_exporting'),
+        'exportingProgress' => __('app.tracking.report_exporting_progress'),
+        'exportCsvLabel' => __('app.tracking.report_export_csv_label'),
+        'exportXlsLabel' => __('app.tracking.report_export_xls_label'),
+        'exportPdfLabel' => __('app.tracking.report_export_pdf_label'),
         'sessionExpired' => __('app.auth.please_login_again'),
         'filterHelpLocation' => __('app.tracking.report_filter_help_location'),
         'filterHelpNoLocationType' => __('app.tracking.report_filter_help_no_location_type'),

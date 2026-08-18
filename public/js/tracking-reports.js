@@ -39,20 +39,79 @@
             .filter(Boolean);
     }
 
-    /** Keep CSV / Excel / PDF disabled while loading or until a report has finished. */
+    function formatExportLabel(fmt) {
+        if (fmt === 'csv') return i18n.exportCsvLabel || 'CSV';
+        if (fmt === 'pdf') return i18n.exportPdfLabel || 'PDF';
+        return i18n.exportXlsLabel || 'Excel';
+    }
+
+    function syncActionBusyState() {
+        const busy = state.loading || state.exporting;
+        const actions = document.querySelector('.gt-report-actions');
+        if (actions) actions.classList.toggle('is-busy', busy);
+        const run = $('gtReportRun');
+        if (run) run.disabled = busy;
+    }
+
+    /** Keep CSV / Excel / PDF disabled while loading/exporting or until a report has finished. */
     function syncExportButtons() {
         const disabled = state.loading || state.exporting || !state.reportLoaded;
         exportButtons().forEach((btn) => {
             btn.disabled = disabled;
             btn.setAttribute('aria-disabled', disabled ? 'true' : 'false');
-            if (state.loading) {
+            if (state.exporting) {
+                btn.title = i18n.exporting
+                    ? String(i18n.exporting).replace(':format', '')
+                    : 'Export in progress…';
+            } else if (state.loading) {
                 btn.title = i18n.waitUntilLoaded || i18n.loadingReport || 'Wait until the report finishes loading.';
             } else if (!state.reportLoaded) {
                 btn.title = i18n.loadBeforeExport || i18n.exportFailed || 'Load the report first, then export.';
-            } else if (!state.exporting) {
+            } else {
                 btn.removeAttribute('title');
             }
         });
+        syncActionBusyState();
+    }
+
+    /**
+     * Show/hide the centered spinner overlay for load or export.
+     * @param {'load'|'export'|false} mode
+     * @param {string} [progressText]
+     */
+    function setBusyOverlay(mode, progressText) {
+        const overlay = $('gtReportOverlay');
+        const progressEl = $('gtReportLoadingText');
+        const on = mode === 'load' || mode === 'export';
+        if (overlay) {
+            overlay.hidden = !on;
+            overlay.classList.toggle('is-exporting', mode === 'export');
+            overlay.setAttribute('aria-busy', on ? 'true' : 'false');
+        }
+        if (progressEl) progressEl.textContent = progressText || '';
+    }
+
+    function setLoading(on, progressText) {
+        state.loading = on;
+        if (on) {
+            state.reportLoaded = false;
+            const empty = $('gtReportEmpty');
+            if (empty) { empty.hidden = true; empty.textContent = ''; }
+            setBusyOverlay('load', progressText || i18n.loadingReport || 'Loading report…');
+        } else if (!state.exporting) {
+            setBusyOverlay(false, '');
+        }
+        syncExportButtons();
+    }
+
+    function setExporting(on, progressText) {
+        state.exporting = on;
+        if (on) {
+            setBusyOverlay('export', progressText || i18n.exporting || 'Preparing export…');
+        } else if (!state.loading) {
+            setBusyOverlay(false, '');
+        }
+        syncExportButtons();
     }
 
     const $ = (id) => document.getElementById(id);
@@ -1495,22 +1554,6 @@
         $('gtReportNext').addEventListener('click', () => { state.page++; renderPage(); });
     }
 
-    function setLoading(on, progressText) {
-        state.loading = on;
-        const overlay = $('gtReportOverlay');
-        if (overlay) overlay.hidden = !on;
-        const btn = $('gtReportRun');
-        if (btn) btn.disabled = on;
-        const progressEl = $('gtReportLoadingText');
-        if (progressEl) progressEl.textContent = progressText || '';
-        if (on) {
-            state.reportLoaded = false;
-            const empty = $('gtReportEmpty');
-            if (empty) { empty.hidden = true; empty.textContent = ''; }
-        }
-        syncExportButtons();
-    }
-
     function resetReportView() {
         state.columns = projectColumns(columnsFor($('gtReportType').value));
         state.rows = [];
@@ -1579,6 +1622,8 @@
     }
 
     async function runReport() {
+        if (state.loading || state.exporting) return;
+
         const ids = selectedIds();
         if (!ids.length) {
             showEmpty(i18n.selectVehicle || 'Select at least one vehicle.');
@@ -1588,6 +1633,10 @@
             showEmpty(i18n.customPickOne || 'Select at least one field.');
             return;
         }
+
+        // Lock exports immediately so they cannot be clicked during the load.
+        state.reportLoaded = false;
+        syncExportButtons();
 
         if (state.abortController) {
             state.abortController.abort();
@@ -1701,7 +1750,6 @@
 
     async function exportFmt(fmt) {
         if (state.loading || state.exporting) {
-            alert(i18n.waitUntilLoaded || i18n.loadingReport || 'Wait until the report finishes loading.');
             return;
         }
         if (!state.reportLoaded || !state.lastPayload) {
@@ -1735,27 +1783,25 @@
             });
         });
 
-        const buttons = exportButtons();
-        state.exporting = true;
-        buttons.forEach((btn) => {
-            btn.disabled = true;
-            btn.dataset.exportLabel = btn.textContent;
-        });
-        syncExportButtons();
+        const formatLabel = formatExportLabel(fmt);
+        const startText = (i18n.exporting || 'Preparing :format export…')
+            .replace(':format', formatLabel);
+        setExporting(true, startText);
 
         try {
             for (let i = 0; i < jobs.length; i++) {
                 const job = jobs[i];
-                if (jobs.length > 1) {
-                    buttons.forEach((btn) => {
-                        btn.disabled = true;
-                        btn.textContent = `${i18n.exportBatch || 'Export'} ${i + 1}/${jobs.length}…`;
-                    });
-                }
+                const progressText = jobs.length > 1
+                    ? (i18n.exportingProgress || 'Exporting :format (:done / :total)…')
+                        .replace(':format', formatLabel)
+                        .replace(':done', String(i + 1))
+                        .replace(':total', String(jobs.length))
+                    : startText;
+                setExporting(true, progressText);
                 await exportFmtBatch(
                     fmt,
                     job.ids,
-                    buttons,
+                    null,
                     jobs.length > 1 ? i + 1 : null,
                     job.from,
                     job.to,
@@ -1765,14 +1811,7 @@
             console.error('[reports] export failed', err);
             alert(err.message || i18n.exportFailed || 'Export failed. Please try again.');
         } finally {
-            state.exporting = false;
-            buttons.forEach((btn) => {
-                if (btn.dataset.exportLabel) {
-                    btn.textContent = btn.dataset.exportLabel;
-                    delete btn.dataset.exportLabel;
-                }
-            });
-            syncExportButtons();
+            setExporting(false, '');
         }
     }
 
@@ -1954,11 +1993,19 @@
     }
 
     function bindClick(id, handler) {
-        $(id)?.addEventListener('click', handler);
+        $(id)?.addEventListener('click', (ev) => {
+            const el = ev.currentTarget;
+            if (el && el.disabled) return;
+            handler(ev);
+        });
     }
 
-    bindClick('gtReportRun', runReport);
+    bindClick('gtReportRun', () => {
+        if (state.loading || state.exporting) return;
+        runReport();
+    });
     $('gtReportType')?.addEventListener('change', () => {
+        if (state.loading || state.exporting) return;
         updateFilterVisibility();
         persistFilters();
         if (isCustomMode()) rebuildCustomFields();

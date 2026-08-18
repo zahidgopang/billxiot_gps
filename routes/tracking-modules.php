@@ -39,7 +39,7 @@ return function (): void {
         Route::get('/history-json', [GlobalTrackingController::class, 'historyJson'])->name('history-json');
         Route::get('/history-points-json', [GlobalTrackingController::class, 'historyPointsJson'])->name('history-points-json');
         Route::get('/history-analytics-json', [GlobalTrackingController::class, 'historyAnalyticsJson'])->name('history-analytics-json');
-        Route::get('/history-export', [GlobalTrackingController::class, 'historyExport'])->name('history-export');
+        Route::match(['get', 'post'], '/history-export', [GlobalTrackingController::class, 'historyExport'])->name('history-export');
         Route::get('/history-geocode', [GlobalTrackingController::class, 'historyGeocode'])->name('history-geocode');
     });
 

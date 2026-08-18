@@ -310,16 +310,59 @@
 
         function renderExport() {
             if (!opts.exportEl) return;
-            opts.exportEl.innerHTML = `<div class="htt-toolbar">
-                <button type="button" class="btn btn-outline-secondary btn-sm" data-htt-export="xlsx">${esc(i18n.exportExcel || 'Excel')}</button>
-                <button type="button" class="btn btn-outline-secondary btn-sm" data-htt-export="pdf">${esc(i18n.exportPdf || 'PDF')}</button>
-                <button type="button" class="btn btn-outline-secondary btn-sm" data-htt-export="csv">${esc(i18n.exportCsv || 'CSV')}</button>
+            opts.exportEl.innerHTML = `<div class="htt-toolbar htt-export-bar">
+                <button type="button" class="btn btn-outline-secondary btn-sm" data-htt-export="xlsx" disabled aria-disabled="true">${esc(i18n.exportExcel || 'Excel')}</button>
+                <button type="button" class="btn btn-outline-secondary btn-sm" data-htt-export="pdf" disabled aria-disabled="true">${esc(i18n.exportPdf || 'PDF')}</button>
+                <button type="button" class="btn btn-outline-secondary btn-sm" data-htt-export="csv" disabled aria-disabled="true">${esc(i18n.exportCsv || 'CSV')}</button>
+                <span class="htt-export-status text-muted small" data-htt-export-status hidden></span>
             </div>`;
             opts.exportEl.querySelectorAll('[data-htt-export]').forEach((btn) => {
-                btn.addEventListener('click', () => {
+                btn.addEventListener('click', (ev) => {
+                    ev.preventDefault();
+                    if (btn.disabled || opts.exportEl.classList.contains('is-exporting')) return;
                     if (typeof opts.onExport === 'function') opts.onExport(btn.dataset.httExport);
                 });
             });
+        }
+
+        /** Enable/disable export buttons (e.g. locked until Show finishes). */
+        function setExportsEnabled(enabled) {
+            if (!opts.exportEl) return;
+            if (opts.exportEl.classList.contains('is-exporting')) {
+                // Keep locked while an export download is in progress.
+                return;
+            }
+            const on = !!enabled;
+            opts.exportEl.querySelectorAll('[data-htt-export]').forEach((btn) => {
+                btn.disabled = !on;
+                btn.setAttribute('aria-disabled', on ? 'false' : 'true');
+                btn.title = on
+                    ? ''
+                    : (i18n.loadBeforeExport || 'Load history first, then export.');
+            });
+            opts.exportEl.classList.toggle('is-ready', on);
+        }
+
+        /** Show spinner + lock all export buttons while a file is downloading. */
+        function setExporting(on, label) {
+            if (!opts.exportEl) return;
+            const busy = !!on;
+            const buttons = opts.exportEl.querySelectorAll('[data-htt-export]');
+            const status = opts.exportEl.querySelector('[data-htt-export-status]');
+            opts.exportEl.classList.toggle('is-exporting', busy);
+            buttons.forEach((btn) => {
+                btn.disabled = true;
+                btn.setAttribute('aria-disabled', 'true');
+            });
+            if (status) {
+                status.hidden = !busy;
+                status.innerHTML = busy
+                    ? `<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>${esc(label || i18n.exporting || 'Exporting…')}`
+                    : '';
+            }
+            if (!busy) {
+                // Parent should call setExportsEnabled(true) again when ready.
+            }
         }
 
         function setVehicleLabel(name, plate) {
@@ -354,15 +397,20 @@
             }
             if (opts.listEl) opts.listEl.innerHTML = '';
             if (opts.vehicleEl) opts.vehicleEl.innerHTML = '';
+            setExporting(false);
+            setExportsEnabled(false);
         }
 
         renderDayNav();
         renderExport();
+        setExportsEnabled(false);
 
         return {
             setData,
             clear,
             setDay,
+            setExportsEnabled,
+            setExporting,
             getDay: () => currentDay,
             formatDuration,
             normalizeStats,
