@@ -13,6 +13,7 @@ use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
 
 class TrackingEventsController extends Controller
@@ -67,11 +68,25 @@ class TrackingEventsController extends Controller
                     'device_name' => $device->mapMarkerTitle(),
                     'lat' => $event->lat,
                     'lng' => $event->lng,
+                    'read' => false,
                 ]);
             }
         }
 
         usort($all, fn ($a, $b) => strcmp($b['time'] ?? '', $a['time'] ?? ''));
+        $readIds = [];
+        if (Schema::hasTable('vehicle_event_reads')) {
+            $readIds = VehicleEventRead::query()
+                ->where('user_id', $user->id)
+                ->pluck('vehicle_event_id')
+                ->map(fn ($id) => (int) $id)
+                ->all();
+        }
+        foreach ($all as &$row) {
+            $row['read'] = in_array((int) ($row['id'] ?? 0), $readIds, true);
+        }
+        unset($row);
+
         $total = count($all);
         $slice = array_slice($all, ($page - 1) * $perPage, $perPage);
 

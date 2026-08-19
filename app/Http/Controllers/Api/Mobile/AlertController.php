@@ -12,12 +12,21 @@ use App\Services\Tracking\GlobalTrackingService;
 use App\Services\Tracking\NotificationPreferenceService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 class AlertController extends Controller
 {
     use RespondsWithMobileJson;
+
+    private const DEFAULT_HISTORY_DAYS = 90;
+
+    private const MAX_PER_PAGE = 100;
+
+    private const DEFAULT_PER_PAGE = 50;
+
+    private const MAX_DEVICES = 50;
 
     public function __construct(
         private EventReaderInterface $events,
@@ -31,27 +40,42 @@ class AlertController extends Controller
         $devices = $this->tracking->devicesForActor($user);
         $deviceIds = $devices->pluck('id');
 
+        $page = max(1, (int) $request->query('page', 1));
+        $perPage = min(self::MAX_PER_PAGE, max(1, (int) $request->query('limit', $request->query('per_page', self::DEFAULT_PER_PAGE))));
+        $unreadOnly = $request->boolean('unread_only');
+
         if ($deviceIds->isEmpty()) {
-            return $this->mobileSuccess([]);
+            return $this->mobileSuccess($this->paginatedPayload([], $page, $perPage, 0));
         }
 
         $devicesById = $devices->keyBy('id');
         $readIds = $this->readEventIds($user->id);
-        $limit = min(100, max(1, (int) $request->query('limit', 50)));
 
         $from = $request->filled('from')
             ? Carbon::parse($request->input('from'))->startOfDay()
-            : now()->subDays(30);
+            : now()->subDays(self::DEFAULT_HISTORY_DAYS);
         $to = $request->filled('to')
             ? Carbon::parse($request->input('to'))->endOfDay()
             : null;
 
-        $events = $this->fetchFleetEvents($deviceIds, $devicesById, $from, $to, $limit, $request);
+        $events = $this->collectFleetEvents($deviceIds, $devicesById, $from, $to, $request);
         $events = $this->applyWebPreferences($user, $events, $request);
 
-        return $this->mobileSuccess(
-            $events->map(fn (VehicleEvent $e) => $this->formatAlert($e, $readIds, $devicesById))->values()
-        );
+        if ($unreadOnly) {
+            $events = $events
+                ->filter(fn (VehicleEvent $e) => ! in_array($e->id, $readIds, true))
+                ->values();
+        }
+
+        $total = $events->count();
+        $slice = $events->slice(($page - 1) * $perPage, $perPage)->values();
+
+        $alerts = $slice
+            ->map(fn (VehicleEvent $e) => $this->formatAlert($e, $readIds, $devicesById))
+            ->values()
+            ->all();
+
+        return $this->mobileSuccess($this->paginatedPayload($alerts, $page, $perPage, $total));
     }
 
     public function unread(Request $request)
@@ -69,20 +93,22 @@ class AlertController extends Controller
 
         $events = $this->applyWebPreferences(
             $user,
-            $this->fetchFleetEvents(
+            $this->collectFleetEvents(
                 $deviceIds,
                 $devicesById,
-                now()->subDays(30),
+                now()->subDays(self::DEFAULT_HISTORY_DAYS),
                 null,
-                50,
                 $request
             ),
             $request
         )->filter(fn (VehicleEvent $e) => ! in_array($e->id, $readIds, true));
 
+        $previewLimit = min(self::MAX_PER_PAGE, max(1, (int) $request->query('limit', 50)));
+
         return $this->mobileSuccess([
             'count' => $events->count(),
             'alerts' => $events
+                ->take($previewLimit)
                 ->map(fn (VehicleEvent $e) => $this->formatAlert($e, $readIds, $devicesById))
                 ->values(),
         ]);
@@ -96,9 +122,10 @@ class AlertController extends Controller
         ]);
 
         $user = $request->user();
-        $deviceIds = collect($this->tracking->allowedDeviceIds($user));
 
         $validIds = collect($validated['alert_ids'])
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn (int $id) => $id > 0)
             ->unique()
             ->values();
 
@@ -124,72 +151,62 @@ class AlertController extends Controller
     }
 
     /**
-     * Same sources as web alerts (Traccar tc_events when configured, else vehicle_events).
-     *
-     * @param  \Illuminate\Support\Collection<int, Device>  $devicesById
-     * @return \Illuminate\Support\Collection<int, VehicleEvent>
+     * @param  list<array<string, mixed>>  $alerts
+     * @return array<string, mixed>
      */
-    private function fetchFleetEvents(
+    private function paginatedPayload(array $alerts, int $page, int $perPage, int $total): array
+    {
+        return [
+            'alerts' => $alerts,
+            'page' => $page,
+            'per_page' => $perPage,
+            'total' => $total,
+            'has_more' => ($page * $perPage) < $total,
+        ];
+    }
+
+    /**
+     * @param  Collection<int, int>|Collection<int, mixed>  $deviceIds
+     * @param  Collection<int, Device>  $devicesById
+     * @return Collection<int, VehicleEvent>
+     */
+    private function collectFleetEvents(
         $deviceIds,
         $devicesById,
         Carbon $from,
         ?Carbon $to,
-        int $limit,
         Request $request,
-    ) {
+    ): Collection {
+        $allowed = $devicesById;
         if ($request->filled('device_id')) {
             $device = $devicesById->get((int) $request->device_id);
-            if ($device) {
-                return $this->events->forDevice($device, $from, $to, limit: $limit);
-            }
+            $allowed = $device ? collect([(int) $device->id => $device]) : collect();
+        } else {
+            $allowed = $devicesById->take(self::MAX_DEVICES);
+        }
 
+        if ($allowed->isEmpty()) {
             return collect();
         }
 
-        $events = $this->events->recentForDevices($deviceIds, $limit);
+        $types = $request->filled('type') ? [(string) $request->input('type')] : null;
+        $perDeviceLimit = min(200, max(40, (int) ceil(400 / max(1, $allowed->count()))));
 
-        if ($events->isEmpty()) {
-            $merged = collect();
-            foreach ($devicesById as $device) {
-                $merged = $merged->merge(
-                    $this->events->forDevice($device, $from, $to, limit: (int) ceil($limit / max(1, $devicesById->count())))
-                );
-            }
-
-            $events = $merged
-                ->sortByDesc(fn (VehicleEvent $e) => $e->occurred_at)
-                ->take($limit)
-                ->values();
+        $merged = collect();
+        foreach ($allowed as $device) {
+            $merged = $merged->merge(
+                $this->events->forDevice($device, $from, $to, $types, limit: $perDeviceLimit)
+            );
         }
 
-        if ($request->filled('device_id')) {
-            $deviceId = (int) $request->device_id;
-            $events = $events->filter(fn (VehicleEvent $e) => (int) $e->device_id === $deviceId)->values();
-        }
-
-        if ($request->filled('from')) {
-            $fromFilter = Carbon::parse($request->input('from'))->startOfDay();
-            $events = $events->filter(
-                fn (VehicleEvent $e) => $e->occurred_at && $e->occurred_at >= $fromFilter
-            )->values();
-        }
-
-        if ($request->filled('to')) {
-            $toFilter = Carbon::parse($request->input('to'))->endOfDay();
-            $events = $events->filter(
-                fn (VehicleEvent $e) => $e->occurred_at && $e->occurred_at <= $toFilter
-            )->values();
-        }
-
-        return $events;
+        return $merged
+            ->sortByDesc(fn (VehicleEvent $e) => $e->occurred_at?->getTimestamp() ?? 0)
+            ->values();
     }
 
     /**
-     * Hide event types the user disabled for the in-app/web feed. Skipped when the
-     * request explicitly filters by a single type (the user asked for it directly).
-     *
-     * @param  \Illuminate\Support\Collection<int, VehicleEvent>  $events
-     * @return \Illuminate\Support\Collection<int, VehicleEvent>
+     * @param  Collection<int, VehicleEvent>  $events
+     * @return Collection<int, VehicleEvent>
      */
     private function applyWebPreferences($user, $events, Request $request)
     {
@@ -208,7 +225,7 @@ class AlertController extends Controller
     }
 
     /**
-     * @param  \Illuminate\Support\Collection<int, Device>  $devicesById
+     * @param  Collection<int, Device>  $devicesById
      * @param  list<int>  $readIds
      * @return array<string, mixed>
      */
@@ -237,6 +254,7 @@ class AlertController extends Controller
         return VehicleEventRead::query()
             ->where('user_id', $userId)
             ->pluck('vehicle_event_id')
+            ->map(fn ($id) => (int) $id)
             ->all();
     }
 }

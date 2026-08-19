@@ -72,6 +72,8 @@ return function (): void {
     Route::prefix('notifications')->name('notifications.')->middleware('permission:web.tracking.hub.notifications')->group(function () {
         Route::get('/', [TrackingNotificationsController::class, 'index'])->name('index');
         Route::get('/json', [TrackingNotificationsController::class, 'json'])->name('json');
+        Route::get('/inbox', [TrackingNotificationsController::class, 'inbox'])->name('inbox');
+        Route::post('/read', [TrackingNotificationsController::class, 'markRead'])->name('read');
         Route::post('/', [TrackingNotificationsController::class, 'update'])->name('update');
     });
 
