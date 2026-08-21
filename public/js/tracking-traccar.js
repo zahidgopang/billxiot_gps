@@ -1333,12 +1333,12 @@
             this._suppressClusterDuringSeed = true;
             try {
                 ids.forEach((id) => {
-                    this.ensureMarker(id);
-                    const v = this.vehicles.get(id);
-                    if (v?.lat != null && v?.lng != null) {
-                        this.applyPoint(id, v);
-                    }
-                });
+                this.ensureMarker(id);
+                const v = this.vehicles.get(id);
+                if (v?.lat != null && v?.lng != null) {
+                    this.applyPoint(id, v);
+                }
+            });
                 ids.slice(0, MAX_ECHO).forEach((id) => this.subscribePusher(id));
             } finally {
                 this._suppressClusterDuringSeed = false;
@@ -2854,7 +2854,7 @@
                         || null,
                 });
             } else {
-                this.placeVehicleMarker(st, id, merged.lat, merged.lng, liveColor, h);
+            this.placeVehicleMarker(st, id, merged.lat, merged.lng, liveColor, h);
             }
             // Cluster rebuild every GPS fix freezes/flickers markers — throttle hard.
             // Followed / panel vehicle is cluster-break already; skip rebuild for those.
@@ -2943,8 +2943,8 @@
                 if (prevKey === nextKey && prevTier === tier) {
                     // Still refresh "ago" on the followed HUD every second.
                     if (this.followId === id) this.scheduleFollowHudUpdate(false);
-                    return;
-                }
+                return;
+            }
 
                 const motionKey = v.motion_status_key
                     || motionKeyFromTelemetry(v.speed, v.ignition);
@@ -3221,10 +3221,10 @@
                 for (let i = 0; i < ids.length; i += BATCH) {
                     const chunk = ids.slice(i, i + BATCH);
                     const url = `${this.cfg.liveJsonUrl}?ids=${chunk.join(',')}&_=${Date.now()}`;
-                    const res = await fetch(url, { credentials: 'same-origin', cache: 'no-store' });
+                const res = await fetch(url, { credentials: 'same-origin', cache: 'no-store' });
                     if (!res.ok) continue;
-                    const data = await res.json();
-                    (data.devices || []).forEach((d) => this.applyPoint(d.id, d));
+                const data = await res.json();
+                (data.devices || []).forEach((d) => this.applyPoint(d.id, d));
                 }
                 this.syncVisibleVehicleRoutePolylines();
                 this.fitAllIfNeeded();
@@ -3453,12 +3453,12 @@
 
         applyBaseMapType(layer) {
             if (!this.map || !global.google?.maps?.MapTypeId) return;
-            const map = {
-                roadmap: google.maps.MapTypeId.ROADMAP,
-                satellite: google.maps.MapTypeId.SATELLITE,
-                hybrid: google.maps.MapTypeId.HYBRID,
-                terrain: google.maps.MapTypeId.TERRAIN,
-            };
+                            const map = {
+                                roadmap: google.maps.MapTypeId.ROADMAP,
+                                satellite: google.maps.MapTypeId.SATELLITE,
+                                hybrid: google.maps.MapTypeId.HYBRID,
+                                terrain: google.maps.MapTypeId.TERRAIN,
+                            };
             this.map.setMapTypeId(map[layer] || google.maps.MapTypeId.ROADMAP);
         }
 
@@ -3954,8 +3954,8 @@
         updateFollowBtn() {
             const btn = document.getElementById('tcFollow');
             if (btn) {
-                btn.classList.toggle('active', !!this.followId);
-                btn.setAttribute('aria-pressed', this.followId ? 'true' : 'false');
+            btn.classList.toggle('active', !!this.followId);
+            btn.setAttribute('aria-pressed', this.followId ? 'true' : 'false');
             }
             this.updateFollowOverlayChrome();
             this.syncFollowHudVisibility();
@@ -6044,7 +6044,7 @@
                         if (!Number.isFinite(prev) || prev < minOpenH) {
                             localStorage.setItem('tcFooterHeight', String(defaultH));
                         }
-                    } catch (_) { /* ignore */ }
+                } catch (_) { /* ignore */ }
                     applyHeight(defaultH);
                     return;
                 }

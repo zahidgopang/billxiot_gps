@@ -252,12 +252,14 @@ class TrackingMetricsService
                         ->pluck('total', 'day');
                 }
             } else {
+                // Full-fleet admin chart: DATE(fixtime) stays index-friendly.
+                // CONVERT_TZ() over all tc_positions regularly times out on production.
                 $gpsByDay = $gpsQuery
-                    ->selectRaw('DATE(CONVERT_TZ(fixtime, ?, ?)) as day, COUNT(*) as total', ['+00:00', $off])
+                    ->selectRaw('DATE(fixtime) as day, COUNT(*) as total')
                     ->groupBy('day')
                     ->pluck('total', 'day');
                 $devicesByDay = $devQuery
-                    ->selectRaw('DATE(CONVERT_TZ(fixtime, ?, ?)) as day, COUNT(DISTINCT deviceid) as total', ['+00:00', $off])
+                    ->selectRaw('DATE(fixtime) as day, COUNT(DISTINCT deviceid) as total')
                     ->groupBy('day')
                     ->pluck('total', 'day');
             }
@@ -360,7 +362,14 @@ class TrackingMetricsService
     public function lastPositionAt(): ?Carbon
     {
         if (TraccarMode::readsTraccar() && TraccarSchema::isReady()) {
-            $max = DB::table(config('traccar.tables.positions', 'tc_positions'))->max('fixtime');
+            $devicesTable = config('traccar.tables.devices', 'tc_devices');
+            $positionsTable = config('traccar.tables.positions', 'tc_positions');
+
+            // Use each device's current positionid (O(devices)) instead of MAX(fixtime)
+            // over all tc_positions, which times out on production GPS tables.
+            $max = DB::table($devicesTable.' as d')
+                ->join($positionsTable.' as p', 'd.positionid', '=', 'p.id')
+                ->max('p.fixtime');
 
             // fixtime is UTC — parse as UTC then present in app timezone.
             return $max ? Carbon::parse($max, 'UTC')->setTimezone(config('app.timezone')) : null;
