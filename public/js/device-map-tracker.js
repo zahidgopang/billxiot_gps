@@ -979,7 +979,7 @@
 
         const tier = connectivityTier(point);
         if (tier === 'offline') {
-            return 'offline';
+            return 'stopped';
         }
         if (tier === 'stale') {
             return 'stale';

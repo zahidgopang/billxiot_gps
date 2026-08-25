@@ -9,7 +9,7 @@ namespace App\Services\Mobile;
  * - live:    &lt; 2 min  → Running / Stopped / Parked / Moving from telemetry
  * - delayed: 2–10 min  → Delayed (last-known motion preserved)
  * - stale:   10–30 min → Weak Signal / Stale
- * - offline: &gt; 30 min → Offline (never from ignition OFF or speed 0 alone)
+ * - offline: &gt; 30 min → Stopped if a last GPS fix exists; Offline only with no position
  */
 class VehicleStatusSpec
 {
@@ -153,9 +153,11 @@ class VehicleStatusSpec
         $tier = self::connectivityTier($secondsSinceUpdate, $thresholds);
 
         if ($tier === 'offline') {
+            // Had GPS that aged out (typical parked/stopped vehicle): show Stopped.
+            // No-fix / inactive / blocked stay Offline via the resolver, not this path.
             return [
-                'key' => 'offline',
-                'label' => self::labelForKey('offline'),
+                'key' => 'stopped',
+                'label' => self::labelForKey('stopped'),
                 'tier' => 'offline',
                 'motion' => $motion,
             ];

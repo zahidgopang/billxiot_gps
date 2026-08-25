@@ -98,27 +98,27 @@ class MobileMapStatusResolverTest extends TestCase
         $this->assertSame('running', $result['last_known_status_key']);
     }
 
-    /** QA scenario 7: offline — last update 45 min (not because of ignition or speed) */
-    public function test_offline_only_when_last_update_exceeds_thirty_minutes(): void
+    /** QA scenario 7: last update 45 min with GPS → Stopped, not Offline */
+    public function test_stopped_when_last_update_exceeds_thirty_minutes_but_gps_exists(): void
     {
         $device = new Device(['status' => 'active']);
         $latest = $this->location(['speed' => 0, 'ignition' => false], 2700);
 
         $result = $this->resolver->resolve($latest, $device);
 
-        $this->assertSame('offline', $result['key']);
+        $this->assertSame('stopped', $result['key']);
         $this->assertSame('offline', $result['connectivity_tier']);
         $this->assertSame('parked', $result['last_known_status_key']);
     }
 
-    public function test_parked_with_high_last_known_speed_is_offline_not_moving_display(): void
+    public function test_stale_gps_with_last_known_speed_shows_stopped_not_moving(): void
     {
         $device = new Device(['status' => 'active']);
         $latest = $this->location(['speed' => 89, 'ignition' => true], 2700);
 
         $result = $this->resolver->resolve($latest, $device);
 
-        $this->assertSame('offline', $result['key']);
+        $this->assertSame('stopped', $result['key']);
         $this->assertSame('running', $result['last_known_status_key']);
     }
 

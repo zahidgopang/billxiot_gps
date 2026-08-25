@@ -46,8 +46,8 @@
         switch (String(key || '').toLowerCase()) {
             case 'running': return i.statusRunning || 'Running';
             case 'moving': return i.statusMoving || 'Moving';
-            case 'idle':
-            case 'stopped': return i.statusIdle || i.statusStopped || 'Idle';
+            case 'idle': return i.statusIdle || 'Idle';
+            case 'stopped': return i.statusStopped || i.statusIdle || 'Stopped';
             case 'parked':
             case 'parking':
             case 'ignition_off': return i.statusParked || i.statusParking || 'Parked';
@@ -2935,6 +2935,9 @@
                     } else {
                         return;
                     }
+                } else if (tier === 'offline') {
+                    nextKey = 'stopped';
+                    nextLabel = statusLabelForKey('stopped', i18n);
                 } else {
                     nextKey = tier;
                     nextLabel = statusLabelForKey(tier, i18n);
