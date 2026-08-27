@@ -26,7 +26,12 @@
 
         <div class="d-flex justify-content-between mb-3">
             <h5>{{ __('app.admin.users.title') }}</h5>
-            <a href="{{ route($panel . '.users.create') }}" class="btn btn-primary btn-sm">{{ __('app.forms.add_user') }}</a>
+            <div class="d-flex flex-wrap gap-2">
+                <a href="{{ route($panel . '.users.export', request()->only('q')) }}" class="btn btn-outline-success btn-sm">
+                    <i class="fas fa-file-excel me-1"></i>{{ __('app.admin.users.export_excel') }}
+                </a>
+                <a href="{{ route($panel . '.users.create') }}" class="btn btn-primary btn-sm">{{ __('app.forms.add_user') }}</a>
+            </div>
         </div>
 
         <form class="admin-filter-bar d-flex flex-wrap gap-2 align-items-end mb-3" method="GET">

@@ -10,6 +10,7 @@ use App\Models\DeviceRouteAssignment;
 use App\Models\RoutePlan;
 use App\Models\User;
 use App\Services\AdminAuditService;
+use App\Services\Admin\FleetListExportService;
 use App\Services\Inventory\InventoryService;
 use App\Services\Stock\ClientStockBalanceService;
 use App\Services\Tracking\DeviceFuelService;
@@ -18,6 +19,7 @@ use App\Support\Traccar\TraccarSchema;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class DeviceController extends Controller
 {
@@ -35,30 +37,9 @@ class DeviceController extends Controller
     {
         $this->authorizePermission('devices.view');
 
-        $q = $this->tenantScope()->scopeDevices(Device::query(), $request->user())
-            ->with('user')
-            ->orderByDesc('id');
-
-        if ($search = $request->query('q')) {
-            $q->where(function ($w) use ($search) {
-                $w->whereImeiLike("%{$search}%")
-                    ->orWhere('name', 'like', "%{$search}%")
-                    ->orWhereRaw(
-                        'JSON_UNQUOTE(JSON_EXTRACT(' . $w->qualifyColumn('attributes') . ', ?)) LIKE ?',
-                        ['$.' . \App\Support\Traccar\TraccarAppFields::KEY_VEHICLE_NAME, "%{$search}%"]
-                    )
-                    ->orWhereRaw(
-                        'JSON_UNQUOTE(JSON_EXTRACT(' . $w->qualifyColumn('attributes') . ', ?)) LIKE ?',
-                        ['$.' . \App\Support\Traccar\TraccarAppFields::KEY_VEHICLE_NUMBER, "%{$search}%"]
-                    )
-                    ->orWhereRaw(
-                        'JSON_UNQUOTE(JSON_EXTRACT(' . $w->qualifyColumn('attributes') . ', ?)) LIKE ?',
-                        ['$.' . \App\Support\Traccar\TraccarAppFields::KEY_VEHICLE_MODEL, "%{$search}%"]
-                    );
-            });
-        }
-
-        $devices = $q->paginate(15)->withQueryString();
+        $devices = $this->filteredDevicesQuery($request)
+            ->paginate(15)
+            ->withQueryString();
         app(\App\Services\Tracking\DevicePositionLoader::class)->attachLatestToMany($devices->getCollection());
 
         // Change-icon modal needs every in-scope vehicle, not only the current page.
@@ -519,5 +500,45 @@ class DeviceController extends Controller
             ['device_id' => $device->id],
             ['route_id' => (int) $routeId],
         );
+    }
+
+    public function export(Request $request, FleetListExportService $export): StreamedResponse
+    {
+        $this->authorizePermission('devices.view');
+
+        $devices = $this->filteredDevicesQuery($request)->get();
+
+        return $export->devicesExcel(
+            $devices,
+            'vehicles-'.$this->panelPrefix().'-'.now()->format('Ymd-His').'.xls'
+        );
+    }
+
+    private function filteredDevicesQuery(Request $request): \Illuminate\Database\Eloquent\Builder
+    {
+        $q = $this->tenantScope()->scopeDevices(Device::query(), $request->user())
+            ->with('user')
+            ->orderByDesc('id');
+
+        if ($search = $request->query('q')) {
+            $q->where(function ($w) use ($search) {
+                $w->whereImeiLike("%{$search}%")
+                    ->orWhere('name', 'like', "%{$search}%")
+                    ->orWhereRaw(
+                        'JSON_UNQUOTE(JSON_EXTRACT(' . $w->qualifyColumn('attributes') . ', ?)) LIKE ?',
+                        ['$.' . \App\Support\Traccar\TraccarAppFields::KEY_VEHICLE_NAME, "%{$search}%"]
+                    )
+                    ->orWhereRaw(
+                        'JSON_UNQUOTE(JSON_EXTRACT(' . $w->qualifyColumn('attributes') . ', ?)) LIKE ?',
+                        ['$.' . \App\Support\Traccar\TraccarAppFields::KEY_VEHICLE_NUMBER, "%{$search}%"]
+                    )
+                    ->orWhereRaw(
+                        'JSON_UNQUOTE(JSON_EXTRACT(' . $w->qualifyColumn('attributes') . ', ?)) LIKE ?',
+                        ['$.' . \App\Support\Traccar\TraccarAppFields::KEY_VEHICLE_MODEL, "%{$search}%"]
+                    );
+            });
+        }
+
+        return $q;
     }
 }

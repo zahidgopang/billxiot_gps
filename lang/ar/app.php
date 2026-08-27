@@ -219,6 +219,15 @@ return [
             'last_known' => 'آخر موقع معروف',
             'device_details' => 'تفاصيل الجهاز',
             'back_to_list' => 'العودة إلى الأجهزة',
+            'export_excel' => 'تصدير Excel',
+        ],
+        'fleet_export' => [
+            'excel' => 'تصدير Excel',
+            'sim_number' => 'رقم الشريحة',
+            'customer_email' => 'بريد العميل',
+            'customer_phone' => 'هاتف العميل',
+            'vehicles' => 'المركبات',
+            'role' => 'الدور',
         ],
         'stock' => [
             'title' => 'مخزون الأجهزة',
@@ -396,6 +405,7 @@ return [
             'account_details' => 'تفاصيل الحساب',
             'assigned_devices' => 'الأجهزة المخصصة',
             'no_devices' => 'لا توجد أجهزة مخصصة لهذا المستخدم بعد.',
+            'export_excel' => 'تصدير Excel',
         ],
         'subscriptions' => [
             'title' => 'الاشتراكات',
@@ -720,6 +730,7 @@ return [
         'devices' => [
             'title' => 'أجهزة التتبع الخاصة بي',
             'subtitle' => 'عرض ومراقبة أجهزة GPS المخصصة لحسابك',
+            'export_excel' => 'تصدير Excel',
             'add' => 'إضافة جهاز',
             'total' => 'إجمالي الأجهزة',
             'online_now' => 'متصل الآن',

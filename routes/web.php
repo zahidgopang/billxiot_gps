@@ -176,6 +176,7 @@ Route::middleware(['auth', 'user.active', 'tracker.access'])->group(function () 
     // User Devices Routes
     Route::prefix('user/devices')->name('user.devices.')->group(function () {
         Route::get('/', [UserDevicesController::class, 'index'])->name('index');
+        Route::get('/export', [UserDevicesController::class, 'export'])->name('export');
         Route::get('/fleet-map', [UserDevicesController::class, 'fleetMap'])->name('fleet-map');
         Route::get('/fleet-map/live-json', [UserDevicesController::class, 'fleetMapLiveJson'])->name('fleet-map.live-json');
         Route::post('/{device}/vehicle-label', [UserDevicesController::class, 'updateVehicleLabel'])->name('vehicle-label');
@@ -231,6 +232,8 @@ Route::middleware(['auth', 'panel:admin', 'can:admin'])
 
         Route::patch('users/{user}/toggle-status', [AdminUserController::class, 'toggleStatus'])
             ->name('users.toggle-status');
+        Route::get('users/export', [AdminUserController::class, 'export'])
+            ->name('users.export');
         Route::resource('users', AdminUserController::class);
         Route::resource('sub-accounts', SubAccountController::class)
             ->parameters(['sub-accounts' => 'subAccount']);
@@ -260,6 +263,8 @@ Route::middleware(['auth', 'panel:admin', 'can:admin'])
             ->name('reports.profit-loss');
         Route::patch('devices/{device}/toggle-status', [AdminDeviceController::class, 'toggleStatus'])
             ->name('devices.toggle-status');
+        Route::get('devices/export', [AdminDeviceController::class, 'export'])
+            ->name('devices.export');
         Route::post('devices/map-appearance-bulk', [UserDevicesController::class, 'updateMapAppearanceBulk'])
             ->name('devices.map-appearance-bulk');
         Route::post('devices/map-custom-icon-bulk', [UserDevicesController::class, 'uploadMapCustomIconBulk'])
@@ -417,12 +422,16 @@ Route::middleware(['auth', 'panel:client', 'can:client-panel'])
 
         Route::patch('users/{user}/toggle-status', [AdminUserController::class, 'toggleStatus'])
             ->name('users.toggle-status');
+        Route::get('users/export', [AdminUserController::class, 'export'])
+            ->name('users.export');
         Route::resource('users', AdminUserController::class)->except(['destroy']);
         Route::resource('sub-accounts', SubAccountController::class)
             ->parameters(['sub-accounts' => 'subAccount']);
 
         Route::patch('devices/{device}/toggle-status', [AdminDeviceController::class, 'toggleStatus'])
             ->name('devices.toggle-status');
+        Route::get('devices/export', [AdminDeviceController::class, 'export'])
+            ->name('devices.export');
         Route::post('devices/map-appearance-bulk', [UserDevicesController::class, 'updateMapAppearanceBulk'])
             ->name('devices.map-appearance-bulk');
         Route::post('devices/map-custom-icon-bulk', [UserDevicesController::class, 'uploadMapCustomIconBulk'])

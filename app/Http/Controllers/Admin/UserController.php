@@ -7,9 +7,11 @@ use App\Http\Controllers\Concerns\InteractsWithTenantAuthorization;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Services\AdminAuditService;
+use App\Services\Admin\FleetListExportService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\Rule;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class UserController extends Controller
 {
@@ -23,21 +25,7 @@ class UserController extends Controller
     {
         $this->authorizePermission('users.view');
 
-        $q = $this->tenantScope()->scopeUsers(User::query(), $request->user());
-
-        if ($this->isClientPanel()) {
-            $q->where($q->qualifyColumn('id'), '!=', $request->user()->id);
-            $this->scopeEndUsersOnly($q);
-        }
-
-        if ($search = $request->query('q')) {
-            $q->where(function ($w) use ($search) {
-                $w->where('name', 'like', "%{$search}%")
-                    ->orWhere('email', 'like', "%{$search}%");
-            });
-        }
-
-        $users = $q
+        $users = $this->filteredUsersQuery($request)
             ->withCount('clientMemberships')
             ->withCount('devices as tracker_devices_count')
             ->with(['clients:id,name'])
@@ -329,6 +317,41 @@ class UserController extends Controller
             ->exists();
 
         abort_unless($exists, 404);
+    }
+
+    public function export(Request $request, FleetListExportService $export): StreamedResponse
+    {
+        $this->authorizePermission('users.view');
+
+        $users = $this->filteredUsersQuery($request)
+            ->withCount('devices as tracker_devices_count')
+            ->with(['clients:id,name'])
+            ->orderByDesc('id')
+            ->get();
+
+        return $export->usersExcel(
+            $users,
+            'customers-'.$this->panelPrefix().'-'.now()->format('Ymd-His').'.xls'
+        );
+    }
+
+    private function filteredUsersQuery(Request $request): \Illuminate\Database\Eloquent\Builder
+    {
+        $q = $this->tenantScope()->scopeUsers(User::query(), $request->user());
+
+        if ($this->isClientPanel()) {
+            $q->where($q->qualifyColumn('id'), '!=', $request->user()->id);
+            $this->scopeEndUsersOnly($q);
+        }
+
+        if ($search = $request->query('q')) {
+            $q->where(function ($w) use ($search) {
+                $w->where('name', 'like', "%{$search}%")
+                    ->orWhere('email', 'like', "%{$search}%");
+            });
+        }
+
+        return $q;
     }
 
 }

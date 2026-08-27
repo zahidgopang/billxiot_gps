@@ -242,6 +242,15 @@ return [
             'last_known' => 'Last Known',
             'device_details' => 'Device details',
             'back_to_list' => 'Back to devices',
+            'export_excel' => 'Export Excel',
+        ],
+        'fleet_export' => [
+            'excel' => 'Export Excel',
+            'sim_number' => 'SIM number',
+            'customer_email' => 'Customer email',
+            'customer_phone' => 'Customer phone',
+            'vehicles' => 'Vehicles',
+            'role' => 'Role',
         ],
         'stock' => [
             'title' => 'Device Stock',
@@ -419,6 +428,7 @@ return [
             'account_details' => 'Account details',
             'assigned_devices' => 'Assigned devices',
             'no_devices' => 'No devices assigned to this user yet.',
+            'export_excel' => 'Export Excel',
         ],
         'subscriptions' => [
             'title' => 'Subscriptions',
@@ -743,6 +753,7 @@ return [
         'devices' => [
             'title' => 'My Tracking Devices',
             'subtitle' => 'View and monitor GPS devices assigned to your account',
+            'export_excel' => 'Export Excel',
             'add' => 'Add Device',
             'total' => 'Total Devices',
             'online_now' => 'Online Now',

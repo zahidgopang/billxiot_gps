@@ -145,6 +145,11 @@
                 {{ __('app.user.devices.title') }}
             </h4>
             <p class="text-muted mb-0">{{ __('app.user.devices.subtitle') }}</p>
+            <div class="mt-3">
+                <a href="{{ route('user.devices.export') }}" class="btn btn-sm btn-outline-success">
+                    <i class="fas fa-file-excel me-1"></i>{{ __('app.user.devices.export_excel') }}
+                </a>
+            </div>
         </div>
 
         <!-- Stats Overview -->

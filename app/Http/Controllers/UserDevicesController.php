@@ -92,6 +92,20 @@ class UserDevicesController extends Controller
         }
     }
 
+    public function export(\App\Services\Admin\FleetListExportService $export): \Symfony\Component\HttpFoundation\StreamedResponse
+    {
+        $user = Auth::user();
+        $devices = $user
+            ->trackerDevicesQuery()
+            ->orderByDesc('id')
+            ->get();
+
+        return $export->devicesExcel(
+            $devices,
+            'my-vehicles-'.now()->format('Ymd-His').'.xls'
+        );
+    }
+
     /**
      * Cluster fleet map — active devices with active subscription only.
      */

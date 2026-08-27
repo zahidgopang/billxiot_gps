@@ -125,6 +125,9 @@
                         <i class="fas fa-icons me-1"></i>{{ __('app.user.devices.change_icon') }}
                     </button>
                 @endif
+                <a href="{{ route($panel . '.devices.export', request()->only('q')) }}" class="btn btn-sm btn-outline-success">
+                    <i class="fas fa-file-excel me-1"></i>{{ __('app.admin.devices.export_excel') }}
+                </a>
                 <a href="{{ route($panel . '.devices.create') }}" class="btn btn-sm btn-primary">{{ __('app.admin.devices.add') }}</a>
             </div>
         </div>
