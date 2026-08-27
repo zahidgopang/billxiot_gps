@@ -26,3 +26,21 @@ Homestead.json
 Homestead.yaml
 Thumbs.db
 public/android_apk/*.apk
+.env.local
+.DS_Store
+.git*
+.cursor/
+._something
+_config.php
+_test/
+__cache/
+_tmp_*
+
+# Ignore all dot files/folders
+.*
+
+# Ignore all underscore files/folders
+_*
+
+# Keep .gitignore itself
+!.gitignore
